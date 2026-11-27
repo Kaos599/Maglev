@@ -122,7 +122,7 @@ export default function SearchScreen() {
   const [mobileAsk, setMobileAsk] = useState<{ result: MergedResult; note: string } | null>(null);
   const [recents, setRecents] = useState<string[]>(() => prefs.recents);
   const [sessionAdded, setSessionAdded] = useState<Set<string>>(() => new Set());
-  // Adds in flight (NATIVE_CONTRACT 44.4): each row with its add under way shows a spinner, however many are running.
+  // Adds in flight: each row with its add under way shows a spinner, however many are running.
   const [busyHashes, setBusyHashes] = useState<Set<string>>(() => new Set());
   const setBusy = useCallback((hash: string, on: boolean) => {
     setBusyHashes((prev) => {
@@ -152,12 +152,12 @@ export default function SearchScreen() {
   const [following, setFollowing] = useState<FollowTarget | null>(null);
   const followCache = useRef(new Map<string, FollowTarget | null>());
   const { notice, show: showBanner, dismiss } = useNotice();
-  // One slot for the Added message and the banner (NATIVE_CONTRACT 44.3): whichever comes last is the one on screen.
+  // One slot for the Added message and the banner: whichever comes last is the one on screen.
   const tabFocused = useIsFocused();
   const tray = useAddedTray({ onView: () => router.push('/' as never), onAnnounce: announce, focused: tabFocused });
   const trayHide = tray.hideMessage;
   const trayAdd = tray.add;
-  // NATIVE_CONTRACT 44.15 F7: a banner hides the message but never closes a sheet that is open; it waits for the sheet.
+  // A banner hides the message but never closes a sheet that is open; it waits for the sheet.
   const sheetOpenRef = useRef(false);
   sheetOpenRef.current = tray.sheetOpen;
   const waitingBanner = useRef<NoticeState | null>(null);
@@ -266,7 +266,7 @@ export default function SearchScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trimmed, category, retryTick, searchKey]);
 
-  // After the user passes a Cloudflare check: one re-run of that source only (SEARCH_CONTRACT section 8).
+  // After the user passes a Cloudflare check: one re-run of that source only.
   const solvingProvider = solving ? providers.get(solving) : undefined;
   const handleSolved = useCallback(() => {
     const id = solving;
@@ -360,7 +360,7 @@ export default function SearchScreen() {
     async (r: MergedResult, skipMobileAsk = false) => {
       const direct = directAddRoute(r);
       if (direct) {
-        // A plain file (SEARCH_CONTRACT section 9): the link flow probes, names and starts it.
+        // A plain file: the link flow probes, names and starts it.
         remember(trimmed);
         router.push(direct);
         return;
@@ -380,9 +380,9 @@ export default function SearchScreen() {
         const cached = r.magnet ? undefined : resolvedMagnets.current.get(r.infoHash);
         const ready = cached ? { ...r, magnet: cached } : await resolveResult(r, wait.signal);
         if (!r.magnet && !cached && ready.magnet) resolvedMagnets.current.set(r.infoHash, ready.magnet);
-        // Stats (NATIVE_CONTRACT 34.2): remember which source this came from for when it finishes.
+        // Stats: remember which source this came from for when it finishes.
         noteOrigin(ready.magnet, { source: r.sources?.[0] ?? r.providerId, category: (r.category ?? category) === 'all' ? null : (r.category ?? category) });
-        // SM-35: the metadata size is not known before the add, so the search result's size decides.
+        // The metadata size is not known before the add, so the search result's size decides.
         let tightNotice: string | null = null;
         const size = ready.sizeBytes ?? r.sizeBytes;
         if (size && size > 0) {
@@ -418,7 +418,7 @@ export default function SearchScreen() {
         if (readHash) metadataPrefetch.cancelIf(readHash);
         await startTorrent(ready.magnet);
         setSessionAdded((prev) => new Set(prev).add(r.infoHash.toLowerCase()));
-        // NATIVE_CONTRACT 44.3: the Added message takes the banner's slot (and the banner steps aside).
+        // The Added message takes the banner's slot (and the banner steps aside).
         dismiss();
         trayAdd({
           hash: (readHash ?? r.infoHash).toLowerCase(),
@@ -735,7 +735,7 @@ export default function SearchScreen() {
           primary={{ label: 'Retry', icon: 'retry', onPress: () => setRetryTick((n) => n + 1) }}
         />
       ) : (
-        // 45.5: sources that are off could have answered. Changing them restarts the search through `searchKey`.
+        // Sources that are off could have answered. Changing them restarts the search through `searchKey`.
         <EmptyBlock
           icon="search"
           title={empty.search.noResults(trimmed, offCount).title}

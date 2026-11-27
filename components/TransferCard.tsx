@@ -21,13 +21,26 @@ import { swipePlan } from "./transfers/swipe";
 import { SubtitleCardIcon } from "./subtitles/SubtitleCardIcon";
 import { sameCardIcon, type CardIconModel } from "./subtitles/flow";
 import { torrentCardGlyph } from "../utils/cardIcon";
+import { DEFAULT_NAME_LINES, type NameLines } from "../utils/prefs/transfers";
 
 /**
- * Name (two lines), one bar, one status line. At the default font size the height never changes
+ * Name (two lines by default), one bar, one status line. At the default font size the height never changes
  * between states. It is a minimum, not a fixed height: at large font scales the card grows so text never clips.
  */
 export const CARD_HEIGHT = 104;
 export const CARD_GAP = 8;
+/** One line of a card's name (the name style's lineHeight). */
+export const NAME_LINE = 18;
+
+/**
+ * Minimum heights for the name row and the card at a "Transfer name lines" value. A short name keeps the
+ * space of the chosen line count, so cards stay one height, and at 1 line nothing is reserved for a second.
+ * Full name (0) reserves one line and lets each card grow to its whole name.
+ */
+export function cardMinHeights(nameLines: NameLines): { card: number; name: number } {
+  const lines = nameLines === 0 ? 1 : nameLines;
+  return { card: CARD_HEIGHT + (lines - 2) * NAME_LINE, name: lines * NAME_LINE };
+}
 
 export interface TransferCardProps {
   torrent: TransferTelemetry;
@@ -37,24 +50,26 @@ export interface TransferCardProps {
   onLongPress: (id: string) => void;
   onPause: (id: string) => void;
   onResume: (id: string) => void;
-  /** SM-37: clears the no_peers tag so the torrent looks for peers again. */
+  /** Clears the no_peers tag so the torrent looks for peers again. */
   onKeepTrying?: (id: string) => void;
   /** A finished card's button: opens the file (the detail screen when there are several). */
   onOpen?: (id: string) => void;
   /** Runs a paused torrent once although a rule (Wi-Fi only, battery, charger, schedule) paused it. */
   onResumeAnyway?: (id: string) => void;
-  /** Play button (0.19): streams or opens the torrent's video or audio file. Shown only when the card can tell it is playable. */
+  /** Play button: streams or opens the torrent's video or audio file. Shown only when the card can tell it is playable. */
   onPlay?: (id: string) => void;
   /** Swipe left: remove from the list, files kept, with Undo. Also the Remove accessibility action. */
   onRemove?: (id: string) => void;
   /** The "Swipe to pause or remove" setting. Off: the card has no swipe wrapper at all. */
   swipeEnabled?: boolean;
-  /** Subtitle icon (36.10), top right: only after the user asked for subtitles on this item. */
+  /** Subtitle icon, top right: only after the user asked for subtitles on this item. */
   subtitle?: CardIconModel | null;
   /** Taps the subtitle icon: opens the subtitle sheet. */
   onSubtitles?: (id: string) => void;
   /** The "Show file type icons in Transfers" setting. The icon shares the slot of the selection checkbox. */
   showFileIcon?: boolean;
+  /** The "Transfer name lines" setting: lines before the name ends in "…", 0 for the whole name. */
+  nameLines?: NameLines;
 }
 
 /**
@@ -126,6 +141,7 @@ function TransferCardImpl({
   subtitle = null,
   onSubtitles,
   showFileIcon = true,
+  nameLines = DEFAULT_NAME_LINES,
 }: TransferCardProps) {
   const router = useRouter();
   const { colors } = useTheme();
@@ -183,10 +199,11 @@ function TransferCardImpl({
   const swipe = swipePlan({ action, busy: actionBusy, moving, selectionMode, enabled: swipeEnabled });
   const onSwipeRight = useCallback((kind: "pause" | "resume") => (kind === "pause" ? onPause(t.id) : onResume(t.id)), [onPause, onResume, t.id]);
   const onSwipeLeft = useCallback(() => onRemove?.(t.id), [onRemove, t.id]);
+  const heights = useMemo(() => cardMinHeights(nameLines), [nameLines]);
   const a11yLabel = `${t.name}, ${status.text}, ${pct.toFixed(0)} percent${selectionMode && selected ? ", selected" : ""}`;
 
   const card = (
-    <View style={[styles.card, selected && styles.cardSelected]}>
+    <View style={[styles.card, { minHeight: heights.card }, selected && styles.cardSelected]}>
       <PressableScale
         onPress={() => onPress(t.id)}
         onLongPress={() => onLongPress(t.id)}
@@ -239,8 +256,8 @@ function TransferCardImpl({
           </View>
         ) : null}
         <View style={styles.body}>
-        <View style={styles.nameRow}>
-          <Text style={styles.name} numberOfLines={2} ellipsizeMode="tail">
+        <View style={[styles.nameRow, { minHeight: heights.name }]}>
+          <Text style={styles.name} numberOfLines={nameLines === 0 ? undefined : nameLines} ellipsizeMode="tail">
             {t.name}
           </Text>
         </View>
@@ -324,6 +341,7 @@ function sameCard(a: TransferCardProps, b: TransferCardProps): boolean {
     a.onSubtitles === b.onSubtitles &&
     sameCardIcon(a.subtitle, b.subtitle) &&
     a.showFileIcon === b.showFileIcon &&
+    a.nameLines === b.nameLines &&
     x.id === y.id &&
     x.name === y.name &&
     x.mainFile === y.mainFile &&
@@ -388,7 +406,6 @@ const makeStyles = (c: ThemeColors) =>
       flexDirection: "row",
       alignItems: "flex-start",
       gap: spacing.sm,
-      minHeight: 36,
     },
-    name: { ...type.mono, fontSize: type.size.md, lineHeight: 18, color: c.text, flex: 1 },
+    name: { ...type.mono, fontSize: type.size.md, lineHeight: NAME_LINE, color: c.text, flex: 1 },
   });

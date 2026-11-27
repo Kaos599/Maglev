@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Glossary contract (ASSISTANT_DESIGN §2.11, §10 row 2). Pure TS, no network.
+// Assistant glossary. Pure TS, no network.
 // Needs Node 22.18+ (runs the TypeScript source directly via type stripping).
 
 process.removeAllListeners('warning');

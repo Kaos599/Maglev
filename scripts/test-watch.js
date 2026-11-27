@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Watch for a title (docs/contracts-0.19/watch.md). Pure logic: matching, new-vs-seen, filters, scheduling,
+// Watch for a title. Pure logic: matching, new-vs-seen, filters, scheduling,
 // store round-trip and cap, notification text, the background cycle, and the assistant tool -> proposal card.
 // Needs Node 22.18+ (runs the TypeScript sources directly). No network, no device.
 process.removeAllListeners('warning');

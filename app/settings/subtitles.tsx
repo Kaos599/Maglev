@@ -36,14 +36,14 @@ export default function SubtitlesSettings() {
       </Card>
 
       <View style={off && styles.dim} pointerEvents={off ? 'none' : 'auto'} accessibilityState={{ disabled: off }}>
-        {/* NATIVE_CONTRACT 44.6 */}
+        {/* The "Get subtitles for new videos" switch and the sources below it. They dim and stop taking taps while Subtitles is off. */}
         <View style={[styles.group, styles.below]}>
           <Card>
             <ListRow
               title="Get subtitles for new videos"
               subtitle={AUTO_NEW_VIDEOS_SUBTITLE}
               accessory={<Toggle value={sub.autoNewVideos} onValueChange={(autoNewVideos) => {
-                  // NATIVE_CONTRACT 44.15 D10 and 45.4: the switch stays off until Turn on; the sheet always shows.
+                  // The switch stays off until Turn on; the sheet always shows.
                   if (autoNewVideos) consent.require(() => patch({ autoNewVideos: true }), { autoNewVideos: true }, { confirm: true });
                   else patch({ autoNewVideos: false });
                 }} accessibilityLabel="Get subtitles for new videos" />}
@@ -90,7 +90,7 @@ export default function SubtitlesSettings() {
 
       {consent.node}
 
-      {/* NATIVE_CONTRACT 39.1 S6: the same line the menu rows show for a folder picked with the file picker. */}
+      {/* The same line the menu rows show for a folder picked with the file picker. */}
       <Caption>{SAF_UNAVAILABLE}.</Caption>
 
       {/* The privacy line is searchable as "Subtitle privacy". */}

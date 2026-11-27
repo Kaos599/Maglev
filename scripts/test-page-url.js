@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Source checks for `pageUrl` (NATIVE_CONTRACT "Auto-refresh (2026-11-20)") and the redirect handling next to it.
+// Source checks for `pageUrl` (the page a download is refreshed from) and the redirect handling next to it.
 // The behaviour is proven by Rust unit tests (CI runs `cargo test`); this keeps the types, the Kotlin passthrough and
 // the Rust wiring honest, and runs the mock engine's rule for the saved page URL.
 const fs = require('fs');
@@ -13,7 +13,7 @@ function check(name, cond) {
 
 const types = read('modules/maglev-engine/src/MaglevEngine.types.ts');
 const opts = types.slice(types.indexOf('export interface DownloadOptions'), types.indexOf('export interface UrlProbe'));
-const snap = types.slice(types.indexOf('export interface DownloadSnapshot'), types.indexOf('/** NATIVE_CONTRACT 24.8. */'));
+const snap = types.slice(types.indexOf('export interface DownloadSnapshot'), types.indexOf('export', types.indexOf('export interface DownloadSnapshot') + 10));
 check('DownloadOptions has pageUrl?: string', /pageUrl\?: string;/.test(opts));
 check('DownloadSnapshot has pageUrl', /pageUrl\?: string \| null;/.test(snap));
 

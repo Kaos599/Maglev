@@ -1,5 +1,5 @@
 /**
- * Browser prefs (docs/NATIVE_CONTRACT.md section 24.6): persisted in the kv store, read through a hook.
+ * Browser prefs: persisted in the kv store, read through a hook.
  * The pure URL helpers live in utils/browserUrl.ts and are re-exported here.
  */
 import { useSyncExternalStore } from 'react';
@@ -23,13 +23,13 @@ export interface BrowserPrefs {
   /** Hide video and audio under 1 MB and images under 50 KB in the found-files list. */
   hideSmallFiles: boolean;
   searchEngine: SearchEngine;
-  /** Keep a history of the pages opened in the browser (section 24.9). */
+  /** Keep a history of the pages opened in the browser. */
   saveHistory: boolean;
   /** Offer history matches under the address bar. */
   suggestFromHistory: boolean;
   /** Empty the history when Maglev closes, and again on the next start. */
   clearHistoryOnClose: boolean;
-  /** What to do with pop-ups and redirects the user didn't tap for (section 24.10). */
+  /** What to do with pop-ups and redirects the user didn't tap for. */
   popupPolicy: PopupPolicy;
   /** Sites allowed to open pop-ups and redirects, normalised (no `www.` or `m.`; matched by suffix). */
   popupAllowHosts: string[];
@@ -38,14 +38,14 @@ export interface BrowserPrefs {
    * policy (utils/browser/popups.ts `decideNewWindow`). Set by the card's Block button and Settings › Blocked pop-ups.
    */
   popupBlockHosts: string[];
-  /** Page text size in percent (section 28). Always one of the values `normalizeTextZoom` returns. */
+  /** Page text size in percent. Always one of the values `normalizeTextZoom` returns. */
   browserTextZoom: number;
   /**
    * Private browsing: no history written or suggested, tabs kept in memory only, and cookies of the sites visited
    * wiped when the browser is left (utils/browser/privateSession.ts). UI only; never reaches the engine.
    */
   privateBrowsing: boolean;
-  /** Darken pages that only have a light look while Maglev is dark (section 24.10a). UI only; the view gets it as a prop. */
+  /** Darken pages that only have a light look while Maglev is dark. UI only; the view gets it as a prop. */
   darkPages: boolean;
   /** Start page: the frequent sites section (read from history). */
   showFrequentSites: boolean;

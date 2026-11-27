@@ -23,7 +23,7 @@ t(`notes exist and parse for app.json version ${version}`, (() => {
   const p = path.join(root, 'release-notes', `${version}.md`);
   return fs.existsSync(p) && parse(fs.readFileSync(p, 'utf8')).errors.length === 0;
 })());
-for (const f of fs.readdirSync(path.join(root, 'release-notes')).filter((f) => /^\d+\.\d+\.md$/.test(f))) {
+for (const f of fs.readdirSync(path.join(root, 'release-notes')).filter((f) => /^\d+\.\d+(\.\d+)?\.md$/.test(f))) {
   t(`release-notes/${f} parses`, parse(fs.readFileSync(path.join(root, 'release-notes', f), 'utf8')).errors.length === 0);
 }
 
@@ -40,7 +40,7 @@ t('only sections the file has', (() => {
 const people = thanks(version);
 t('thanks lines appear on the release page when the file exists', people.length === 0 ? !body.includes('## Thanks') : body.includes('## Thanks') && people.every((p) => body.includes(`- ${p}`)));
 t('a version with no thanks file has no Thanks section', thanks('0.0').length === 0);
-t('thanks files are not bundled as app notes', !fs.readdirSync(path.join(root, 'release-notes')).filter((f) => /^\d+\.\d+\.md$/.test(f)).some((f) => f.includes('thanks')));
+t('thanks files are not bundled as app notes', !fs.readdirSync(path.join(root, 'release-notes')).filter((f) => /^\d+\.\d+(\.\d+)?\.md$/.test(f)).some((f) => f.includes('thanks')));
 
 const wf = fs.readFileSync(path.join(root, '.github/workflows/release-apk.yml'), 'utf8');
 t('release workflow checks notes before building', /release-notes\.js build "\$\{\{ github\.ref_name \}\}" > \/dev\/null/.test(wf));

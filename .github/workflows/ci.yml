@@ -382,5 +382,5 @@ jobs:
       - name: Feed rules (shared vectors)
         run: node scripts/test-feeds.js
 
-      - name: Version scheme (major.minor)
+      - name: Version scheme (major.minor[.patch])
         run: node scripts/test-version.js

@@ -1,5 +1,5 @@
 /**
- * Per-tab data every browser screen instance shares (docs/NATIVE_CONTRACT.md section 30): what each live tab's view
+ * Per-tab data every browser screen instance shares: what each live tab's view
  * reported (page, found list, blocked count, ...), the address each view loaded when it mounted, the pop-up prompts,
  * and who owns the native views. View refs are not here; they stay per screen instance.
  */
@@ -11,14 +11,14 @@ import type { FoundHintState } from './hardening.ts';
 export type TabData = {
   page: BrowserPageEvent | null;
   found: FoundItem[];
-  // Remove and Clear only hide ids (NATIVE_CONTRACT 24.6a): the view keeps its tracker, so a re-requested file stays hidden.
+  // Remove and Clear only hide ids: the view keeps its tracker, so a re-requested file stays hidden.
   dismissed: ReadonlySet<string>;
   blocked: number;
   crashed: boolean;
   refused: 'ssl' | 'local' | null;
   lastUrl: string;
   notes: Set<string>;
-  // The "Maglev found N files" hint: once per page load (24.11).
+  // The "Maglev found N files" hint: once per page load.
   hint: FoundHintState;
 };
 

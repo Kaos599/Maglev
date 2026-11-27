@@ -1,5 +1,5 @@
 /**
- * List prefs (docs/NATIVE_CONTRACT.md section 31.1): persisted in the kv store, read through a hook.
+ * List prefs: persisted in the kv store, read through a hook.
  * `sourcesFile` is the last verified file that was applied, `appliedSerial` its serial (0 = built-in defaults).
  */
 import { useSyncExternalStore } from 'react';

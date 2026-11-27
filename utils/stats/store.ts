@@ -1,5 +1,5 @@
 /**
- * Stats store over an injected database (docs/NATIVE_CONTRACT.md section 34.2). No React and no native imports.
+ * Stats store over an injected database. No React and no native imports.
  */
 import { type StatsDb } from './schema.ts';
 import { dayKey } from './time.ts';

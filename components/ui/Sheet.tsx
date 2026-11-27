@@ -27,6 +27,11 @@ export interface SheetProps {
    * so one vertical scroller is never nested in another.
    */
   scroll?: boolean;
+  /**
+   * Called once per open, after the Modal window is on screen and the slide-in has finished (at once when motion is
+   * reduced). The place to focus a field: focusing earlier raises no keyboard on Android.
+   */
+  onOpened?: () => void;
 }
 
 /**
@@ -39,7 +44,7 @@ export interface SheetProps {
  * A Modal is its own native window on Android, outside the app's root gesture view, so the sheet
  * brings its own GestureHandlerRootView.
  */
-export function Sheet({ visible, onClose, title, subtitle, hideTitle, children, testID, returnFocusRef, scroll = true }: SheetProps) {
+export function Sheet({ visible, onClose, title, subtitle, hideTitle, children, testID, returnFocusRef, scroll = true, onOpened }: SheetProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
@@ -49,6 +54,13 @@ export function Sheet({ visible, onClose, title, subtitle, hideTitle, children, 
   // in a Modal: pad by how much the keyboard actually covers the sheet's window. iOS keeps KeyboardAvoidingView.
   const { ref: kbRef, inset } = useKeyboardInset();
   const kb = Platform.OS === 'android' ? inset : 0;
+  // The keyboard event arrives once the keyboard is already up, so ease the padding in instead of jumping.
+  const kbPad = useSharedValue(0);
+  useEffect(() => {
+    if (m.disabled) kbPad.value = kb;
+    else kbPad.value = withTiming(kb, { duration: m.fast, easing: m.easing });
+  }, [kb, m, kbPad]);
+  const kbPadStyle = useAnimatedStyle(() => ({ paddingBottom: kbPad.value }));
   useOverlayTracking(visible);
 
   // The Modal stays mounted while the sheet slides out.
@@ -62,6 +74,25 @@ export function Sheet({ visible, onClose, title, subtitle, hideTitle, children, 
   const snapBackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const visibleRef = useRef(visible);
   visibleRef.current = visible;
+  // onOpened waits for two things that can arrive in either order: the Modal window showing and the slide ending.
+  const windowShown = useRef(false);
+  const slideDone = useRef(false);
+  const openedSent = useRef(false);
+  const onOpenedRef = useRef(onOpened);
+  onOpenedRef.current = onOpened;
+  const sendOpened = useCallback(() => {
+    if (openedSent.current || !windowShown.current || !slideDone.current || !visibleRef.current) return;
+    openedSent.current = true;
+    onOpenedRef.current?.();
+  }, []);
+  const markSlideDone = useCallback(() => {
+    slideDone.current = true;
+    sendOpened();
+  }, [sendOpened]);
+  const markWindowShown = useCallback(() => {
+    windowShown.current = true;
+    sendOpened();
+  }, [sendOpened]);
   const returnRef = useRef(returnFocusRef);
   returnRef.current = returnFocusRef;
 
@@ -79,15 +110,26 @@ export function Sheet({ visible, onClose, title, subtitle, hideTitle, children, 
 
   const open = useCallback(() => {
     cancelAnimation(offset);
-    if (m.disabled) offset.value = 0;
-    else offset.value = withTiming(0, { duration: m.base, easing: m.easing });
+    slideDone.current = false;
+    openedSent.current = false;
+    if (m.disabled) {
+      offset.value = 0;
+      markSlideDone();
+    } else {
+      offset.value = withTiming(0, { duration: m.base, easing: m.easing }, (finished) => {
+        if (finished) scheduleOnRN(markSlideDone);
+      });
+    }
     // Move TalkBack focus to the title once the sheet has settled.
     focusNode(titleRef.current, m.disabled ? 100 : m.base + 100);
-  }, [m, offset, focusNode]);
+  }, [m, offset, focusNode, markSlideDone]);
 
   // The next mount measures again and slides in from there.
   const unmount = useCallback(() => {
     pendingOpen.current = true;
+    windowShown.current = false;
+    slideDone.current = false;
+    openedSent.current = false;
     setMounted(false);
     // Hand TalkBack focus back to the opener once the sheet is gone.
     if (returnRef.current?.current) focusNode(returnRef.current.current, 100);
@@ -191,12 +233,14 @@ export function Sheet({ visible, onClose, title, subtitle, hideTitle, children, 
       transparent
       animationType="none"
       onRequestClose={onClose}
+      onShow={markWindowShown}
       statusBarTranslucent
       navigationBarTranslucent
     >
       <GestureHandlerRootView style={styles.root}>
         <KeyboardAvoidingView style={styles.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <View ref={kbRef} style={[styles.fill, { paddingBottom: kb }]}>
+          <View ref={kbRef} style={styles.fill}>
+          <Animated.View style={[styles.fill, kbPadStyle]}>
           <Animated.View style={[styles.backdrop, backdropStyle]}>
             <Pressable
               style={StyleSheet.absoluteFill}
@@ -241,6 +285,7 @@ export function Sheet({ visible, onClose, title, subtitle, hideTitle, children, 
             ) : (
               <View style={contentStyle}>{children}</View>
             )}
+          </Animated.View>
           </Animated.View>
           </View>
         </KeyboardAvoidingView>

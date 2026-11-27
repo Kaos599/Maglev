@@ -30,7 +30,7 @@ export interface ProviderRowProps {
   onToggle: (next: boolean) => void;
   /** Set when the source needs a quick check: shows a "?" button that opens the site once. */
   onCheck?: () => void;
-  /** The source list turned this source off: the toggle can't be used (contract 31.1). */
+  /** The source list turned this source off: the toggle can't be used. */
   locked?: boolean;
   /** Switch label for TalkBack. Search sources by default. */
   toggleLabel?: string;

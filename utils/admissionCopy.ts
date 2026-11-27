@@ -1,4 +1,4 @@
-// Caption under the Add torrent preview (SM-35). Pure: no React.
+// Caption under the Add torrent preview. Pure: no React.
 // The budget is free space minus what the user's other downloads still need minus a 200 MB margin, so the
 // caption says so when other downloads are pending; otherwise "Free on device" and "Leaves" would not add up.
 import { formatBytes } from '../constants/format.ts';

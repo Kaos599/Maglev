@@ -24,7 +24,7 @@ const SettingsContext = createContext<SettingsContextType | null>(null);
 const WIFI_DEFAULT_KEY = 'maglev.defaults.wifiOnly.v1';
 
 /**
- * A fresh install defaults to Wi-Fi only (UI_SPEC_PHASE2 S10.7). This runs once.
+ * A fresh install defaults to Wi-Fi only. This runs once.
  * Anyone who already finished onboarding keeps their value; nothing changes silently.
  */
 function readSettingsWithFreshDefaults(): MaglevSettings {

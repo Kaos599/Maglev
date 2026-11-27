@@ -4,7 +4,7 @@ type NamedProvider = Pick<SearchProvider, 'name' | 'unsafeReason'>;
 
 /**
  * Names of the sources behind a result when EVERY one of them is flagged unsafe, else null.
- * One clean source is enough to clear the warning. Contract: docs/SEARCH_CONTRACT.md section 7.
+ * One clean source is enough to clear the warning, because it corroborates the same info hash.
  */
 export function riskySources(
   result: Pick<MergedResult, 'sources'>,

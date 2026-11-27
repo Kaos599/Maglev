@@ -43,7 +43,7 @@ import { takeNextShared } from '../../utils/shareQueue';
 import type { DownloadAction } from '../../utils/downloadCopy';
 import { BulkVerb, bulkSummary, selectionKey, splitSelection } from '../../utils/bulkSummary';
 import { useSearchPrefs } from '../../utils/prefs/search';
-import { TransferSort, loadTransferSort, saveTransferSort } from '../../utils/prefs/transfers';
+import { TransferSort, loadTransferSort, saveTransferSort, useTransferNameLines } from '../../utils/prefs/transfers';
 import { empty, notices, playCopy } from '../../constants/copy';
 import { clipboardRoute, clipboardUsesCard } from '../../constants/clipboardCopy';
 import { dismissClip, isDismissedClip } from '../../utils/prefs/clipboard';
@@ -57,6 +57,9 @@ const typeOfItem = (item: TransferItem<TransferTelemetry>) => item.kind;
  * would scroll to follow whichever card was on top. FlatList never did that; neither does this.
  */
 const NO_ANCHOR = { disabled: true } as const;
+
+/** Space under the last card. It clears the floating add button. */
+const LIST_END = 96;
 
 /** How often free space is read while Transfers is on screen. */
 const FREE_SPACE_EVERY_MS = 30_000;
@@ -158,7 +161,7 @@ export default function TransfersScreen() {
     const q = query.trim().toLowerCase();
     return downloads.filter((d) => downloadMatchesFilter(d, filter) && (!q || d.name.toLowerCase().includes(q)));
   }, [downloads, filter, query]);
-  // NATIVE_CONTRACT 40.4: the card buttons run the same handlers as the download page. "Paste new link" opens the page (40.1).
+  // The card buttons run the same handlers as the download page. "Paste new link" opens the page.
   const onDownloadAction = useCallback((d: DownloadSnapshot, action: DownloadAction) => downloadActions.run(d, action), [downloadActions]);
   const selectionMode = selectedIds.size > 0;
   const finished = useMemo(() => finishedTransfers(all, downloads), [all, downloads]);
@@ -183,7 +186,7 @@ export default function TransfersScreen() {
   );
   const nothingHere = all.length === 0 && downloads.length === 0;
 
-  // Why transfers are held (NATIVE_CONTRACT 35): one list for the banner and every card's line.
+  // Why transfers are held: one list for the banner and every card's line.
   const activeBlocks = useActiveBlocks();
   const queueLimit = queueLimitOf(settings.bandwidth.maxActiveDownloads);
   const blockCtx = useMemo(() => ({ blocks: activeBlocks, queueLimit }), [activeBlocks, queueLimit]);
@@ -194,7 +197,7 @@ export default function TransfersScreen() {
   // moment, so the numbers agree with each other (and the text changes every 30 s, not every tick).
   // Read again when the unfinished set changes. Unknown free space shows nothing.
   const [lowSpace, setLowSpace] = useState<LowSpaceWarning | null>(null);
-  // Link downloads count too (SM-35): see pendingNeedOf for which states and sizes.
+  // Link downloads count too: see pendingNeedOf for which states and sizes.
   const allRef = useRef(all);
   allRef.current = all;
   const downloadsRef = useRef(downloads);
@@ -291,7 +294,7 @@ export default function TransfersScreen() {
   const onDownloadPress = useCallback(
     (id: string) => {
       if (selectionMode) toggleSelected(selectionKey('d', id));
-      // NATIVE_CONTRACT 40.1: a tap on a link-download card opens its page.
+      // A tap on a link-download card opens its page.
       else router.push({ pathname: '/download/[id]', params: { id } });
     },
     [selectionMode, toggleSelected, router],
@@ -321,7 +324,7 @@ export default function TransfersScreen() {
     },
     [router, showNotice],
   );
-  // Play on a card (0.19): the file list is fetched, the largest video or audio file is picked, then it opens or streams.
+  // Play on a card: the file list is fetched, the largest video or audio file is picked, then it opens or streams.
   const playListRef = useRef(all);
   playListRef.current = all;
   const onPlay = useCallback(
@@ -342,7 +345,8 @@ export default function TransfersScreen() {
   const onSwipeRemoveDownload = useCallback((id: string) => removeTransfers([], [id]), [removeTransfers]);
   const swipeEnabled = settings.appearance.swipeActions;
   const showFileIcons = settings.appearance.showFileIcons;
-  // SM-37: clear the no_peers tag so the torrent looks for peers again.
+  const [nameLines] = useTransferNameLines();
+  // Clear the no_peers tag so the torrent looks for peers again.
   const onKeepTrying = useCallback(
     (id: string) => {
       void maglevEngine.setHealth(id, '').then((res) => {
@@ -383,6 +387,19 @@ export default function TransfersScreen() {
       all.reduce((sum, t) => (selectedIds.has(selectionKey('t', t.id)) ? sum + (t.heldBytes ?? t.downloadedBytes) : sum), 0) +
       downloads.reduce((sum, d) => (selectedIds.has(selectionKey('d', d.id)) ? sum + d.downloaded : sum), 0),
     [all, downloads, selectedIds],
+  );
+  // With exactly one card selected, the bar above Pause, Resume and Delete shows its whole name.
+  const selectedName = useMemo(() => {
+    if (selectedIds.size !== 1) return null;
+    const { torrents: [tId], downloads: [dId] } = splitSelection(selectedIds);
+    const name = tId !== undefined ? all.find((t) => t.id === tId)?.name : downloads.find((d) => d.id === dId)?.name;
+    return name || null;
+  }, [selectedIds, all, downloads]);
+  // The bar floats over the list and grows with that name, so the list's end clears whatever height it has.
+  const [bulkBarHeight, setBulkBarHeight] = useState(0);
+  const listContentStyle = useMemo(
+    () => (selectionMode && bulkBarHeight + spacing.lg > LIST_END ? [styles.listContent, { paddingBottom: bulkBarHeight + spacing.lg }] : styles.listContent),
+    [selectionMode, bulkBarHeight, styles.listContent],
   );
   const confirmDelete = useCallback(
     (deleteFiles: boolean) => {
@@ -469,9 +486,10 @@ export default function TransfersScreen() {
         subtitle={subtitleIcon(`t:${item.torrent.id}`)}
         onSubtitles={onTorrentSubtitles}
         showFileIcon={showFileIcons}
+        nameLines={nameLines}
       />
     ),
-    [selectionMode, selectedIds, onCardPress, startSelection, onPause, onResume, onKeepTrying, onOpenTorrent, onResumeAnyway, onPlay, onSwipeRemove, swipeEnabled, subtitleIcon, onTorrentSubtitles, showFileIcons],
+    [selectionMode, selectedIds, onCardPress, startSelection, onPause, onResume, onKeepTrying, onOpenTorrent, onResumeAnyway, onPlay, onSwipeRemove, swipeEnabled, subtitleIcon, onTorrentSubtitles, showFileIcons, nameLines],
   );
   // One list: torrents and link downloads, ordered by the current sort.
   const items = useMemo(() => mergeTransfers(visible, shownDownloads, sort), [visible, shownDownloads, sort]);
@@ -492,9 +510,11 @@ export default function TransfersScreen() {
           subtitle={subtitleIcon(`d:${item.download.id}`)}
           onSubtitles={onDownloadSubtitles}
           showFileIcon={showFileIcons}
+          nameLines={nameLines}
         />
       ),
-    [renderTorrent, onDownloadPress, onDownloadAction, selectionMode, selectedIds, startDownloadSelection, onSwipeRemoveDownload, swipeEnabled, subtitleIcon, onDownloadSubtitles, showFileIcons],
+    // A new nameLines re-renders the list, so FlashList measures the new card heights in the same pass.
+    [renderTorrent, onDownloadPress, onDownloadAction, selectionMode, selectedIds, startDownloadSelection, onSwipeRemoveDownload, swipeEnabled, subtitleIcon, onDownloadSubtitles, showFileIcons, nameLines],
   );
   const progressMotion = useMemo<ProgressMotion>(() => ({ active: focused, sweeps: LIST_SWEEPS }), [focused]);
 
@@ -619,7 +639,7 @@ export default function TransfersScreen() {
               extraData={selectedIds}
               onScrollBeginDrag={closeOpenSwipe}
               ItemSeparatorComponent={Separator}
-              contentContainerStyle={styles.listContent}
+              contentContainerStyle={listContentStyle}
               maintainVisibleContentPosition={NO_ANCHOR}
               showsVerticalScrollIndicator={false}
             />
@@ -630,9 +650,11 @@ export default function TransfersScreen() {
       {selectionMode ? (
         <BulkBar
           disabled={false}
+          name={selectedName}
+          onHeight={setBulkBarHeight}
           onPause={() => void bulk('Paused', pauseTorrent, pauseDownload)}
           onResume={() =>
-            // NATIVE_CONTRACT 47.4: a torrent held by a file health tag needs Recheck, so Resume skips it.
+            // A torrent held by a file health tag needs Recheck, so Resume skips it.
             void bulk('Resumed', resumeTorrent, resumeDownload, (id) => {
               const t = all.find((x) => x.id === id);
               return !!t && isHeldByFiles(t);
@@ -691,7 +713,7 @@ const makeStyles = (c: ThemeColors) =>
     searchWrap: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
     fileError: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
     noMatch: { flex: 1, justifyContent: 'center' },
-    listContent: { paddingTop: spacing.xs, paddingBottom: 96 }, // design-exception: bottom inset clears the floating add button
+    listContent: { paddingTop: spacing.xs, paddingBottom: LIST_END },
   });
 
 export { ErrorBoundary } from '../../components/ErrorScreen';

@@ -447,7 +447,7 @@ async function main() {
     s.chat().send('hi');
     await settle();
     const e = s.chat().items.at(-1);
-    check('429: SM-31 does not retry it; error item "Rate limited." with action retry', s.fetch.requests.length === 1 && e.message === 'Rate limited. Try again in a minute.' && e.action === 'retry', e);
+    check('429: the turn does not retry it; error item "Rate limited." with action retry', s.fetch.requests.length === 1 && e.message === 'Rate limited. Try again in a minute.' && e.action === 'retry', e);
   }
   {
     // A free model's 429 (OpenRouter JSON body, no Retry-After): rate-limited copy with Retry, never "couldn't reach".
@@ -726,7 +726,7 @@ async function main() {
     const d = setup();
     const e = setup({ key: null, prefs: { presetId: 'custom', baseUrl: presetById('custom').baseUrl } });
     check('gate: disabled, notAccepted, noKey, ready', a.chat().gate === 'disabled' && b.chat().gate === 'notAccepted' && c.chat().gate === 'noKey' && d.chat().gate === 'ready', [a.chat().gate, b.chat().gate, c.chat().gate, d.chat().gate]);
-    check('gate: a local server needs no key (R1-14)', e.chat().gate === 'ready');
+    check('gate: a local server needs no key', e.chat().gate === 'ready');
     c.chat().send('hi');
     await settle();
     const err = c.chat().items[0];
@@ -764,7 +764,7 @@ async function main() {
     check('sourceFor goes to the runner', s.chat().sourceFor('r1') === 'magnet:?xt=urn:btih:abc' && s.chat().sourceFor('r9') === undefined);
   }
 
-  // ---- a card that is superseded or disabled while in flight never keeps dead buttons (wave 2, item 1) ---------------
+  // ---- a card that is superseded or disabled while in flight never keeps dead buttons ---------------
   {
     const s = setup();
     const c1 = await proposalTurn(s);
@@ -822,7 +822,7 @@ async function main() {
     check('a superseded card whose recheck fails expires instead of going back to proposed', s.chat().items.find((i) => i.id === c1.id).state.kind === 'expired', s.chat().items.find((i) => i.id === c1.id).state);
   }
 
-  // ---- errors: Retry where it can help (wave 2, item 3) ------------------------------------------------------------
+  // ---- errors: Retry where it can help ------------------------------------------------------------
   {
     const bad = async (chunks, label, wantAction) => {
       const s = setup();
@@ -848,7 +848,7 @@ async function main() {
     check('"That message is too long" has no Retry but says to shorten it', t.kind === 'error' ? (t.action === undefined && /shorter/.test(t.message)) : true);
   }
 
-  // ---- hung engine calls fail plainly and free the turn (wave 2, item 4) -----------------------------------------------
+  // ---- hung engine calls fail plainly and free the turn -----------------------------------------------
   {
     const s = setup();
     s.runner.handlers.prepare = () => new Promise(() => {});
@@ -897,7 +897,7 @@ async function main() {
     await settle();
     check('a timed-out card does not block Send', s.fetch.requests.length >= 3);
   }
-  // ---- Assistant turned off (or the card replaced) while its card is still being prepared (wave 3, item 1) ---------------
+  // ---- Assistant turned off (or the card replaced) while its card is still being prepared ---------------
   {
     const s = setup();
     let release;
@@ -940,7 +940,7 @@ async function main() {
     check('TargetGone while a card is being built: it is dropped', !s.chat().items.some((i) => i.kind === 'card'), s.chat().items.map((i) => i.kind));
   }
 
-  // ---- askAbout shows the title, not the handle (item 6) -----------------------------------------------------
+  // ---- askAbout shows the title, not the handle -----------------------------------------------------
   {
     const s = setup();
     s.fetch.queue.push({ chunks: sseTools([{ id: 'k1', name: 'search_torrents', args: { query: 'The Last Harbor' } }]) });
@@ -957,7 +957,7 @@ async function main() {
     check('askAbout: no bubble shows a bare handle', !s.chat().items.some((i) => i.kind === 'user' && /\b[rt]\d+\b/.test(i.text)));
   }
 
-  // ---- Retry re-runs the last turn, no second user message, no old error (item 2) ------------------------------
+  // ---- Retry re-runs the last turn, no second user message, no old error ------------------------------
   {
     const s = setup();
     s.fetch.queue.push({ status: 500, chunks: [] });
@@ -980,7 +980,7 @@ async function main() {
     check('retry with nothing failed does nothing', s.fetch.requests.length === 3 && kinds(s.chat()).join() === 'user,assistant', s.fetch.requests.length);
   }
 
-  // ---- card results reach the model on the next message (item 3) -----------------------------------------------
+  // ---- card results reach the model on the next message -----------------------------------------------
   {
     const s = setup();
     const card = await proposalTurn(s);
@@ -1020,7 +1020,7 @@ async function main() {
     check('failed card: the model is told why', lastReqMsgs(s.fetch).at(-1).content.includes(`${card.id} failed: Storage full.`), lastReqMsgs(s.fetch).at(-1).content);
   }
 
-  // ---- Gemini thought signature goes back on the assistant tool call (item 4) -------------------------------------
+  // ---- Gemini thought signature goes back on the assistant tool call -------------------------------------
   {
     const s = setup();
     const sig = { google: { thought_signature: 'SIG-123' } };
@@ -1036,7 +1036,7 @@ async function main() {
     check('second request: tool call carries extra_content.google.thought_signature unchanged', asst && asst.tool_calls[0].extra_content.google.thought_signature === 'SIG-123' && asst.tool_calls[0].id === 'function-call-1', asst);
   }
 
-  // ---- usage counted once through retries and rounds (item 5) -----------------------------------------------------
+  // ---- usage counted once through retries and rounds -----------------------------------------------------
   {
     const s = setup();
     // Round 1 gets cut off after its usage chunk (a stall), the retry runs the tool, round 2 answers.
@@ -1070,7 +1070,7 @@ async function main() {
     void p;
   }
   {
-    // Review fix (R1-3): a card's transfer that was listed before and is gone now expires the card.
+    // Review fix: a card's transfer that was listed before and is gone now expires the card.
     const { goneTargets } = await import('../utils/assistantApp/chatController.ts');
     const resolve = (h) => ({ t1: 'tor1', t2: 'tor2', t3: 'dl:7' })[h] ?? null;
     const seen = new Set(['tor1', 'tor2', 'dl:7']);

@@ -28,7 +28,7 @@ import {
 } from '../../utils/downloadCopy';
 import { friendlyPath, formatLimit } from '../../components/settings/SettingsParts';
 import { SpeedLimitSheet } from '../../components/detail/SpeedLimitSheet';
-import { Banner, Button, EmptyBlock, IconButton, ListRow, Screen, Sheet, TextField, type ProgressTone } from '../../components/ui';
+import { Banner, Button, EmptyBlock, IconButton, ListRow, LongName, Screen, Sheet, TextField, type ProgressTone } from '../../components/ui';
 import { toneColor } from '../../components/transfers/StatusLine';
 import { ProgressBadge, ProgressCard } from '../../components/detail/ProgressCard';
 import { CompactLine } from '../../components/detail/CompactLine';
@@ -68,12 +68,12 @@ function barTone(d: DownloadSnapshot): ProgressTone {
 }
 
 /**
- * NATIVE_CONTRACT 40: the page of one link download (it replaces the sheet a tap on its card used to open).
+ * The page of one link download (it replaces the sheet a tap on its card used to open).
  * Everything comes from the DownloadSnapshot that EngineContext polls; the handlers are `useDownloadActions`.
  */
 export default function DownloadScreen() {
   const { colors } = useTheme();
-  // NATIVE_CONTRACT 41: Compact or Detailed, from Settings > Appearance > Download page.
+  // Compact or Detailed, from Settings > Appearance > Download page.
   const compact = useSettings().settings.appearance.telemetryDensity === 'COMPACT';
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const router = useRouter();
@@ -93,7 +93,7 @@ export default function DownloadScreen() {
   const [linkError, setLinkError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  // NATIVE_CONTRACT 40.3: an id that is not in the list (removed, or a stale link) shows the missing state below.
+  // An id that is not in the list (removed, or a stale link) shows the missing state below.
   const d = useMemo(() => downloads.find((x) => x.id === id) ?? null, [downloads, id]);
 
   // A new page for another download starts with a clean field.
@@ -141,7 +141,7 @@ export default function DownloadScreen() {
     void applyLink(clip);
   }, [applyLink]);
 
-  // NATIVE_CONTRACT 40.2 Source: tapping copies the address and says so (the app's one notice toast, as the browser does).
+  // Source: tapping copies the address and says so (the app's one notice toast, as the browser does).
   const copyLink = useCallback(async () => {
     if (!d) return;
     try {
@@ -154,11 +154,11 @@ export default function DownloadScreen() {
     }
   }, [d, showNotice]);
 
-  // NATIVE_CONTRACT 43: the shared flow clock, the same record the card reads.
+  // The shared flow clock, the same record the card reads.
   const flow = useFlowClock(id ?? '', d?.state === 'downloading', d?.downBps ?? 0);
 
   if (!id || !d) {
-    // NATIVE_CONTRACT 40.3
+    // The missing state: never a blank page or a crash.
     return (
       <Screen title="Download" onBack={goBack}>
         <EmptyBlock
@@ -203,7 +203,7 @@ export default function DownloadScreen() {
   const removeNow = (deleteFiles: boolean) => {
     setRemoveStep('closed');
     void actions.remove(d.id, deleteFiles);
-    // NATIVE_CONTRACT 40.2 Remove: after removing, go back.
+    // Remove: after removing, go back.
     goBack();
   };
 
@@ -223,15 +223,18 @@ export default function DownloadScreen() {
 
   return (
     <Screen
-      title={d.name}
-      titleAccessibilityLabel={`${d.name}, ${status.text}`}
       onBack={goBack}
       actions={headerActions}
       scroll
       contentStyle={styles.content}
       testID="download-page"
     >
-      {/* NATIVE_CONTRACT 40.2 Progress card: the state in the card's words and colour, the percent, then the bar. */}
+      {/* The whole name, under back and the actions. It is the page's heading, and says the state too, as the header did. */}
+      <View style={styles.nameRow}>
+        <LongName name={d.name} heading accessibilityLabel={`${d.name}, ${status.text}`} testID="detail-name" />
+      </View>
+
+      {/* Progress card: the state in the card's words and colour, the percent, then the bar. */}
       <ProgressCard
         badge={<ProgressBadge label={status.lead} tint={tint} />}
         percent={percent}
@@ -240,15 +243,15 @@ export default function DownloadScreen() {
         barLabel="Download progress"
         accessibilityLabel={`${status.lead}, ${unknownSize ? downloadProgressLabel(d) : percent}`}
       >
-        {/* NATIVE_CONTRACT 41.1: Compact, downloading: "↓ speed · time left" under the bar; no line in any other state. */}
+        {/* Compact, downloading: "↓ speed · time left" under the bar; no line in any other state. */}
         {compact && d.state === 'downloading' ? <CompactLine down={d.downBps} etaSecs={d.eta >= 0 ? d.eta : undefined} /> : null}
       </ProgressCard>
 
-      {/* NATIVE_CONTRACT 40.2: the one-line hint while a download that can't resume is running. */}
-      {/* NATIVE_CONTRACT 43.5: only while connecting or waiting; it carries that hint itself when the link can't resume. */}
+      {/* The one-line hint while a download that can't resume is running. */}
+      {/* Only while connecting or waiting; it carries that hint itself when the link can't resume. */}
       {whyModel ? <WhyStuck model={whyModel} /> : null}
 
-      {/* NATIVE_CONTRACT 44.14: the Subtitles row, right under the why block. */}
+      {/* The Subtitles row, right under the why block. */}
       {subtitleRow.show ? (
         <SubtitlesRow
           requestKey={`d:${d.id}`}
@@ -278,7 +281,7 @@ export default function DownloadScreen() {
       {d.state === 'paused' && d.pausedBy === 'wifi_only' ? <Text style={[styles.hint, styles.block]}>{WIFI_ANYWAY_NOTE}</Text> : null}
       {caption ? <Text style={[styles.hint, styles.block]}>{caption}</Text> : null}
 
-      {/* NATIVE_CONTRACT 40.2 Link problem: "Why it stopped" in WhyHeld's style, then the field and Paste / Update link. */}
+      {/* Link problem: "Why it stopped" in WhyHeld's style, then the field and Paste / Update link. */}
       {problem ? (
         <View style={styles.block}>
           <View style={styles.why} testID="why-stopped">
@@ -317,7 +320,7 @@ export default function DownloadScreen() {
         </View>
       ) : null}
 
-      {/* NATIVE_CONTRACT 40.2 Main buttons: downloadActions in the sheet's order, first primary; a finished file reads like the torrent's DoneActions. */}
+      {/* Main buttons: downloadActions in the sheet's order, first primary; a finished file reads like the torrent's DoneActions. */}
       <View style={[styles.block, styles.stack]}>
         {mainActions.map((a, i) => (
           <Button
@@ -344,14 +347,14 @@ export default function DownloadScreen() {
         )}
       </View>
 
-      {/* NATIVE_CONTRACT 40.2 Stats. 41.1: Compact leaves the boxes and the Timing row out; 41.2: Detailed is today's block. */}
+      {/* Stats. Compact leaves the boxes and the Timing row out; Detailed shows them. */}
       {!compact ? (
         <View style={styles.block}>
           <DownloadStats download={d} />
         </View>
       ) : null}
 
-      {/* NATIVE_CONTRACT 40.2 Rows */}
+      {/* Rows */}
       <View style={[styles.block, styles.stack]}>
         <ListRow
           title="Source"
@@ -371,7 +374,7 @@ export default function DownloadScreen() {
           />
         ) : null}
         <TimeRows addedAt={d.addedAt} finishedAt={d.finishedAt} />
-        {/* NATIVE_CONTRACT 41.1: in Compact the Speed limit row moves into the ⋮ menu. 41.2: Detailed keeps the row. */}
+        {/* In Compact the Speed limit row moves into the ⋮ menu. Detailed keeps the row. */}
         {!compact ? (
           <ListRow
             title="Speed limit"
@@ -395,7 +398,7 @@ export default function DownloadScreen() {
         ) : null}
       </View>
 
-      {/* NATIVE_CONTRACT 40.2 Header menu: Remove…. 41.1: Compact adds Speed limit… above it. */}
+      {/* Header menu: Remove…. Compact adds Speed limit… above it. */}
       <Sheet visible={moreOpen} onClose={() => setMoreOpen(false)} title={d.name}>
         {compact ? (
           <ListRow
@@ -465,6 +468,7 @@ const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     content: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxxl },
     block: { marginBottom: spacing.md },
+    nameRow: { paddingTop: spacing.xs, marginBottom: spacing.md },
     stack: { gap: spacing.sm },
     row: { flexDirection: 'row', gap: spacing.sm },
     half: { flex: 1 },

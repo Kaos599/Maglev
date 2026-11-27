@@ -7,7 +7,7 @@ import org.json.JSONArray
 /** A match waiting to be added through the engine. */
 data class PendingAdd(val feedId: String, val ruleId: String, val ruleName: String, val title: String, val source: String, val startPaused: Boolean)
 
-/** SharedPreferences `maglev_feeds`: config, seen sets, pending-add queue and run status (contract 11.6). */
+/** SharedPreferences `maglev_feeds`: config, seen sets, pending-add queue and run status. */
 object FeedStore {
     const val PREFS = "maglev_feeds"
     private const val KEY_CONFIG = "config"

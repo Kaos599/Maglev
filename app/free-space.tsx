@@ -13,7 +13,7 @@ import { DeleteSheet } from '../components/transfers/DeleteSheet';
 import { buildFinishedRows, reserveBytes, selectedBytes, usableFree, type FinishedRow } from '../components/transfers/freeSpace';
 
 /**
- * Free up space (docs/contracts-0.19/play-and-storage.md section 3): free space against the reserve, then finished
+ * Free up space: free space against the reserve, then finished
  * torrents and finished link downloads, largest first. Sizes come from the engine; an unknown one shows a dash.
  */
 export default function FreeSpaceScreen() {

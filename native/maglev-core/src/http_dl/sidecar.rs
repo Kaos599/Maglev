@@ -2,7 +2,7 @@
 //!
 //! It holds what resuming needs: the link without credentials or query, the validator, the total size and, per
 //! segment, how far it got. The file sits in a public folder, so signed tokens (the query) and request headers are
-//! never written here (contract section 17). The `url` field stays for readers of older builds.
+//! never written here. The `url` field stays for readers of older builds.
 
 use std::path::{Path, PathBuf};
 
@@ -23,7 +23,7 @@ pub struct Segment {
     pub pos: u64,
 }
 
-/// How far one track of a stream download (contract section 24.8) got: `done` segments (a contiguous prefix; the init
+/// How far one track of a stream download got: `done` segments (a contiguous prefix; the init
 /// segment counts as the first) and the byte length of the part file after them. `total` is the segment count of the
 /// playlist, so a changed playlist is noticed.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -89,7 +89,7 @@ impl Sidecar {
         held_of(&self.segments)
     }
 
-    /// More than one range: a download split over several connections (contract section 17, Segments). A build
+    /// More than one range: a download split over several connections. A build
     /// from before splitting reads such a record as "no single offset" (`resume_offset` is 0) and starts over.
     pub fn is_split(&self) -> bool {
         self.segments.len() > 1

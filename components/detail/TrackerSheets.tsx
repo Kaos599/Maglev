@@ -9,7 +9,7 @@ interface AddProps {
   onClose: () => void;
   /** True while `addTrackers` is in flight. */
   busy: boolean;
-  /** The text in the box. The machine owns it (SM-28). */
+  /** The text in the box. The machine owns it. */
   text: string;
   onTextChange: (text: string) => void;
   /** The message under the field: a bad line, an empty paste, or the engine's answer. */
@@ -19,7 +19,7 @@ interface AddProps {
   onSubmit: () => void;
 }
 
-/** Add tracker (NATIVE_CONTRACT 15): paste one address per line. A bad line names itself and blocks the whole add. */
+/** Add tracker: paste one address per line. A bad line names itself and blocks the whole add. */
 export function AddTrackerSheet({ visible, onClose, busy, text, onTextChange, error, count, onSubmit }: AddProps) {
   const { colors } = useTheme();
   const s = useMemo(() => makeStyles(colors), [colors]);
@@ -64,7 +64,7 @@ interface RemoveProps {
   onRemove: () => void;
 }
 
-/** Confirm before a tracker goes (NATIVE_CONTRACT 15, SM-28). */
+/** Confirm before a tracker goes. */
 export function RemoveTrackerSheet({ url, last, busy, onClose, onRemove }: RemoveProps) {
   const { colors } = useTheme();
   const s = useMemo(() => makeStyles(colors), [colors]);

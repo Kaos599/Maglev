@@ -21,12 +21,12 @@ interface Props {
   onDelete: () => void;
   /** Opens the Fix problems sheet (the caller closes this menu first). */
   onFixProblems: () => void;
-  /** Find subtitles… (36.10): finished with exactly one video. Default hidden. */
+  /** Find subtitles…: finished with exactly one video. Default hidden. */
   subtitles?: EntryMode;
   onFindSubtitles?: () => void;
 }
 
-/** Detail overflow (UI_SPEC S9.3): four quick actions, then the settings-like rows, then Fix problems. */
+/** Detail overflow: four quick actions, then the settings-like rows, then Fix problems. */
 export function TorrentMoreSheet({
   visible,
   onClose,
@@ -93,7 +93,7 @@ interface FixProps {
   retryInSecs: number;
   onRecheck: () => void;
   onReannounce: () => void;
-  /** SM-33: the SD card is gone, so Recheck is off. */
+  /** The SD card is gone, so Recheck is off. */
   storageGone?: boolean;
 }
 

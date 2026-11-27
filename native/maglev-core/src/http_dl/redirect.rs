@@ -1,4 +1,4 @@
-//! Redirects for every request a download makes (`NATIVE_CONTRACT.md` section 17, "Redirect cookies").
+//! Redirects for every request a download makes.
 //!
 //! The client's own policy never follows a redirect (`driver::build_client`): it refuses a hop onto the local network
 //! and otherwise hands the 3xx answer back. `send_following` follows it here, so each hop carries the `Cookie` picked

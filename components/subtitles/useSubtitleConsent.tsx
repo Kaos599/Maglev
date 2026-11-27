@@ -20,11 +20,11 @@ import {
 } from '../../utils/subtitles/copy';
 
 /**
- * NATIVE_CONTRACT 44.15 D10: the one-time privacy notice, shown when the user opts in (the Settings auto switch, the
+ * The one-time privacy notice, shown when the user opts in (the Settings auto switch, the
  * Add screen's Auto switch, the first Get subtitles tap, or "Review" on a held request). It is the same text and the
  * same two buttons the single sheet shows. Until Continue, `require` does not call back and no request is created.
  * `more` is written together with the accept, as one functional update.
- * NATIVE_CONTRACT 45.4: with `{ confirm: true }` the sheet shows even after the notice was accepted ("Get subtitles for
+ * With `{ confirm: true }` the sheet shows even after the notice was accepted ("Get subtitles for
  * new videos?", Turn on / Not now), and carries the privacy text first when it was never accepted.
  */
 export function useSubtitleConsent(): {

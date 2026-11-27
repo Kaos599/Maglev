@@ -1,13 +1,13 @@
-// Sanitiser for every string that leaves the app towards the model (SM-31, ASSISTANT_DESIGN §4.1, §7.3).
+// Sanitiser for every string that leaves the app towards the model.
 // Torrent names, paths, tracker messages and provider text are written by strangers. This module
 // makes them inert data: no control or invisible characters, no links, no role markers, bounded length.
 // It reduces noise; it does not stop prompt injection. The defence is that the model has no tool that acts
-// and that every action goes through a human-confirmed card (§7.3 layered controls).
+// and that every action goes through a human-confirmed card whose facts the app computes.
 // Pure TypeScript: no React, no React Native, no engine imports.
 
-/** Cap for names, file names and paths (SM-31). */
+/** Cap for names, file names and paths. */
 export const NAME_MAX = 120;
-/** Cap for the search query the model writes (§7.3 item 3). */
+/** Cap for the search query the model writes. It goes to third-party search sites, so it stays short. */
 export const QUERY_MAX = 80;
 /** Cap for free text such as tracker and provider messages. Not specified in the design; chosen here. */
 export const MESSAGE_MAX = 300;
@@ -227,7 +227,7 @@ function sanitizeValue(value: unknown, maxLen: number = NAME_MAX, depth = 0): un
 
 /**
  * Serialise a tool result as JSON with every string sanitised. Keys are ours and are left alone.
- * Result shape per §4.1: `{ok:true,data}` or `{ok:false,error:{code,message}}`.
+ * Result shape: `{ok:true,data}` or `{ok:false,error:{code,message}}`.
  */
 export function toToolJson(payload: unknown, maxLen: number = NAME_MAX): string {
   return JSON.stringify(sanitizeValue(payload, maxLen));

@@ -1,5 +1,5 @@
 /**
- * Static checks for saving HLS and DASH streams (docs/NATIVE_CONTRACT.md section 24.8). Rust and Kotlin are never
+ * Static checks for saving HLS and DASH streams. Rust and Kotlin are never
  * compiled locally (CI is the compiler), so this reads the sources: the JNI names agree on all three sides, the error
  * codes and messages agree with the contract, the TS types are there, and the join runs before the copy into the
  * user's folder.
@@ -71,7 +71,7 @@ const CODES = [
   ['MUX_FAILED', 'MUX_FAILED_MSG', "Couldn't join the video and audio. Try again."],
 ];
 
-check('error codes and messages in error.rs match section 24.8', () => {
+check('error codes and messages in error.rs match the contract', () => {
   for (const [code, constName, message] of CODES) {
     if (sec !== null) assert(sec.includes(`\`${code}\``) && sec.includes(message), `${code} or its message is missing from the contract`);
     assert(errorRs.includes(`"${code}"`), `${code} missing in error.rs as_str`);

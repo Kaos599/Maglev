@@ -1,5 +1,5 @@
 /**
- * State machine U1 (docs/NATIVE_CONTRACT.md section 27.8). Pure: `reduce(state, event)` returns the next state, and an
+ * The updater state machine. Pure: `reduce(state, event)` returns the next state, and an
  * event that does not apply to the current state returns the same state. No ad-hoc states anywhere else.
  *
  *   Idle -> Checking -> UpToDate | Available(info) | CheckFailed
@@ -142,7 +142,7 @@ export function reduce(s: UpdateState, e: UpdateEvent): UpdateState {
   }
 }
 
-/** The 24 h gate for the automatic check (27.2). */
+/** The 24 h gate for the automatic check. */
 export const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 export function autoCheckDue(args: { now: number; lastCheckAt: number | null; autoCheck: boolean; managedBy: ManagedBy | null }): boolean {

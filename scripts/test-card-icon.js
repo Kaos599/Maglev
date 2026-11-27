@@ -54,7 +54,7 @@ function check(name, cond) {
   check('icon is decorative', /importantForAccessibility="no-hide-descendants"/.test(card) && /importantForAccessibility="no-hide-descendants"/.test(dl));
   check('memo comparators include the prop', /showFileIcon/.test(card.split('function sameCard')[1]) && /showFileIcon/.test(dl.split('function same(')[1]));
   check('screen passes the setting', (screen.match(/showFileIcon=\{showFileIcons\}/g) || []).length === 2);
-  console.log('[biggest file from the engine, NATIVE_CONTRACT 38]');
+  console.log('[biggest file from the engine]');
   check('a torrent named without extension takes its biggest file', t('Big Buck Bunny', [{ path: 'Big Buck Bunny.mp4', length: 1 }]) === 'file-video');
   check('the card passes mainFile to the choice', /torrentCardGlyph\(t\.name, t\.mainFile/.test(card));
   check('the memo compares mainFile', /x\.mainFile === y\.mainFile/.test(card.split('function sameCard')[1]));

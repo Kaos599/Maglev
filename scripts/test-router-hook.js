@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // The global `router` exported by expo-router throws "The imperative router is unavailable before the first render
-// has finished" while its bridge is unbound. A phone test crashed this way on a cold-start tap in Settings.
+// has finished" while its bridge is unbound. This crashed once on a cold-start tap in Settings.
 // Screens and components must use the useRouter() hook, which is bound to the mounted navigator.
 const fs = require('fs');
 const path = require('path');

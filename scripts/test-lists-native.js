@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Static checks for the self-updating lists (docs/NATIVE_CONTRACT.md section 31.7): the Kotlin signature check and its
+ * Static checks for the self-updating lists: the Kotlin signature check and its
  * embedded key, the conditional ad list requests and the 304 path, the module registration, the TS binding and the
  * pages.yml signing step. Kotlin is never compiled locally (CI is the compiler), so this reads the source.
  *

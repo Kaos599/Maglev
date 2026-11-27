@@ -4,7 +4,7 @@
  * sits at the hour most downloads finished. Drawn with react-native-svg at an integer scale where the width allows,
  * every shape a crisp rectangle.
  *
- * The train is the day cursor (0.27): it rides the rail under the buildings, follows a finger and snaps to the nearest day on
+ * The train is the day cursor: it rides the rail under the buildings, follows a finger and snaps to the nearest day on
  * release, with a small lime tick under the selected day. The first open plays a run, Monday to today, raising each building
  * as the train reaches it. The rail ends at the last built day in a drawn buffer stop; past it the train just stops (no
  * bounce). Finished downloads are wagons behind the train. Reduce motion: no run, the train sits on a whole day.

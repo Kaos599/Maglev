@@ -63,7 +63,7 @@ interface Props {
   /** The video to find subtitles for, or null when the sheet is closed. */
   target: SubtitleTarget | null;
   onClose: () => void;
-  /** How it opens: on the results (default), or with the "Searching for" field already open (44.14 "Edit name"). */
+  /** How it opens: on the results (default), or with the "Searching for" field already open. */
   initial?: 'results' | 'edit-name';
 }
 
@@ -72,7 +72,7 @@ const GROUPS: SubtitleGroup[] = ['fits', 'probably', 'maybe'];
 const nameOf = (id: string): string => SUBTITLE_PROVIDERS.find((p) => p.id === id)?.name ?? id;
 
 /**
- * The result sheet (36.10): one-time notice, language tabs, grouped results, Download subtitle, and the plain
+ * The result sheet: one-time notice, language tabs, grouped results, Download subtitle, and the plain
  * errors. All rules live in `sheetMachine.ts` and `flow.ts`; this component runs the search and the save.
  */
 export function SubtitleSheet({ target, onClose, initial = 'results' }: Props) {
@@ -86,7 +86,7 @@ export function SubtitleSheet({ target, onClose, initial = 'results' }: Props) {
   const [state, dispatch] = useReducer(sheetReducer, CLOSED);
   const [picker, setPicker] = useState(false);
   const [showSources, setShowSources] = useState(false);
-  // 45.5: "Turn on more sources" hides the sheet while Settings is open; coming back runs the search again.
+  // "Turn on more sources" hides the sheet while Settings is open; coming back runs the search again.
   const [away, setAway] = useState<string | null>(null);
   const blurred = useRef(false);
   const focused = useIsFocused();
@@ -138,7 +138,7 @@ export function SubtitleSheet({ target, onClose, initial = 'results' }: Props) {
     if (!t || stateRef.current.phase !== 'searching') return;
     const ctl = new AbortController();
     void (async () => {
-      // NATIVE_CONTRACT 42.2 / 42.4: only a finished file is read for its fingerprint, and a typed name never sends one.
+      // Only a finished file is read for its fingerprint, and a typed name never sends one.
       const typed = stateRef.current.searchName;
       const h = typed ? { videoBytes: t.videoBytes, missing: false, hash: undefined } : await hashIfComplete(t, maglevEngine);
       if (ctl.signal.aborted) return;
@@ -203,7 +203,7 @@ export function SubtitleSheet({ target, onClose, initial = 'results' }: Props) {
         { unzip: (b64) => maglevEngine.unzipSubtitles(b64), save: (v, n, b64, r) => maglevEngine.saveSubtitle(v, n, b64, r) },
       );
       if (ctl.signal.aborted) {
-        // NATIVE_CONTRACT 39.1 S9: the sheet was closed while the native save was running. The file is on disk, so the
+        // The sheet was closed while the native save was running. The file is on disk, so the
         // card still gets its saved state (and the toast) even though the sheet no longer listens.
         if (out.status === 'saved') {
           recordState(t, { state: 'saved', lang: out.language, file: out.fileName, savedAt: Date.now() });
@@ -238,7 +238,7 @@ export function SubtitleSheet({ target, onClose, initial = 'results' }: Props) {
     if (w === 'clear') forgetState(t);
     else if (w) {
       recordState(t, w);
-      // 44.15 D11: the request for this video follows, so a later "name taken" never wipes the saved mark.
+      // The request for this video follows, so a later "name taken" never wipes the saved mark.
       if (w.state === 'saved') markSaved(t.ownerKey, t.existing?.videoPath ?? null);
     }
     if (state.phase === 'saved') {
@@ -277,7 +277,7 @@ export function SubtitleSheet({ target, onClose, initial = 'results' }: Props) {
     if (t && (stateRef.current.phase === 'downloading' || stateRef.current.phase === 'name-taken')) forgetState(t);
     dispatch({ type: 'CLOSE' });
     // New keys end the running search and stop the download's wait. A save already handed to the native side still
-    // finishes; the download effect records it for the card (NATIVE_CONTRACT 39.1 S9).
+    // finishes; the download effect records it for the card.
     setRunKey((k) => k + 1);
     setDlKey((k) => k + 1);
     onClose();
@@ -319,11 +319,11 @@ export function SubtitleSheet({ target, onClose, initial = 'results' }: Props) {
         openFolder();
         break;
       case 'pick-another':
-        // NATIVE_CONTRACT 39.1 S7
+        // A row that failed is not picked again in this sheet.
         send({ type: 'PICK_ANOTHER' });
         break;
       case 'keep-both':
-        // NATIVE_CONTRACT 39.1 S5
+        // Save a second copy when Replace is refused.
         send({ type: 'CHOOSE', choice: 'keep-both' });
         break;
       default:
@@ -340,7 +340,7 @@ export function SubtitleSheet({ target, onClose, initial = 'results' }: Props) {
   const maxList = Math.round(height * 0.42);
   const busy = state.phase === 'downloading';
 
-  // NATIVE_CONTRACT 42.3: the "Searching for" row.
+  // The "Searching for" row.
   const detectedTyping = target ? searchText(target.fileName, null, true) : '';
   const shownText = target ? searchText(target.fileName, state.searchName) : '';
   const draftOk = draftTitleOk(state.draft);
@@ -410,7 +410,7 @@ export function SubtitleSheet({ target, onClose, initial = 'results' }: Props) {
     }
     return (
       <View style={styles.stack}>
-        {/* NATIVE_CONTRACT 42.3 */}
+        {/* The "Searching for" row: the name the search runs on, editable. */}
         {state.editing ? (
           <View style={styles.stack}>
             <Text style={styles.hint}>{SEARCHING_FOR_LABEL}</Text>
@@ -535,7 +535,7 @@ export function SubtitleSheet({ target, onClose, initial = 'results' }: Props) {
         ) : null}
         {state.noneLeft && state.phase === 'results' ? <Text style={styles.hint}>{NO_OTHER_ROWS}</Text> : null}
         {state.keepBothNote && busy ? <Text style={styles.hint}>{KEEP_BOTH_NOTE}</Text> : null}
-        {/* NATIVE_CONTRACT 42.5 */}
+        {/* One muted line under the results. */}
         {note && state.phase === 'results' ? <Text style={styles.hint}>{note}</Text> : null}
 
         <Button label={DOWNLOAD_BUTTON} fullWidth loading={busy} disabled={!canDownload(state) && !busy} onPress={() => send({ type: 'DOWNLOAD' })} />

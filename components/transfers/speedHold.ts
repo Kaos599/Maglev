@@ -34,7 +34,7 @@ export function useCompactAmount(fontScale: number): boolean {
 }
 
 /** The phrase on the left keeps at least this much room (dp) before the amount shortens. */
-export const MIN_PHRASE_DP = 80; // owner pick 2026-11-18 (option 2): full amount on most phones
+export const MIN_PHRASE_DP = 80; // wide enough to show the full amount on most phones
 
 export interface LineLayout {
   windowWidth: number;

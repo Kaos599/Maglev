@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// NATIVE_CONTRACT 47: a finished torrent never reads 99%, "Done · {reason}" on the card, Resume is not offered for a
+// A finished torrent never reads 99%, "Done · {reason}" on the card, Resume is not offered for a
 // torrent held by a file health tag (card, swipe, menu, selection, Resume all, Kotlin), and a refused resume explains itself.
 // Needs Node 22.18+.
 process.removeAllListeners('warning');
@@ -33,7 +33,7 @@ const row = (o = {}) => ({
   const rules = await import('../components/transfers/resumeRules.ts');
   const { swipePlan } = await import('../components/transfers/swipe.ts');
 
-  console.log('[47.3 card lines]');
+  console.log('[card lines]');
   let s = model.torrentStatus(row(), '—');
   check('finished + files_changed: "Done · Files changed", no percent, size on the right', s.lead === 'Done · Files changed' && !s.pct && s.value === '24.0 GB' && s.slot === 'size', JSON.stringify(s));
   s = model.torrentStatus(row({ pausedBy: 'files_missing', health: 'files_missing' }), '—');
@@ -49,7 +49,7 @@ const row = (o = {}) => ({
   check('seed lines are unchanged', model.torrentStatus(row({ pausedBy: 'seed_limit', health: null }), '—').lead.startsWith('Done'));
   check('storage_full is not turned into Done', model.torrentStatus(row({ pausedBy: 'storage_full', health: 'storage_full', finished: false, downloadedBytes: 12 * GB }), '—').pct === '50%');
 
-  console.log('[47.4 no Resume for a held torrent]');
+  console.log('[no Resume for a held torrent]');
   check('card: files_changed has no button', model.torrentCardAction(row()) === null);
   check('card: files_missing has no button', model.torrentCardAction(row({ pausedBy: 'files_missing', health: 'files_missing' })) === null);
   check('card: user pause over a files_changed tag has no button', model.torrentCardAction(row({ pausedBy: 'user' })) === null);
@@ -60,7 +60,7 @@ const row = (o = {}) => ({
   const list = [row({ id: 'h1' }), row({ id: 'h2', pausedBy: 'user' }), row({ id: 'u', pausedBy: 'user', health: null }), row({ id: 'n', pausedBy: null, health: null }), row({ id: 'w', pausedBy: 'wifi_only', health: null }), row({ id: 'd', state: 'DOWNLOADING', pausedBy: null, health: null }), row({ id: 'p', pausedBy: 'user', health: null })];
   check('Resume all and bulk Resume skip held torrents', rules.resumableIds(list, (id) => id === 'p').join() === 'u,n', rules.resumableIds(list).join());
 
-  console.log('[47.4 the refused resume]');
+  console.log('[the refused resume]');
   const refused = { ok: false, code: 'UNSUPPORTED', message: 'Files were changed after downloading. Recheck them first.' };
   let n = rules.resumeFailureNotice(refused, row(), 'Season');
   check('held + UNSUPPORTED: the engine message and an Open action', n.message === refused.message && n.openTorrent && rules.OPEN_TORRENT_LABEL === 'Open', JSON.stringify(n));
@@ -85,13 +85,13 @@ const row = (o = {}) => ({
   const ra = kt.slice(kt.indexOf('fun resumeAll()'), kt.indexOf('fun resumeAll()') + 1200);
   check('Kotlin resumeAll (app and notification) skips file-health holds', /heldByFiles/.test(ra) && /files_changed/.test(ra) && /files_missing/.test(ra) && /!heldByFiles/.test(ra));
 
-  console.log('[47.1 / 47.2 Rust source]');
+  console.log('[Rust source]');
   const fh = read('native/maglev-core/src/file_health.rs');
   const eng = read('native/maglev-core/src/engine.rs');
   check('classify_file compares size only', /Some\(s\) if finished && s\.size != now\.size => FileState::Changed/.test(fh));
   check('judge_files refreshes the snapshot mtimes', /refresh_mtimes\(&probes, stats\.finished, snap\)/.test(eng));
   check('recheck_async settles before the planner: waits for the check, snapshots, clears', /settle_after_check\(id, hash\)/.test(eng) && /wait_until_initialized/.test(eng) && /settle_recheck\(m, finished\)/.test(eng));
-  check('Rust unit tests for 47.1 and 47.2 exist', /fn mtime_only_change_is_not_changed_and_refreshes_the_snapshot/.test(fh) && /fn size_change_is_changed_and_is_not_refreshed/.test(fh) && /fn missing_file_is_missing_not_refreshed/.test(fh) && /fn recheck_with_good_pieces_clears_the_tag_and_asks_for_a_snapshot/.test(fh));
+  check('Rust unit tests for the changed-file check exist', /fn mtime_only_change_is_not_changed_and_refreshes_the_snapshot/.test(fh) && /fn size_change_is_changed_and_is_not_refreshed/.test(fh) && /fn missing_file_is_missing_not_refreshed/.test(fh) && /fn recheck_with_good_pieces_clears_the_tag_and_asks_for_a_snapshot/.test(fh));
 
   console.log(`\n${passed} passed, ${failed} failed`);
   if (failed) process.exit(1);

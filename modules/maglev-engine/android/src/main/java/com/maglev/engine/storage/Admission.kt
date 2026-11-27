@@ -1,7 +1,7 @@
 package com.maglev.engine.storage
 
 /**
- * Admission check for adding a torrent or link download (SM-35, NATIVE_CONTRACT 10.3). Pure JVM, no android.* imports.
+ * Admission check for adding a torrent or link download. Pure JVM, no android.* imports.
  * Port of `utils/admission.ts`; `scripts/fixtures/admission-vectors.json` drives both.
  */
 object Admission {
@@ -31,7 +31,7 @@ object Admission {
         return Outcome(result, need, budget, budget - need)
     }
 
-    /** Same set as `AutoRetry.RETRY_STATUSES`: an HTTP error worth another try (NATIVE_CONTRACT 10.3). */
+    /** Same set as `AutoRetry.RETRY_STATUSES`: an HTTP error worth another try. */
     private val RETRYABLE_STATUSES = setOf(408, 429, 500, 502, 503, 504)
 
     /** An unfinished torrent still needs (included - downloaded), never below 0. */
@@ -57,7 +57,7 @@ object Admission {
     }
 
     /**
-     * SM-35 pending need from a native list (`nativeListTorrents()` result): unfinished torrents plus link
+     * Pending need from a native list (`nativeListTorrents()` result): unfinished torrents plus link
      * downloads, in the raw snake_case shape. No staging factor: only the new selection is multiplied.
      */
     fun pendingNeedFromList(list: Map<String, Any?>): Long {

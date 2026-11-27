@@ -12,7 +12,7 @@ import android.net.wifi.WifiManager
  * A running transfer holds a socket on the network that was the default when it connected. When the default network
  * changes straight to another live one (Wi-Fi switched off with mobile data up, or the other way round), that socket
  * is dead but nothing tells the transfer until a read timeout. [available] reports that change so the engine can
- * reconnect (contract section 17.x).
+ * reconnect.
  */
 internal class DefaultNetworkTracker<N : Any> {
     private var current: N? = null
@@ -48,7 +48,7 @@ internal class DefaultNetworkTracker<N : Any> {
  * access (captive portal check), whether it is a VPN, and which SSID it carries.
  *
  * [onGained] fires when a validated network becomes the default network, or the default network changes to another
- * validated one (contract section 21). It does not fire for the network that is already up when watching starts.
+ * validated one. It does not fire for the network that is already up when watching starts.
  */
 class NetworkGovernanceManager(
     context: Context,

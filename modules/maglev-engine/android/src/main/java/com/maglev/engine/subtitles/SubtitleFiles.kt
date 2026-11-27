@@ -11,7 +11,7 @@ import java.io.IOException
 import java.io.RandomAccessFile
 
 /**
- * Disk side of the subtitle calls (NATIVE_CONTRACT 36.6). Blocking: call from IO.
+ * Disk side of the subtitle calls. Blocking: call from IO.
  *
  * Accepted forms of a video location:
  *  - an absolute POSIX path (`/storage/emulated/0/Download/Maglev/X/video.mkv`) or `file://` + that path. This is
@@ -54,20 +54,17 @@ object SubtitleFiles {
      * A bare file name: not empty, not "." or "..", no slash, backslash or NUL, at most 255 bytes in UTF-8.
      * Names with ".." inside ("...And Justice for All.en.srt") are valid.
      */
-    // NATIVE_CONTRACT 39.1 S4
     fun validName(name: String): Boolean =
         name.isNotEmpty() && name != "." && name != ".." && !name.contains('/') && !name.contains('\\') &&
             !name.contains('\u0000') && name.toByteArray(Charsets.UTF_8).size <= 255
 
-    /** The temporary file name next to [fileName]; a short one when the long one would pass 255 bytes (S4). */
-    // NATIVE_CONTRACT 39.1 S4
+    /** The temporary file name next to [fileName]; a short one when the long one would pass 255 bytes. */
     private fun tempName(fileName: String): String {
         val long = ".$fileName.maglev-tmp"
         return if (long.toByteArray(Charsets.UTF_8).size <= 255) long else ".maglev-${System.nanoTime()}.tmp"
     }
 
     /** An unknown size (-1) counts as checked; a known size must match. */
-    // NATIVE_CONTRACT 39.1 S2
     private fun sizeOk(size: Long, expected: Int): Boolean = size < 0 || size == expected.toLong()
 
     /** Writes [data] as [fileName] next to the video. Returns the path or document URI of the written file. */
@@ -95,9 +92,9 @@ object SubtitleFiles {
         val tmp = File(dir, tempName(fileName))
         try {
             writeSynced(tmp, data)
-            // rename(2) replaces an existing file atomically, so the old file is never half-written (S2).
+            // rename(2) replaces an existing file atomically, so the old file is never half-written.
             if (!tmp.renameTo(target)) {
-                // NATIVE_CONTRACT 39.1 S5: the old file can't be replaced (another app or an earlier install owns it).
+                // The old file can't be replaced (another app or an earlier install owns it).
                 if (existed) throw SubtitleException("REPLACE_DENIED", "That file belongs to another app")
                 throw IOException("Could not move the subtitle into place")
             }
@@ -167,12 +164,11 @@ object SubtitleFiles {
     }
 
     /**
-     * Replace on a folder picked with the file picker (NATIVE_CONTRACT 39.1 S2, S5). The existing document is never
+     * Replace on a folder picked with the file picker. The existing document is never
      * deleted or truncated before the new content has been written in full to a temporary document and checked.
      * The old file is then renamed aside, the new one renamed into place, and the old one deleted last; if a step
      * fails the old file is renamed back.
      */
-    // NATIVE_CONTRACT 39.1 S2
     private fun replaceSaf(context: Context, parentUri: Uri, existing: Uri, fileName: String, data: ByteArray): String {
         val resolver = context.contentResolver
         val tmp: Uri = DocumentsContract.createDocument(resolver, parentUri, "application/octet-stream", tempName(fileName))
@@ -187,7 +183,7 @@ object SubtitleFiles {
 
         if (!supportsRename(context, tmp) || !supportsRename(context, existing)) {
             // No rename here. The temporary copy proved the provider can take the data, so write over the original.
-            // NATIVE_CONTRACT 39.1 S2: keep the original's bytes first (subtitles are small) and put them back if the
+            // Keep the original's bytes first (subtitles are small) and put them back if the
             // overwrite fails partway, so a failed Replace never leaves the old subtitle cut off or empty.
             val original: ByteArray = try {
                 resolver.openInputStream(existing)?.use { it.readBytes() }
@@ -213,7 +209,7 @@ object SubtitleFiles {
             return existing.toString()
         }
 
-        // Step 1: move the old file aside. If this is refused, the old file is untouched. NATIVE_CONTRACT 39.1 S5.
+        // Step 1: move the old file aside. If this is refused, the old file is untouched.
         val backup: Uri? = try {
             DocumentsContract.renameDocument(resolver, existing, ".$fileName.maglev-old".let { if (it.toByteArray(Charsets.UTF_8).size <= 255) it else ".maglev-old-${System.nanoTime()}" })
         } catch (_: Exception) {

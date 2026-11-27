@@ -1,4 +1,4 @@
-// SM-32 files changed outside Maglev, plus the copy for SM-33 and SM-37 health banners (NATIVE_CONTRACT 18, 20).
+// Files changed outside Maglev, plus the copy for the storage-gone and looking-for-metadata health banners.
 // Pure: no React, no IO. The detail screen runs the effects.
 // Anything not in the transition table is a no-op.
 
@@ -57,7 +57,7 @@ export function resolveErrorCopy(code: string, message: string): string {
   }
 }
 
-/** One step of the SM-32 machine. Returns the next state and the effects to run. */
+/** One step of the file-health machine. Returns the next state and the effects to run. */
 export function fileHealthStep(state: FileHealthState, event: FileHealthEvent): FileHealthStep {
   const same: FileHealthStep = { state, effects: [] };
   if (event.type === 'SYNC') {
@@ -155,7 +155,7 @@ export interface HealthBanner {
   buttons: BannerButton[];
 }
 
-/** The SM-32 banner for the machine's state, or null when none shows. */
+/** The file-health banner for the machine's state, or null when none shows. */
 export function fileHealthBanner(state: FileHealthState): HealthBanner | null {
   if (state.kind === 'missing' || (state.kind === 'picking') || (state.kind === 'working' && state.back === 'missing')) {
     const n = state.indices.length;
@@ -182,7 +182,7 @@ export function fileHealthBanner(state: FileHealthState): HealthBanner | null {
   return null;
 }
 
-/** SM-33 and SM-37 banners keyed by health tag. The SM-32 tags have their own machine. */
+/** Storage-gone and looking-for-metadata banners keyed by health tag. The file-changed tags have their own machine. */
 export function healthBannerFor(tag: string | null | undefined): HealthBanner | null {
   switch (tag) {
     case 'storage_full':
@@ -240,7 +240,7 @@ export function formatElapsed(secs: number): string {
   return `${Math.floor(s / 3600)}h ${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}m`;
 }
 
-/** SM-37 line while a magnet looks for its metadata. */
+/** The line while a magnet looks for its metadata. */
 export function resolvingLine(peersSeen: number, secs: number): string {
   return `Looking for peers · ${peersSeen} found · ${formatElapsed(secs)}`;
 }

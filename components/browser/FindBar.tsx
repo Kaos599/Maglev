@@ -7,7 +7,7 @@ import { findCopy } from '../../constants/copy';
 import { PixelIcon } from '../PixelIcon';
 import { IconButton, PressableScale, TextField } from '../ui';
 
-/** Typing runs the search this long after the last key (contract section 28). */
+/** Typing runs the search this long after the last key. */
 export const FIND_DEBOUNCE_MS = 150;
 
 export type FindResult = { active: number; total: number; done: boolean };

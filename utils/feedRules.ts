@@ -1,5 +1,5 @@
 /**
- * Feed rule matching (docs/NATIVE_CONTRACT.md section 11.6).
+ * Feed rule matching.
  * Same semantics as Kotlin FeedRuleMatcher; scripts/fixtures/feeds/rule-vectors.json is the shared truth.
  */
 

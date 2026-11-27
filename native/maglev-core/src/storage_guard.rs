@@ -1,4 +1,4 @@
-//! Low-storage reserve math (docs/contracts-0.19/play-and-storage.md section 2). Pure: no session, no I/O.
+//! Low-storage reserve math. Pure: no session, no I/O.
 //!
 //! Transfers pause when free space on the download volume drops below the reserve and resume once it is back
 //! above the reserve plus a hysteresis margin, so a volume sitting on the line does not flap. Kotlin

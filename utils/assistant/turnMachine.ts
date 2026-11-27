@@ -1,8 +1,8 @@
-// SM-31 Assistant chat turn. Pure: no React, no IO, no clock. app/assistant.tsx (the runner) runs the effects.
+// Assistant chat turn state machine. Pure: no React, no IO, no clock. app/assistant.tsx (the runner) runs the effects.
 // One user message is one turn: Send, then up to 6 model round-trips, then idle or awaitingConfirmation.
 // Anything not in the transition table is a no-op. Never add states.
 //
-// Interpretations the table leaves open (review round 1, ASSISTANT_DESIGN R1-3..R1-6):
+// How the machine reads the cases its table leaves open:
 //  - A proposal tool call creates a card and answers the model `{"status":"proposed","card_id":"c1"}`. The turn
 //    then continues as the table says (ToolsDone -> requesting) so the model can say "I've put it on a card",
 //    and ends at awaitingConfirmation through the `Stop` row (pending cards > 0).
@@ -34,7 +34,7 @@ import { PROPOSAL_TOOLS, READ_TOOLS, TOOLS, validateArgs, type ToolDef } from '.
 
 export type TurnKind = 'idle' | 'requesting' | 'streaming' | 'runningTools' | 'awaitingConfirmation';
 
-/** Fixed copy (SM-31 and the design). */
+/** Fixed copy. */
 export const COPY = {
   notEnabled: 'Turn on the Assistant in Settings first.',
   noWarning: 'Read the Assistant notice in Settings first.',
@@ -71,7 +71,7 @@ export const COPY = {
 export interface TurnConfig {
   /** System prompt sent as the first message of every request. */
   system: string;
-  /** Session handle registry (SM-42). Used to validate and resolve tool arguments. */
+  /** Session handle registry. Used to validate and resolve tool arguments. */
   registry: HandleRegistry;
   /** Input token budget for buildContext. Default: the context.ts default. */
   budget?: number;
@@ -185,7 +185,7 @@ export type TurnEvent =
   /** A stream that failed after it started. `truncated` is true when it ended with finish_reason "length". */
   | { type: 'StreamFailed'; error: StreamFailure; truncated?: boolean }
   | { type: 'Abort' }
-  /** The app went to the background (SM-42). Same as Abort for the turn. */
+  /** The app went to the background. Same as Abort for the turn. */
   | { type: 'Background' }
   | { type: 'TextDelta'; text: string }
   | { type: 'Usage'; input: number; output: number }
@@ -200,7 +200,7 @@ export type TurnEvent =
   | { type: 'CardSettled'; cardId: string; kind: CardSettledKind; /** What the model should know next turn, e.g. "User confirmed c2: Added." */ note?: string }
   /** The transfer or result a card points at is gone (handle, e.g. "t1"). */
   | { type: 'TargetGone'; target: string }
-  /** SM-42 CLEAR and KEY_REMOVED. */
+  /** The chat was cleared or the key was removed. */
   | { type: 'Clear' }
   /** The Assistant switch was turned off. Cards expire, history stays. */
   | { type: 'Disabled' };
@@ -322,7 +322,7 @@ function statusStep(s: TurnState, status: number, retryAfterMs?: number, body?: 
   return failTurn(s, COPY.rejected);
 }
 
-/** SM-31: one retry per turn, on network/5xx only. Otherwise the error card. */
+/** One retry per turn, on network/5xx only. Otherwise the error card. */
 function retryStep(s: TurnState, finalMessage: string, retryAfterMs?: number): TurnStep {
   if (s.retried) return failTurn(s, finalMessage);
   if (retryAfterMs !== undefined && retryAfterMs > RETRY_AFTER_MAX_MS) return failTurn(s, finalMessage);
@@ -571,7 +571,7 @@ const ENDS_ROUND_TRIP: ReadonlySet<TurnEvent['type']> = new Set([
   'Stop', 'ToolCallsDone', 'StreamFailed', 'HttpErr', 'NetErr', 'PortalErr', 'Abort', 'Background', 'Clear', 'Disabled',
 ]);
 
-/** One step of the SM-31 machine. Returns the next state and the effects to run. Never throws. */
+/** One step of the turn machine. Returns the next state and the effects to run. Never throws. */
 export function turnStep(state: TurnState, event: TurnEvent): TurnStep {
   const r = turnStepInner(state, event);
   if (!state.usage || !ENDS_ROUND_TRIP.has(event.type)) return r;

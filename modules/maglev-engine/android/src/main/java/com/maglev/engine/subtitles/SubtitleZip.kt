@@ -6,7 +6,7 @@ import java.io.IOException
 import java.util.zip.ZipException
 import java.util.zip.ZipInputStream
 
-/** In-memory unzip for subtitle archives (NATIVE_CONTRACT 36.6). Never touches the disk. */
+/** In-memory unzip for subtitle archives. Never touches the disk. */
 object SubtitleZip {
     const val MAX_ENTRIES = 200
     const val MAX_ENTRY_BYTES = 5 * 1024 * 1024

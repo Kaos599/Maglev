@@ -1,5 +1,5 @@
 /**
- * Source-level checks for the headers of stream downloads (docs/NATIVE_CONTRACT.md section 24.8, "Request headers").
+ * Source-level checks for the headers of stream downloads.
  * Rust is never compiled locally (CI is the compiler, and runs the #[cfg(test)] tests in fetch.rs), so this reads the
  * sources: the app sends Referer, Origin, the user agent and per-host cookies; the Rust side parses them, keeps them
  * for the life of the download and applies them to every request through one function.
@@ -69,7 +69,7 @@ check('cookies are never sent to look-alike hosts (domain boundary)', () => {
   assert(/ends_with\(&format!\("\.\{domain\}"\)\)/.test(fetchRs));
 });
 
-check('the contract documents the request headers', () => {
+check('the private notes document the request headers', () => {
   if (contract === null) return;
   assert(/\*\*Request headers \(2026-11-20\):\*\*/.test(contract));
 });

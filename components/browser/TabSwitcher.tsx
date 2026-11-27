@@ -23,7 +23,7 @@ export interface TabSwitcherProps {
 
 export const titleOf = (t: Tab): string => t.title || (isBlank(t) ? browserTabs.switcher.blankTitle : hostOf(t.url) || t.url);
 
-/** T2: the full-screen tab list. The parent unmounts it when closed. */
+/** The full-screen tab list. The parent unmounts it when closed. */
 export function TabSwitcher({ tabs, activeId, onSelect, onClose, onNewTab, onCloseAll, onDismiss }: TabSwitcherProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);

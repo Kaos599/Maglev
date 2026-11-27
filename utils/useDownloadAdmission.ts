@@ -5,7 +5,7 @@ import { admit, pendingNeedOf, type AdmissionOutcome } from './admission';
 import { noSpaceBody } from './admissionCopy';
 
 /**
- * Free space and the SM-35 admission check for a web-link download (Add download and the browser's
+ * Free space and the admission check for a web-link download (Add download and the browser's
  * found-files sheet share it). Free space is read each time `active` turns on; it is kept while
  * `active` is off, so a preview that is starting still shows its last answer.
  */

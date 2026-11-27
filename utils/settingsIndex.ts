@@ -311,7 +311,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "font size",
   ],
   ),
-  // NATIVE_CONTRACT 41.5: now "Download page"; the ListRow title matches, so opening it scrolls to the row and does not open the sheet.
+  // The row is named "Download page"; the ListRow title matches, so opening it scrolls to the row and does not open the sheet.
   e(
     "appearance-transfer-details",
     "Download page",
@@ -327,6 +327,26 @@ export const SETTINGS_INDEX: SettingEntry[] = [
       "peers",
       "ratio",
       "density",
+    ],
+  ),
+  e(
+    "appearance-transfer-name-lines",
+    "Transfer name lines",
+    "interface",
+    "Appearance",
+    [
+      "name lines",
+      "long names",
+      "long name",
+      "full name",
+      "title",
+      "wrap",
+      "lines",
+      "cut off",
+      "truncated",
+      "filename",
+      "transfers",
+      "cards",
     ],
   ),
   e(

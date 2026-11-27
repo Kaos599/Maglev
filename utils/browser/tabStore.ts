@@ -1,5 +1,5 @@
 /**
- * The one tab set (docs/NATIVE_CONTRACT.md section 30, amends 24.10). Module-level state with subscribe, wrapping the
+ * The one tab set. Module-level state with subscribe, wrapping the
  * pure functions in tabs.ts. Every BrowserScreen instance (the Browse tab and the /browser stack route) reads this
  * store, so they always agree. No React and no native imports: the history database, the prefs and the native wipe
  * counter come in through `bindTabStore`, so tests can run it with fakes.

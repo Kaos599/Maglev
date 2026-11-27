@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // The app must send the page the user was on as `pageUrl` with every browser download, so the engine can keep it
-// (NATIVE_CONTRACT "Auto-refresh"). Field path: TS options.pageUrl -> MaglevNativeBridge.addDownload -> Kotlin
+// (it is what a refresh later opens). Field path: TS options.pageUrl -> MaglevNativeBridge.addDownload -> Kotlin
 // MaglevEngineModule "addDownload" -> EngineHost.addDownload (Json.snakeify) -> Rust DownloadOptions.page_url.
 const fs = require('fs');
 const path = require('path');

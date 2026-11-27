@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// NATIVE_CONTRACT 35: why transfers are held. One copy table, the banner order, the override table,
+// Why transfers are held. One copy table, the banner order, the override table,
 // the per-item lines, and the native and mock sources that feed them.
 // Needs Node 22.18+ (runs the TypeScript source directly).
 process.removeAllListeners('warning');

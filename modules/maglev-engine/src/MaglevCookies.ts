@@ -1,7 +1,7 @@
 import { Platform, requireOptionalNativeModule } from 'expo-modules-core';
 
 // Thin access to Android's CookieManager (the WebView cookie jar) for the Cloudflare site checks.
-// Contract: docs/SEARCH_CONTRACT.md section 8. Native side: MaglevEngineModule.kt getCookies / clearCookies.
+// Native side: MaglevEngineModule.kt getCookies / clearCookies.
 
 let Native: any = null;
 try {

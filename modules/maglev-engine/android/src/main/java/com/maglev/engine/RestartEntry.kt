@@ -20,9 +20,9 @@ data class RestartPlan(
     val remind: Boolean,
 )
 
-/** Pure decision for SM-34 (contract 19). No android.* imports. */
+/** Pure decisions for restarting downloads after boot, an update or a swipe-away. No android.* imports. */
 object RestartEntryPolicy {
-    /** Android 15 stops BOOT_COMPLETED receivers from starting dataSync services (NATIVE_CONTRACT 8). Older releases allow it. */
+    /** Android 15 stops BOOT_COMPLETED receivers from starting dataSync services. Older releases allow it. */
     fun canStartFromBoot(useSpecialUse: Boolean, sdk: Int): Boolean = useSpecialUse || sdk < 35
 
     fun plan(
@@ -47,7 +47,7 @@ object RestartEntryPolicy {
     /** Heartbeat gap above which Android is assumed to have killed the process. */
     const val GAP_MS = 2 * 60_000L
 
-    /** SM-34 AppOpen row: gap > 2 min, the last state was running, and the service is not running now. */
+    /** When the app opens: gap > 2 min, the last state was running, and the service is not running now. */
     fun shouldShowStoppedNotice(nowMs: Long, heartbeatAtMs: Long, wasRunning: Boolean, serviceRunning: Boolean): Boolean =
         heartbeatAtMs > 0L && nowMs - heartbeatAtMs > GAP_MS && wasRunning && !serviceRunning
 }
@@ -99,7 +99,7 @@ object RestartPrefs {
     }
 }
 
-/** Android side of SM-34. Every entry point (boot, package update, sticky restart) runs [run]. */
+/** Android side of the restart-after-boot rules. Every entry point (boot, package update, sticky restart) runs [run]. */
 object RestartEntry {
     private const val TAG = "MaglevRestart"
     const val STOPPED_NOTICE = "Maglev was stopped by Android. Downloads resumed."

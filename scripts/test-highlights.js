@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// New-feature highlight (docs/NATIVE_CONTRACT.md section 37.4): the decision, the 0.30 entry and its route,
+// New-feature highlight: the decision, the 0.30 entry and its route,
 // the setting, the sheet and where it is mounted. Needs Node 22.18+ (runs the TypeScript source directly).
 process.removeAllListeners('warning');
 const fs = require('fs');
@@ -47,7 +47,7 @@ function check(name, cond, extra) {
 
   console.log('[entry]');
   const e = HIGHLIGHTS['0.30'];
-  check('0.30 entry is exactly the contract text', e && e.title === 'Subtitles' && e.body === "Find and save subtitles for videos you've downloaded, from 21 free sources. No account needed." && e.icon === 'subtitles' && e.tryRoute === '/settings/subtitles' && e.tryLabel === 'Set up subtitles');
+  check('0.30 entry is exactly the agreed text', e && e.title === 'Subtitles' && e.body === "Find and save subtitles for videos you've downloaded, from 21 free sources. No account needed." && e.icon === 'subtitles' && e.tryRoute === '/settings/subtitles' && e.tryLabel === 'Set up subtitles');
   const gen = read('components/icons.generated.ts');
   check('the entry icon exists in the icon set', gen.includes(`"${e.icon}":`));
   const routeFile = `app${e.tryRoute}.tsx`;
@@ -72,7 +72,7 @@ function check(name, cond, extra) {
   console.log('[sheet]');
   const sheet = read('components/HighlightSheet.tsx');
   const copy = await import('../constants/copy.ts');
-  check('sheet copy is the contract text', copy.highlightCopy.notNow === 'Not now' && copy.highlightCopy.allNotes === 'All release notes' && copy.highlightCopy.footer === 'You can turn these off in Settings → Updates');
+  check('sheet copy is the exact text', copy.highlightCopy.notNow === 'Not now' && copy.highlightCopy.allNotes === 'All release notes' && copy.highlightCopy.footer === 'You can turn these off in Settings → Updates');
   check('the sheet shows icon, title, body, the try button, Not now, All release notes and the footer', /highlight\.icon/.test(sheet) && /title=\{highlight\.title\}/.test(sheet) && /highlight\.body/.test(sheet) && /highlight\.tryLabel/.test(sheet) && /highlightCopy\.notNow/.test(sheet) && /highlightCopy\.allNotes/.test(sheet) && /highlightCopy\.footer/.test(sheet));
   check('it reuses the Dialog from components/ui (a centred modal, not a bottom sheet), closed with Not now', /Dialog\b[^;]*from '\.\/ui'/.test(sheet) && /<Dialog\b/.test(sheet) && !/\bSheet\b(?!\.|')/.test(sheet.replace(/HighlightSheet|highlight-sheet/g, '').replace(/\/\*[\s\S]*?\*\//g, '')) && /onClose=\{onNotNow\}/.test(sheet) && /testID="highlight-sheet"/.test(sheet));
   const dialog = read('components/ui/Dialog.tsx');

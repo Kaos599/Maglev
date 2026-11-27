@@ -1,6 +1,6 @@
 /**
- * The detail screen's timing (NATIVE_CONTRACT 34.1): one full-width row, "Took" (or "Downloading for") and "Avg download",
- * that opens the Timing sheet. Before 0.26 it reads "—" and has no chevron. The sheet adds only what the row does not
+ * The detail screen's timing: one full-width row, "Took" (or "Downloading for") and "Avg download",
+ * that opens the Timing sheet. While no timing is known yet it reads "—" and has no chevron. The sheet adds only what the row does not
  * show: when it was added and finished, where that time went, the network split and seeding. Rows with nothing to say
  * are left out.
  */

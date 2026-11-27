@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Rate smoothing and ETA label tests (docs/UI_SPEC_PHASE2.md S10.2). Pure functions, no engine.
+// Rate smoothing and ETA label tests. Pure functions, no engine.
 // Needs Node 22.18+ (runs the TypeScript source directly via type stripping).
 
 process.removeAllListeners('warning');

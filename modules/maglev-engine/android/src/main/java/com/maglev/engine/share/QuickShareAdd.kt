@@ -13,7 +13,7 @@ import com.maglev.engine.util.Json
 import java.io.File
 
 /**
- * Everything the quick share card asks of the engine (docs/contracts-0.19/quick-share.md section 5). Blocking: call from a
+ * Everything the quick share card asks of the engine. Blocking: call from a
  * worker thread. It reuses the add paths the feed drain uses (`EngineHost.addTorrent`, `EngineHost.addDownload`); nothing
  * here invents a value. An unknown size stays null.
  */
@@ -63,6 +63,15 @@ object QuickShareAdd {
         }
     }
 
+    /** The file name a content URI reports, as it is. Null when it does not say. */
+    fun fileName(c: Context, source: String): String? = try {
+        c.contentResolver.query(Uri.parse(source), arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
+            if (it.moveToFirst()) it.getString(0) else null
+        }
+    } catch (e: Exception) {
+        null
+    }
+
     /** The file name a content URI reports, without `.torrent`. Null when it does not say. */
     fun displayName(c: Context, source: String): String? = try {
         c.contentResolver.query(Uri.parse(source), arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
@@ -85,12 +94,21 @@ object QuickShareAdd {
                 (meta["info_hash"] as? String)?.lowercase() ?: cls.infoHash,
             )
         }
-        ShareKind.FILE_LINK -> {
-            val probe = EngineHost.probeUrl(cls.source ?: "", emptyMap(), PROBE_MS)
-            if (probe["ok"] != true) Info(null, null, null, null)
-            else Info((probe["name"] as? String)?.ifEmpty { null }, (probe["size"] as? Number)?.toLong()?.takeIf { it > 0 }, null, null)
-        }
+        ShareKind.FILE_LINK -> askServer(cls.source ?: "", PROBE_MS) ?: Info(null, null, null, null)
         else -> Info(null, null, null, null)
+    }
+
+    /**
+     * What the server says a link is, with the request Add a link makes. A file gives its name and size where the
+     * server says them. A web page, an error or no answer within [timeoutMs] gives null. The engine calls an answer a
+     * page when its content type is HTML, whatever the Content-Disposition says, and its download refuses the same
+     * answers, so the card never offers Download for a link the download would turn down.
+     */
+    fun askServer(url: String, timeoutMs: Long): Info? {
+        if (url.isEmpty() || timeoutMs <= 0) return null
+        val probe = EngineHost.probeUrl(url, emptyMap(), timeoutMs)
+        if (probe["ok"] != true) return null
+        return Info((probe["name"] as? String)?.ifEmpty { null }, (probe["size"] as? Number)?.toLong()?.takeIf { it > 0 }, null, null)
     }
 
     /** `scheme://host/path`: how the downloads list shows a link (no user, query or fragment). */
@@ -118,7 +136,7 @@ object QuickShareAdd {
         return Existing(pct.coerceIn(0, 100))
     }
 
-    /** "Needs X, Y free": the same admission check the feed drain uses (`Admission`, SM-35). Null when it fits or cannot be judged. */
+    /** "Needs X, Y free": the same admission check the feed drain uses (`Admission`). Null when it fits or cannot be judged. */
     fun lowSpace(needBytes: Long): LowSpace? {
         val space = EngineHost.freeSpace()
         if (space["ok"] != true) return null
@@ -126,7 +144,7 @@ object QuickShareAdd {
         val ownFree = Json.long(space["freeBytes"])
         val free = if (staged) (space["targetFreeBytes"] as? Number)?.toLong()?.coerceAtMost(ownFree) ?: ownFree else ownFree
         val list = EngineHost.call { NativeCore.nativeListTorrents() }
-        // Torrents and link downloads both still need space (SM-35, NATIVE_CONTRACT 10.3).
+        // Torrents and link downloads both still need space.
         val pending = if (list["ok"] == true) Admission.pendingNeedFromList(list) else 0L
         // Judge against what the storage rule keeps free (StorageGuard), or the card offers Download for a
         // transfer that is paused as Storage full the moment it starts. The text shows the space Maglev can use.

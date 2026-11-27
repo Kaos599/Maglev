@@ -1,6 +1,5 @@
 /**
- * Subtitle provider registry (docs/NATIVE_CONTRACT.md section 36.3). Every provider is listed here; the wave that
- * ports the sources adds them. `enabledProviders` decides which of them run.
+ * Subtitle provider registry. Every provider is listed here, in the batch files. `enabledProviders` decides which of them run.
  */
 import type { SubtitleProvider } from '../types.ts';
 import type { SourceEntry } from '../../lists/schema.ts';

@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-// Document checks read the private design documents in docs/ through lib/privateDocs.
-// A public checkout has no docs/ at all (docs/ is gitignored and lives in a private repository), and the
-// document checks skip with a note so `npm test` still passes, as CONTRIBUTING.md describes. A checkout
-// that has docs/ but is missing the document itself fails loudly. Recreates both cases and checks each.
+// Checks that compare code with the private notes read them through lib/privateDocs.
+// A public checkout has no private notes (they are notes that aren't in this repository), and those checks skip with a
+// note so `npm test` still passes. A checkout that has the notes folder but is missing the file itself fails
+// loudly. Recreates both cases and checks each.
 
 const fs = require('fs');
 const path = require('path');
@@ -31,17 +31,17 @@ function throwsOnMissing() {
 
 const hadDocs = fs.existsSync(DOCS);
 if (!hadDocs) {
-  check('a checkout without docs/ skips a missing document', require('./lib/privateDocs').readPrivateDoc(MISSING) === null);
+  check('a checkout without the notes folder skips a missing document', require('./lib/privateDocs').readPrivateDoc(MISSING) === null);
 } else {
-  console.log('  skip public-checkout case: this machine has docs/ checked out');
+  console.log('  skip public-checkout case: this machine has the notes folder checked out');
 }
 
 if (!hadDocs) fs.mkdirSync(DOCS);
 try {
   fs.writeFileSync(path.join(DOCS, TMP), 'contract text');
   check('an existing document is returned', require('./lib/privateDocs').readPrivateDoc(TMP) === 'contract text');
-  if (process.env.CI) check('CI skips a missing document even when docs/ is present', require('./lib/privateDocs').readPrivateDoc(MISSING) === null);
-  else check('a checkout with docs/ fails loudly on a missing document', throwsOnMissing());
+  if (process.env.CI) check('CI skips a missing document even when the notes folder is present', require('./lib/privateDocs').readPrivateDoc(MISSING) === null);
+  else check('a checkout with the notes folder fails loudly on a missing document', throwsOnMissing());
 } finally {
   fs.rmSync(path.join(DOCS, TMP), { force: true });
   if (!hadDocs) fs.rmdirSync(DOCS);
