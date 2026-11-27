@@ -891,6 +891,12 @@ export interface MaglevEngineApi {
   /** kind: "available" or "ready". For "ready", `path` and `sha256` make the notice's Install action start the install. */
   postUpdateNotice(kind: 'available' | 'ready', version: string, path?: string | null, sha256?: string | null): Promise<EngineResult>;
   clearUpdateNotice(kind: 'available' | 'ready'): Promise<EngineResult>;
+  /** The settings the background update check follows; `waitForWifi` while the app waits for Wi-Fi to download. */
+  configureUpdates(config: UpdateScheduleConfig, waitForWifi: boolean): Promise<EngineResult>;
+  /** GitHub's release list as text, with a shared ETag and rate-limit wait. Errors: NETWORK, HTTP_STATUS, RATE_LIMITED. */
+  fetchReleases(appVersion: string): Promise<EngineResult<{ body: string }>>;
+  /** What the background check found since the last call (then forgotten). `path`: the downloaded, checked APK. */
+  takeBackgroundUpdate(): Promise<EngineResult<{ info: BackgroundRelease | null; path: string | null }>>;
   // Lists that update themselves (NATIVE_CONTRACT 31)
   /** True only when `sigB64` is a valid ECDSA P-256 signature of `body` under the key embedded in the app. Never throws. */
   verifyListSignature(body: string, sigB64: string): Promise<boolean>;
@@ -950,6 +956,28 @@ export interface InstallSource {
   managedBy: ManagedBy | null;
   /** The installed versionCode (base * 10 + ABI digit), or null when it cannot be read. */
   versionCode?: number | null;
+  /**
+   * Whether this copy is signed with the release key. "foreign": another key (a CI or pull request build, a fork, an
+   * F-Droid build installed by hand), so Android would refuse every release over it. "unknown": unreadable.
+   */
+  signer?: 'release' | 'foreign' | 'unknown';
+}
+export interface UpdateScheduleConfig {
+  autoCheck: boolean;
+  mode: 'ask' | 'download' | 'auto';
+  skippedVersion: string | null;
+  wifiOnly: boolean;
+  vpnOnly: boolean;
+}
+/** A release the background check picked: the same fields as UpdateInfo in utils/update/check.ts. */
+export interface BackgroundRelease {
+  version: string;
+  tag: string;
+  notes: string;
+  pageUrl: string;
+  apkUrl: string;
+  sha256: string;
+  size: number;
 }
 export interface UpdateNetwork {
   connected: boolean;

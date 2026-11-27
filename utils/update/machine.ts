@@ -2,13 +2,17 @@
  * The updater state machine. Pure: `reduce(state, event)` returns the next state, and an
  * event that does not apply to the current state returns the same state. No ad-hoc states anywhere else.
  *
+ * The model of this machine, with the background check and Android closing Maglev, is specs/app-updater/AppUpdater.tla.
+ *
  *   Idle -> Checking -> UpToDate | Available(info) | CheckFailed
  *   Available -> (ask) Waiting | (download/auto, Wi-Fi) Downloading | (mobile data) WaitingForWifi -> Downloading
  *   Downloading -> Ready(path) | DownloadFailed(code) -> Available
  *   Ready -> (auto, safe) Installing | (else) ReadyAsk -> Installing (tap)
- *   Installing -> NeedsPermission -> Installing (returned) | NeedsUser | Done | InstallFailed
- *   Available | Ready -> Skipped(version)
+ *   Installing -> NeedsPermission -> Installing (returned, or a tap) | NeedsUser | Done | InstallFailed
+ *   DownloadFailed | InstallFailed -> Checking (the next check fetches a fresh file)
+ *   Available | Ready | InstallFailed | NeedsUser | NeedsPermission -> Skipped(version)
  *   Any -> Managed
+ *   Any but Managed -> ForeignBuild (signed with another key: it never downloads)
  */
 import type { ManagedBy } from 'maglev-engine';
 import type { UpdateInfo } from './check.ts';
@@ -33,10 +37,14 @@ export type UpdateState =
   | { kind: 'done'; info: UpdateInfo }
   | { kind: 'installFailed'; info: UpdateInfo; path: string; code: string }
   | { kind: 'skipped'; version: string }
-  | { kind: 'managed'; by: ManagedBy };
+  | { kind: 'managed'; by: ManagedBy }
+  /** This copy is signed with another key than the releases, so Android would refuse every update over it. Final. */
+  | { kind: 'foreignBuild' };
 
 export type UpdateEvent =
   | { type: 'managed'; by: ManagedBy }
+  /** At startup: the installed copy's signer is not the release key. */
+  | { type: 'foreign' }
   | { type: 'check' }
   /** At startup: an update downloaded in an earlier run is still on disk. */
   | { type: 'restore'; info: UpdateInfo; path: string }
@@ -72,10 +80,15 @@ export function reduce(s: UpdateState, e: UpdateEvent): UpdateState {
   // Any -> Managed, and Managed is final.
   if (e.type === 'managed') return { kind: 'managed', by: e.by };
   if (s.kind === 'managed') return s;
+  // A store owns updates first; otherwise a copy signed with another key stops here, before any download.
+  if (e.type === 'foreign') return { kind: 'foreignBuild' };
+  if (s.kind === 'foreignBuild') return s;
 
   switch (e.type) {
     case 'check':
-      return s.kind === 'idle' || s.kind === 'upToDate' || s.kind === 'checkFailed' || s.kind === 'skipped' || s.kind === 'done'
+      // A failed download or install is checked again too: the file that failed is gone, so the next check fetches it afresh.
+      return s.kind === 'idle' || s.kind === 'upToDate' || s.kind === 'checkFailed' || s.kind === 'skipped' || s.kind === 'done' ||
+        s.kind === 'downloadFailed' || s.kind === 'installFailed'
         ? { kind: 'checking' }
         : s;
     case 'restore':
@@ -112,10 +125,10 @@ export function reduce(s: UpdateState, e: UpdateEvent): UpdateState {
         ? { kind: 'installing', info: s.info, path: s.path, silent: true, retried: false }
         : { kind: 'readyAsk', info: s.info, path: s.path };
     case 'install':
-      if (s.kind === 'ready' || s.kind === 'readyAsk' || s.kind === 'installFailed' || s.kind === 'needsUser') {
+      // From needsPermission too: once the permission is granted, Install on the card tries again.
+      if (s.kind === 'ready' || s.kind === 'readyAsk' || s.kind === 'installFailed' || s.kind === 'needsUser' || s.kind === 'needsPermission') {
         return { kind: 'installing', info: s.info, path: s.path, silent: false, retried: false };
       }
-      // A tap on the permission card re-sends the install once the user is back; see permissionReturned.
       return s;
     case 'installStatus':
       if (s.kind !== 'installing') return s;
@@ -133,7 +146,10 @@ export function reduce(s: UpdateState, e: UpdateEvent): UpdateState {
       return s.kind === 'installing' || s.kind === 'needsUser' ? { kind: 'installFailed', info: s.info, path: s.path, code: e.code } : s;
     case 'skip': {
       const info = infoOf(s);
-      return info && (s.kind === 'available' || s.kind === 'waiting' || s.kind === 'waitingForWifi' || s.kind === 'ready' || s.kind === 'readyAsk')
+      // Every state whose card shows "Skip this version", so none of them is a dead end.
+      return info &&
+        (s.kind === 'available' || s.kind === 'waiting' || s.kind === 'waitingForWifi' || s.kind === 'ready' || s.kind === 'readyAsk' ||
+          s.kind === 'installFailed' || s.kind === 'needsUser' || s.kind === 'needsPermission')
         ? { kind: 'skipped', version: info.version }
         : s;
     }

@@ -12,6 +12,8 @@ class UpdateReplacedReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
         if (intent?.action != Intent.ACTION_MY_PACKAGE_REPLACED) return
         val app = context.applicationContext
+        // What the background check found was for the version before this one.
+        UpdateSchedule.clearFound(app)
         val version = AppUpdater.installingVersion(app) ?: return
         // Always cleared. When a different version got installed (by hand, say), no "updated to" notice.
         AppUpdater.clearInstalling(app)

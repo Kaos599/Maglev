@@ -21,8 +21,11 @@ import {
   getManagedCheck,
   getUpdateState,
   installNow,
+  isForeignBuild,
   openInstallPermission,
+  RELEASES_PAGE_URL,
   skipThisVersion,
+  syncUpdateSchedule,
 } from '../../utils/update';
 import { useUpdatePrefs } from '../../utils/prefs/update';
 import { useListPrefs } from '../../utils/prefs/lists';
@@ -172,6 +175,8 @@ export default function UpdatesSettings() {
   const { update, managedCheck, info, newerManaged, hasUpdate } = useHasUpdate();
   const [prefs, setPrefs] = useUpdatePrefs();
   const managedBy = getManagedBy();
+  // Signed with another key: no check, no modes, only the way to the release build. A debug build just says so.
+  const foreign = !managedBy && (update.kind === 'foreignBuild' || isForeignBuild());
   const lists = useListsState();
   const [listPrefs, setListPrefs] = useListPrefs();
   const [adInfo, setAdInfo] = useState<BlocklistInfo | null>(null);
@@ -236,7 +241,7 @@ export default function UpdatesSettings() {
             ) : undefined
           }
         />
-        {hasUpdate ? (
+        {foreign ? null : hasUpdate ? (
           <ListRow
             title={updateCopy.available((info?.version ?? newerManaged?.version) as string)}
             subtitle={managedBy ? updateCopy.managedBy(managedBy) : undefined}
@@ -254,6 +259,15 @@ export default function UpdatesSettings() {
         )}
         {managedBy ? (
           <ListRow title={updateCopy.updatesRow.title} subtitle={updateCopy.managedBy(managedBy)} />
+        ) : foreign ? (
+          <>
+            <ListRow title={updateCopy.updatesRow.title} subtitle={__DEV__ ? updateCopy.foreign.devBuild : updateCopy.foreign.body} />
+            {__DEV__ ? null : (
+              <View style={s.block}>
+                <Button label={updateCopy.foreign.button} variant="secondary" onPress={() => void Linking.openURL(RELEASES_PAGE_URL)} />
+              </View>
+            )}
+          </>
         ) : (
           <>
             <View style={s.block} accessibilityRole="radiogroup" accessibilityLabel={updateCopy.updatesRow.title}>
@@ -265,7 +279,11 @@ export default function UpdatesSettings() {
                   icon={MODE_ICONS[m.value]}
                   description={m.description}
                   selected={prefs.updateMode === m.value}
-                  onPress={() => prefs.updateMode !== m.value && setPrefs({ updateMode: m.value })}
+                  onPress={() => {
+                    if (prefs.updateMode === m.value) return;
+                    setPrefs({ updateMode: m.value });
+                    void syncUpdateSchedule();
+                  }}
                   accessibilityLabel={`${m.title}. ${m.description}`}
                 />
               ))}
@@ -276,7 +294,10 @@ export default function UpdatesSettings() {
               accessory={
                 <Toggle
                   value={prefs.updateAutoCheck}
-                  onValueChange={(updateAutoCheck) => setPrefs({ updateAutoCheck })}
+                  onValueChange={(updateAutoCheck) => {
+                    setPrefs({ updateAutoCheck });
+                    void syncUpdateSchedule();
+                  }}
                   accessibilityLabel={updateCopy.updatesRow.autoCheck}
                 />
               }
@@ -376,7 +397,8 @@ function UpdateCard({ state, notes, onClose }: { state: UpdateState; notes: stri
     }
   })();
   const failed = state.kind === 'downloadFailed' || state.kind === 'installFailed';
-  const canInstall = state.kind === 'ready' || state.kind === 'readyAsk' || state.kind === 'installFailed' || state.kind === 'needsUser';
+  const canInstall =
+    state.kind === 'ready' || state.kind === 'readyAsk' || state.kind === 'installFailed' || state.kind === 'needsUser' || state.kind === 'needsPermission';
   const canDownload = state.kind === 'available' || state.kind === 'waiting' || state.kind === 'waitingForWifi';
   const canSkip = canDownload || canInstall;
 

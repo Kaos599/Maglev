@@ -49,6 +49,7 @@ object AppUpdater {
     private var cancelled = false
     private val lock = Any()
     private var inflight: FutureTask<Map<String, Any?>>? = null
+    private var inflightSha: String? = null
 
     private class UpdateException(val code: String, message: String) : Exception(message)
 
@@ -71,30 +72,46 @@ object AppUpdater {
         cancelled = true
     }
 
-    /** Blocking. Call off the main thread. A second call while one runs joins the first. */
+    /**
+     * Blocking. Call off the main thread. The app's own updater and the background check both come here, and only one
+     * thread writes the file: a second call for the same release joins the running one, and a call for another release
+     * waits for it to end first.
+     */
     fun download(context: Context, url: String, sha256: String, size: Long, requireVpn: Boolean = false): Map<String, Any?> {
         managed(context)?.let { return it }
+        // A copy signed with another key can never install a release, so it never downloads one.
+        if (ReleaseSigner.isForeign(context)) return failure("FOREIGN_BUILD", "This copy of Maglev was built by someone else, so it can't update itself.")
         // VPN only (Settings > Network) also covers a download the user started by hand.
         if (requireVpn && network(context)["vpn"] != true) return failure("BLOCKED", "Your network settings block this download right now.")
         if (!isAllowedUrl(url)) return failure("UPDATE_INVALID", "This update didn't pass Maglev's checks, so it wasn't installed.")
         if (!Regex("^[0-9a-fA-F]{64}$").matches(sha256)) return failure("UPDATE_INVALID", "This update didn't pass Maglev's checks, so it wasn't installed.")
-        val task: FutureTask<Map<String, Any?>>
-        val mine: Boolean
-        synchronized(lock) {
-            val cur = inflight
-            if (cur != null && !cur.isDone) {
-                task = cur
-                mine = false
-            } else {
-                cancelled = false
-                task = FutureTask { runDownload(context.applicationContext, url, sha256.lowercase(), size) }
-                inflight = task
-                mine = true
+        val want = sha256.lowercase()
+        var task: FutureTask<Map<String, Any?>>? = null
+        var mine = false
+        while (true) {
+            var other: FutureTask<Map<String, Any?>>? = null
+            synchronized(lock) {
+                val cur = inflight
+                if (cur != null && !cur.isDone && inflightSha == want) {
+                    task = cur
+                    mine = false
+                } else if (cur != null && !cur.isDone) {
+                    other = cur
+                } else {
+                    cancelled = false
+                    task = FutureTask { runDownload(context.applicationContext, url, want, size) }
+                    inflight = task
+                    inflightSha = want
+                    mine = true
+                }
             }
+            val wait = other ?: break
+            try { wait.get() } catch (e: Exception) { /* its caller reports it */ }
         }
-        if (mine) task.run()
+        val run = task ?: return failure("NETWORK", "Couldn't download the update.")
+        if (mine) run.run()
         return try {
-            task.get()
+            run.get()
         } catch (e: ExecutionException) {
             failure("NETWORK", "Couldn't download the update.")
         }

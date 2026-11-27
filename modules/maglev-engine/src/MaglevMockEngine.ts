@@ -1535,6 +1535,17 @@ export class MaglevMockEngine implements MaglevEngineApi {
   public async clearUpdateNotice(): Promise<EngineResult> {
     return ok();
   }
+  /** Dev and web: there is no background check to schedule. */
+  public async configureUpdates(): Promise<EngineResult> {
+    return ok();
+  }
+  /** Dev and web: the app falls back to its own fetch. */
+  public async fetchReleases(): Promise<EngineResult<{ body: string }>> {
+    return this.updateUnavailable();
+  }
+  public async takeBackgroundUpdate(): Promise<EngineResult<{ info: null; path: null }>> {
+    return { ok: true, info: null, path: null } as EngineResult<{ info: null; path: null }>;
+  }
   public onUpdateProgress(): Unsubscribe {
     return () => {};
   }

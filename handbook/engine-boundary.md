@@ -114,7 +114,13 @@ All Kotlin, no JNI: `pickDownloadFolder`, `pickFolder`, `getStorageStatus`, `get
 
 ### Updates and lists
 
-Kotlin only: `getInstallSource`, `downloadUpdate(url, sha256, size, requireVpn)`, `getUpdateNetwork`, `cancelUpdateDownload`, `installUpdate(path, silent, sha256)`, `openInstallPermissionSettings`, `cleanupUpdates`, `postUpdateNotice`, `clearUpdateNotice`, `verifyListSignature(body, sigB64)`.
+Kotlin only: `getInstallSource`, `downloadUpdate(url, sha256, size, requireVpn)`, `getUpdateNetwork`, `cancelUpdateDownload`, `installUpdate(path, silent, sha256)`, `openInstallPermissionSettings`, `cleanupUpdates`, `postUpdateNotice`, `clearUpdateNotice`, `configureUpdates(config, waitForWifi)`, `fetchReleases(appVersion)`, `takeBackgroundUpdate`, `verifyListSignature(body, sigB64)`.
+
+- `getInstallSource` also returns `signer`: `release` when the installed copy is signed with the release certificate (`update/ReleaseSigner.kt`), `foreign` for any other key, `unknown` when unreadable. A foreign copy never downloads: `downloadUpdate` refuses it with `FOREIGN_BUILD`, and the app shows "built by someone else" with a link to the GitHub release.
+- `configureUpdates({ autoCheck, mode, skippedVersion, wifiOnly, vpnOnly }, waitForWifi)` schedules or cancels the daily background check (`update/UpdateCheckWorker.kt`), and one extra run on the next unmetered network while the app waits for Wi-Fi.
+- `fetchReleases` returns `{ ok: true, body }`, GitHub's release list as text. It keeps the ETag and GitHub's rate-limit wait for the app and the background check alike. Errors: `NETWORK`, `HTTP_STATUS`, `RATE_LIMITED` (with `retryAt`, epoch ms).
+- `takeBackgroundUpdate` returns `{ ok: true, info, path }`: what the background check found since the last call (the same fields as `UpdateInfo`), and the downloaded, checked APK or null. Then it forgets it.
+- `postUpdateNotice` posts each notice once per version, shared with the background check.
 
 ### Subtitles
 

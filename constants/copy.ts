@@ -777,6 +777,12 @@ export const updateCopy = {
   hints: {
     firstUpdate: 'Android asks you to confirm the first update. After that, updates can install on their own.',
   },
+  /** A copy signed with another key than the releases: Android refuses every update over it. */
+  foreign: {
+    body: "This copy of Maglev was built by someone else, so it can't update itself. Install the version from GitHub once, and updates work from then on.",
+    button: 'Open GitHub',
+    devBuild: "This is a debug build, so it doesn't update itself.",
+  },
   report: {
     title: 'Report a bug',
     subtitle: 'Opens GitHub with your version and phone filled in.',
