@@ -159,6 +159,11 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         fun owns(url: String?): Boolean = HttpsFirst.hostOf(url)?.let { HttpsFirst.bareHost(it) in hosts } == true
     }
     private var upgrade: HttpsTry? = null
+    // Failed https addresses whose error page WebView has not put in its history yet. The error page commits a moment
+    // after the fallback starts, so it is marked "skip on Back" when it is recorded, not when the fallback begins.
+    // Cleared once the http page that replaced them is recorded.
+    private val failedHttpsPending = mutableSetOf<String>()
+    private var fallbackHttpPending: String? = null
     // One timer per try, so a server that never answers https still falls back to http.
     private val upgradeTimeout = Runnable { onUpgradeTimeout() }
     // NATIVE_CONTRACT 39.2 B1: which main-frame document the last tap vouches for. docEpoch changes with every new document.
@@ -599,6 +604,8 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         loadedOnce = false
         redirectInFlight = false
         pendingUserNav = true
+        failedHttpsPending.clear()
+        fallbackHttpPending = null
         // A typed http:// address is tried as https:// first; this load replaces any earlier try.
         val https = httpsTryFor(url)
         val host = HttpsFirst.hostOf(https)
@@ -881,6 +888,8 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         pendingUserNav = false
         upgrade = null
         mainHandler.removeCallbacks(upgradeTimeout)
+        failedHttpsPending.clear()
+        fallbackHttpPending = null
         if (!active) webView.onPause()
         loading = false
         progress = 0
@@ -1099,6 +1108,19 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     /** Writes the history entry WebView just made, with whether the user made it (24.11). */
     private fun recordHistory(url: String) {
         val index = webView.copyBackForwardList().currentIndex
+        val key = HttpsFirst.historyKey(url)
+        if (key in failedHttpsPending) {
+            // The failed https try's error page: never a Back stop, and it must not use up the user's navigation,
+            // which belongs to the http page loading next.
+            failedHttpsPending.remove(key)
+            history.visited(url, index, false)
+            history.skipIfUrl(url)
+            return
+        }
+        if (fallbackHttpPending == key) {
+            fallbackHttpPending = null
+            failedHttpsPending.clear()
+        }
         // NATIVE_CONTRACT 39.2 B5: user-made when any user activation happened since the previous entry, not only within 3 s.
         val activated = activation.take()
         val userMade = pendingUserNav || activated
@@ -1133,7 +1155,11 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         if (isOnline()) fallbackHostsInUse().add(up.host)
         // The failed https page (the first try or a redirect hop) must not be a Back stop, and the http load is still
         // the user's request.
-        for (u in setOfNotNull(up.httpsUrl, up.lastHttps, failedUrl)) history.skipIfUrl(u)
+        for (u in setOfNotNull(up.httpsUrl, up.lastHttps, failedUrl)) {
+            history.skipIfUrl(u)
+            failedHttpsPending.add(HttpsFirst.historyKey(u))
+        }
+        fallbackHttpPending = HttpsFirst.historyKey(up.httpUrl)
         pendingUserNav = true
         mainHandler.post { if (!destroyed) webView.loadUrl(up.httpUrl) }
     }

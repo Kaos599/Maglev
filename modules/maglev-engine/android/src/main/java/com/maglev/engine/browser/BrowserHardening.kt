@@ -169,6 +169,13 @@ object HttpsFirst {
     /** [host] without a leading www., for comparing the hosts a try has touched. */
     fun bareHost(host: String): String = host.removePrefix("www.")
 
+    /** [url] for matching history entries: WebView records `https://host` as `https://host/`, so a bare root gets its slash. */
+    fun historyKey(url: String): String {
+        val u = url.trim()
+        val m = Regex("^([a-z][a-z0-9+.-]*://[^/?#]*)$", RegexOption.IGNORE_CASE).matchEntire(u) ?: return u
+        return m.groupValues[1] + "/"
+    }
+
     /** [url] is on [host] (or its www. twin). */
     fun sameHost(host: String?, url: String?): Boolean = host != null && bare(host) == bare(hostOf(url))
 
