@@ -1,6 +1,6 @@
 // Magnet link for a torrent. Pure: no React.
 
-/** Torrent info-hash is the engine id. `dn=` is the name and every current tracker goes in as `tr=` (NATIVE_CONTRACT 21). */
+/** Torrent info-hash is the engine id. `dn=` is the name and every current tracker goes in as `tr=`. */
 export function buildMagnet(infoHash: string, name: string, trackers: readonly string[] = []): string {
   let out = `magnet:?xt=urn:btih:${infoHash}&dn=${encodeURIComponent(name)}`;
   const seen = new Set<string>();

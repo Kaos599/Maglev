@@ -1,5 +1,5 @@
 /**
- * Dismissed files for the browser's found list (docs/NATIVE_CONTRACT.md 24.6a). Remove and Clear only hide ids
+ * Dismissed files for the browser's found list. Remove and Clear only hide ids
  * on the screen. The view keeps its tracker, so a player that asks for the same file again does not bring it back.
  * Undo and "Scan again" empty the set. Every helper returns a new Set.
  */

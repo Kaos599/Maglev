@@ -71,7 +71,7 @@ type Tab = 'files' | 'peers' | 'trackers' | 'pieces';
 const EFFECT_HAPTIC = { success: 'done', warning: 'fail' } as const;
 
 /**
- * Runs a pure machine (SM-27, SM-28). The reducer holds the state for rendering. `send` steps the machine on a ref
+ * Runs a pure machine (remove files, tracker edit). The reducer holds the state for rendering. `send` steps the machine on a ref
  * so its effects can run at once, then hands them to `run`, which may call `send` again with an engine result.
  */
 function useMachine<S, E, F>(
@@ -109,7 +109,7 @@ interface Notice {
 
 export default function TorrentDetailScreen() {
   const { colors } = useTheme();
-  // NATIVE_CONTRACT 41: Compact or Detailed, from Settings > Appearance > Download page.
+  // Compact or Detailed, from Settings > Appearance > Download page.
   const compact = useSettings().settings.appearance.telemetryDensity === 'COMPACT';
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const router = useRouter();
@@ -130,7 +130,7 @@ export default function TorrentDetailScreen() {
   const [subtitleTarget, setSubtitleTarget] = useState<SubtitleTarget | null>(null);
   const [subtitleStart, setSubtitleStart] = useState<SheetStart>('results');
   const [subtitlesAll, setSubtitlesAll] = useState(false);
-  // 46.2: the single sheet was opened from an episode row, so closing it brings the list back.
+  // The single sheet was opened from an episode row, so closing it brings the list back.
   const [backToAll, setBackToAll] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [pending, setPending] = useState<Record<number, FilePriority>>({});
@@ -160,7 +160,7 @@ export default function TorrentDetailScreen() {
     if (noticeTimer.current) clearTimeout(noticeTimer.current);
   }, []);
 
-  // SM-27 Remove files. The machine decides; this runs its effects.
+  // Remove files. The machine decides; this runs its effects.
   const [removeState, sendRemove] = useMachine(removeFilesStep, REMOVE_FILES_INITIAL, (effects, send) => {
     for (const e of effects) {
       switch (e.type) {
@@ -197,7 +197,7 @@ export default function TorrentDetailScreen() {
     }
   });
 
-  // SM-28 Tracker edit. The machine decides; this runs its effects.
+  // Tracker edit. The machine decides; this runs its effects.
   const [trk, sendTrk] = useMachine(trackerEditStep, TRACKER_EDIT_INITIAL, (effects, send) => {
     for (const e of effects) {
       switch (e.type) {
@@ -239,7 +239,7 @@ export default function TorrentDetailScreen() {
     }
   });
 
-  // SM-32 Files changed outside Maglev. The machine decides; this runs its effects.
+  // Files changed outside Maglev. The machine decides; this runs its effects.
   const [fh, sendFh] = useMachine(fileHealthStep, FILE_HEALTH_INITIAL, (effects, send) => {
     for (const e of effects) {
       switch (e.type) {
@@ -327,7 +327,7 @@ export default function TorrentDetailScreen() {
     [detail, hiddenTrackers],
   );
 
-  // NATIVE_CONTRACT 43: the shared flow clock says how long no data has arrived, the same record the card reads.
+  // The shared flow clock says how long no data has arrived, the same record the card reads.
   const flow = useFlowClock(id ?? '', snap?.state === 'DOWNLOADING', snap?.downBps ?? 0);
   const peerTimeoutMins = useSettings().settings.bandwidth.peerTimeoutMins;
   const situation = snap
@@ -345,7 +345,7 @@ export default function TorrentDetailScreen() {
           lastDataAgoMs: flow.lastDataAgoMs,
           peerTimeoutMins,
         })
-      : // NATIVE_CONTRACT 45.1: no file list yet. The page only; the card keeps its "Looking for peers" line.
+      : // No file list yet. The page only; the card keeps its "Looking for peers" line.
         detail && snap?.state === 'INITIALIZING' && snap.resolvingSecs != null
         ? torrentResolvingWhy({ peersTotal: snap.peersSeen, trackers, resolvingSecs: snap.resolvingSecs })
         : null;
@@ -419,7 +419,7 @@ export default function TorrentDetailScreen() {
     [files, id, prioTarget, showNotice],
   );
 
-  // Asks before deleting. The SM-27 machine refuses when no included file would be left.
+  // Asks before deleting. The remove-files machine refuses when no included file would be left.
   const askRemove = useCallback(
     (indices: number[]) => {
       setPrioTarget(null);
@@ -556,7 +556,7 @@ export default function TorrentDetailScreen() {
     showNotice(res.ok ? { tone: 'info', text: notices.detail.checking } : { tone: 'danger', text: res.message });
   }, [id, showNotice]);
 
-  // Free up space opens the list of finished downloads, largest first (docs/contracts-0.19/play-and-storage.md section 3).
+  // Free up space opens the list of finished downloads, largest first.
   const handleFreeSpace = useCallback(async () => {
     router.push('/free-space');
   }, [router]);
@@ -677,7 +677,7 @@ export default function TorrentDetailScreen() {
           void handlePlayPause();
           return;
         case 'filesMissing':
-          // One file scan now. It sets the files_missing tag, and the SM-32 choices appear as a banner.
+          // One file scan now. It sets the files_missing tag, and the file-health choices appear as a banner.
           void handleScanFiles();
           return;
         case 'recheck':
@@ -700,7 +700,7 @@ export default function TorrentDetailScreen() {
       }
     : null;
   const ruleResume = snap?.state === 'PAUSED' && canResumeAnyway(snap.pausedBy, blockCtx);
-  // NATIVE_CONTRACT 47.4: a file health tag holds the torrent; the Recheck banner is the way out, not Resume.
+  // A file health tag holds the torrent; the Recheck banner is the way out, not Resume.
   const heldByFiles = snap?.state === 'PAUSED' && isHeldByFiles(snap);
   const headerActions = snap ? (
     <>
@@ -768,7 +768,7 @@ export default function TorrentDetailScreen() {
     subtitleAvail,
   );
 
-  // NATIVE_CONTRACT 44.14: the Subtitles row, under the progress card and the why block.
+  // The Subtitles row, under the progress card and the why block.
   const subtitleRow = torrentRowFacts(
     { finished: !!snap.finished || snap.state === 'COMPLETED' || snap.state === 'SEEDING', folder: snap.outputFolder },
     files,
@@ -792,7 +792,7 @@ export default function TorrentDetailScreen() {
     if (errorMap.secondary) errorButtons.push({ action: errorMap.secondary, label: labels[errorMap.secondary], variant: 'secondary' });
   }
 
-  // SM-32 has its own machine; SM-33 and SM-37 banners come from the health tag. A health banner replaces the error one.
+  // File health has its own machine; the storage-gone and looking-for-metadata banners come from the health tag. A health banner replaces the error one.
   const healthBanner: HealthBanner | null = fileHealthBanner(fh) ?? healthBannerFor(snap.health);
   const healthBusy = fh.kind === 'working' || fh.kind === 'picking';
   const busyButton = fh.action === 'stop' ? 'stop' : fh.action === 'again' ? 'again' : fh.action === 'folder' ? 'folder' : fh.action === 'recheck' ? 'recheck' : null;
@@ -809,7 +809,7 @@ export default function TorrentDetailScreen() {
   const tone =
     snap.state === 'ERROR' ? 'error' : snap.state === 'PAUSED' ? 'paused' : snap.state === 'SEEDING' || snap.state === 'COMPLETED' ? 'seed' : 'download';
 
-  // SM-17: every included file is complete, so Open / Share / Open folder show.
+  // Every included file is complete, so Open / Share / Open folder show.
   const includedFiles = files.filter((f) => f.included && f.length > 0);
   const allDone = !moving && includedFiles.length > 0 && includedFiles.every((f) => f.progressBytes >= f.length);
 
@@ -864,7 +864,7 @@ export default function TorrentDetailScreen() {
         </View>
       ) : null}
 
-      {/* NATIVE_CONTRACT 41.1: in Compact the one speed and time line sits inside the card under the bar. */}
+      {/* In Compact the one speed and time line sits inside the card under the bar. */}
       <ProgressCard
         badge={<StateBadge state={snap.state} pausedBy={snap.pausedBy} moveProgress={snap.moveProgress} resumesAt={resumesAt} resolving={resolving} blocks={blockCtx} />}
         percent={formatProgressPercent(frac)}
@@ -883,7 +883,7 @@ export default function TorrentDetailScreen() {
         ) : null}
       </ProgressCard>
 
-      {/* NATIVE_CONTRACT 43.4: only while connecting or waiting, in Compact and Detailed; gone once data flows. */}
+      {/* Only while connecting or waiting, in Compact and Detailed; gone once data flows. */}
       {whyModel ? <WhyStuck model={whyModel} onAskTrackers={() => void handleReannounce()} retryInSecs={retryInSecs} /> : null}
 
       {subtitleRow.show ? (
@@ -899,7 +899,7 @@ export default function TorrentDetailScreen() {
           }}
           onSeeAll={() => setSubtitlesAll(true)}
           onAskPack={() => {
-            // 44.15 D7: a pack page row with no request asks for the whole pack.
+            // A pack page row with no request asks for the whole pack.
             const videos = pickMainFile(files).videos.length;
             askSubtitles([buildAsk({ infoHash: id, name: snap.name, sizeBytes: snap.totalBytes, videoCount: videos })], { auto: false });
           }}
@@ -933,7 +933,7 @@ export default function TorrentDetailScreen() {
         </View>
       )}
 
-      {/* NATIVE_CONTRACT 41.2: Detailed is today's page, the six boxes and the Timing row. 41.1: Compact shows neither. */}
+      {/* Detailed shows the six boxes and the Timing row. Compact shows neither. */}
       {!compact ? (
         <View style={styles.block}>
           <TorrentStats
@@ -1267,7 +1267,7 @@ export default function TorrentDetailScreen() {
         onConfirm={() => setSubtitlesAll(false)}
         onClose={() => setSubtitlesAll(false)}
         onOpenEpisode={(_askKey, fileKey, start) => {
-          // 46.2: the same path the Files tab's Find subtitles takes: this page's SubtitleSheet for that file.
+          // The same path the Files tab's Find subtitles takes: this page's SubtitleSheet for that file.
           const f = files.find((x) => x.path === fileKey);
           const target = f ? torrentTarget(id, snap.outputFolder, f, downloadedFiles) : null;
           if (!target) return;

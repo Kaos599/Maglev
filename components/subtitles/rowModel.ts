@@ -1,5 +1,5 @@
 /**
- * The Subtitles row on the download page (docs/NATIVE_CONTRACT.md 44.14) as pure logic: facts in, one line and one
+ * The Subtitles row on the download page as pure logic: facts in, one line and one
  * button out. No React, so Node tests run it. `SubtitlesRow.tsx` only draws the result.
  */
 import { pickMainFile } from '../../utils/mainFile.ts';
@@ -52,19 +52,19 @@ export interface RowInput {
   stored?: CardIconModel | null;
   /** Language of a saved subtitle or of the one already there. */
   language?: string | null;
-  /** The video has some bytes on disk (42.1). */
+  /** The video has some bytes on disk. */
   started: boolean;
   /** One video's sheet can open (a target exists). */
   canOpenSheet: boolean;
-  /** 44.15 D7: a pack with no request can be asked for as a whole ("Get subtitles"). */
+  /** A pack with no request can be asked for as a whole ("Get subtitles"). */
   canAskPack?: boolean;
-  /** 44.15 D10: the privacy notice has not been accepted, so a request waits. */
+  /** The privacy notice has not been accepted, so a request waits. */
   needsOk?: boolean;
-  /** 45.5: how many sources are off and could have answered. Shown only with "No match yet". */
+  /** How many sources are off and could have answered. Shown only with "No match yet". */
   offSources?: number;
-  /** 46.5: a pack's needs-pick runs whose best stored candidate qualifies (46.3's `k`). */
+  /** A pack's needs-pick runs whose best stored candidate qualifies. */
   bestK?: number;
-  /** 46.3: a bulk save is running for this pack: how many have ended, of how many. */
+  /** A bulk save is running for this pack: how many have ended, of how many. */
   bulk?: { done: number; total: number } | null;
 }
 
@@ -75,11 +75,11 @@ export interface RowModel {
   /** The line is muted (nothing to do yet). */
   muted: boolean;
   button: { label: string; action: RowAction } | null;
-  /** Same shapes as the card icon (44.8). */
+  /** Same shapes as the card icon. */
   glyph: RowGlyph;
   start: SheetStart;
   a11y: string;
-  /** A second text button: "More sources" (45.5), or "See all" next to "Use best match" (46.5). */
+  /** A second text button: "More sources", or "See all" next to "Use best match". */
   extra?: { label: string; action: 'more-sources' | 'see-all' };
 }
 
@@ -118,7 +118,7 @@ const make = (line: string, muted: boolean, button: RowModel['button'], glyph: R
   a11y: rowLabel(line, button?.label ?? null),
 });
 
-/** 44.14 table: the phase to the line and the button. */
+/** The phase to the line and the button. */
 export function rowModel(i: RowInput): RowModel {
   let phase = i.phase;
   let fromRequest = phase !== undefined;
@@ -130,12 +130,12 @@ export function rowModel(i: RowInput): RowModel {
 
   if (!phase) {
     if (!i.started) return make(ROW_NOT_STARTED, true, null, 'none');
-    // 44.15 D7: a pack has no single video to open, so its button asks for the whole pack.
+    // A pack has no single video to open, so its button asks for the whole pack.
     if (i.canAskPack) return make(ROW_NOT_ASKED, false, { label: ROW_BUTTONS.getSubtitles, action: 'ask-pack' }, 'none');
     return make(ROW_NOT_ASKED, false, sheet(ROW_BUTTONS.find, 'find'), 'none');
   }
 
-  // 44.15 D10: a request found without the one-time OK is held until the user reviews the notice.
+  // A request found without the one-time OK is held until the user reviews the notice.
   if (fromRequest && i.needsOk && phase !== 'skipped' && phase !== 'saved' && phase !== 'has-already') {
     return make(ROW_NEEDS_OK, false, { label: ROW_BUTTONS.review, action: 'review' }, 'none');
   }
@@ -144,7 +144,7 @@ export function rowModel(i: RowInput): RowModel {
   if (i.pack && phase !== 'skipped') {
     const line = rowPackLine(i.pack);
     if (i.bulk) return make(line, false, { label: bulkProgress(bulkIndex(i.bulk.done, i.bulk.total), i.bulk.total), action: 'busy' }, GLYPH[phase]);
-    // 46.5: "Use best match" when a run qualifies; every other pack keeps "See all". The list stays one tap away.
+    // "Use best match" when a run qualifies; every other pack keeps "See all". The list stays one tap away.
     if (pageRowAction(i.bestK ?? 0) === 'use-best') {
       return { ...make(line, false, { label: USE_BEST_MATCH, action: 'use-best' }, GLYPH[phase]), extra: { label: ROW_BUTTONS.seeAll, action: 'see-all' } };
     }
@@ -185,9 +185,9 @@ export function rowModel(i: RowInput): RowModel {
 // ---------------------------------------------------------------- when the row shows, and what it can open
 
 export interface RowFacts {
-  /** Null: no row (44.14 "Where it shows"). */
+  /** Null: no row. */
   show: boolean;
-  /** 44.15 D7: a pack (two or more videos): no single target, but the whole pack can be asked for. */
+  /** A pack (two or more videos): no single target, but the whole pack can be asked for. */
   canAskPack?: boolean;
   started: boolean;
   canOpenSheet: boolean;

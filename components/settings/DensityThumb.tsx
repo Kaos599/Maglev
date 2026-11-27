@@ -5,7 +5,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors } from '../../constants/theme';
 
 /**
- * NATIVE_CONTRACT 41.3: the small pixel drawing of a layout, 44x32 dp on a 2 dp grid, plain Views (no images).
+ * The small pixel drawing of a layout, 44x32 dp on a 2 dp grid, plain Views (no images).
  * A card (surface fill, 2 dp strong outline, outer radius 3; every pixel inside is square) with a muted title bar and a
  * light percent bar on the top line, a progress track with a download-coloured fill, then:
  * Compact: one short cyan bar and one muted bar (the speed line). Detailed: a row of three small outlined boxes.

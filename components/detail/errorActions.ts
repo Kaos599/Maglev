@@ -1,4 +1,4 @@
-// Error → action mapping for the torrent detail error banner (STATE_MACHINES_AND_SCREENS SM-36).
+// Error → action mapping for the torrent detail error banner.
 // Pure TS: no React import. Unknown codes fall back to the INTERNAL row.
 
 export type ErrorAction = 'freeSpace' | 'move' | 'pickFolder' | 'filesMissing' | 'retry' | 'recheck' | 'none';

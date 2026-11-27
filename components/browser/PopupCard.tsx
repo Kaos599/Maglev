@@ -35,7 +35,7 @@ export interface PopupCardProps {
   onOpen?: () => void;
 }
 
-/** T5: one card per tab. Scrim and Back dismiss (block once, remember nothing). */
+/** One card per tab. Scrim and Back dismiss (block once, remember nothing). */
 export function PopupCard({ prompt, onBlock, onAllowOnce, onAlwaysAllow, onDismiss, onOpen }: PopupCardProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);

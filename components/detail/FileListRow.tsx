@@ -18,7 +18,7 @@ interface Props {
   hasActions: boolean;
   /** The torrent is paused: unfinished files show the paused colour and label. */
   paused?: boolean;
-  /** SM-32: the file was deleted outside Maglev. */
+  /** The file was deleted outside Maglev. */
   missing?: boolean;
   onPress: (file: DetailFile) => void;
   onLongPress: (file: DetailFile) => void;

@@ -20,7 +20,7 @@ export interface ResultCardProps {
 const LABELS = { 'best-fit': 'Best fit', smaller: 'Smaller', 'best-quality': 'Best quality' } as const;
 const FIT_TEXT = { fits: 'Fits', tight: 'Tight', too_big: 'Too big' } as const;
 
-/** One shortlisted result. Every value is app-computed (docs/ASSISTANT_DESIGN.md section 9). */
+/** One shortlisted result. Every value is app-computed. */
 export const ResultCard = memo(function ResultCard({ view, canChoose, onChooseFiles, onAskAbout, onChip }: ResultCardProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);

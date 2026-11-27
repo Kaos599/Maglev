@@ -158,7 +158,7 @@ export default function TransfersScreen() {
     const q = query.trim().toLowerCase();
     return downloads.filter((d) => downloadMatchesFilter(d, filter) && (!q || d.name.toLowerCase().includes(q)));
   }, [downloads, filter, query]);
-  // NATIVE_CONTRACT 40.4: the card buttons run the same handlers as the download page. "Paste new link" opens the page (40.1).
+  // The card buttons run the same handlers as the download page. "Paste new link" opens the page.
   const onDownloadAction = useCallback((d: DownloadSnapshot, action: DownloadAction) => downloadActions.run(d, action), [downloadActions]);
   const selectionMode = selectedIds.size > 0;
   const finished = useMemo(() => finishedTransfers(all, downloads), [all, downloads]);
@@ -183,7 +183,7 @@ export default function TransfersScreen() {
   );
   const nothingHere = all.length === 0 && downloads.length === 0;
 
-  // Why transfers are held (NATIVE_CONTRACT 35): one list for the banner and every card's line.
+  // Why transfers are held: one list for the banner and every card's line.
   const activeBlocks = useActiveBlocks();
   const queueLimit = queueLimitOf(settings.bandwidth.maxActiveDownloads);
   const blockCtx = useMemo(() => ({ blocks: activeBlocks, queueLimit }), [activeBlocks, queueLimit]);
@@ -194,7 +194,7 @@ export default function TransfersScreen() {
   // moment, so the numbers agree with each other (and the text changes every 30 s, not every tick).
   // Read again when the unfinished set changes. Unknown free space shows nothing.
   const [lowSpace, setLowSpace] = useState<LowSpaceWarning | null>(null);
-  // Link downloads count too (SM-35): see pendingNeedOf for which states and sizes.
+  // Link downloads count too: see pendingNeedOf for which states and sizes.
   const allRef = useRef(all);
   allRef.current = all;
   const downloadsRef = useRef(downloads);
@@ -291,7 +291,7 @@ export default function TransfersScreen() {
   const onDownloadPress = useCallback(
     (id: string) => {
       if (selectionMode) toggleSelected(selectionKey('d', id));
-      // NATIVE_CONTRACT 40.1: a tap on a link-download card opens its page.
+      // A tap on a link-download card opens its page.
       else router.push({ pathname: '/download/[id]', params: { id } });
     },
     [selectionMode, toggleSelected, router],
@@ -321,7 +321,7 @@ export default function TransfersScreen() {
     },
     [router, showNotice],
   );
-  // Play on a card (0.19): the file list is fetched, the largest video or audio file is picked, then it opens or streams.
+  // Play on a card: the file list is fetched, the largest video or audio file is picked, then it opens or streams.
   const playListRef = useRef(all);
   playListRef.current = all;
   const onPlay = useCallback(
@@ -342,7 +342,7 @@ export default function TransfersScreen() {
   const onSwipeRemoveDownload = useCallback((id: string) => removeTransfers([], [id]), [removeTransfers]);
   const swipeEnabled = settings.appearance.swipeActions;
   const showFileIcons = settings.appearance.showFileIcons;
-  // SM-37: clear the no_peers tag so the torrent looks for peers again.
+  // Clear the no_peers tag so the torrent looks for peers again.
   const onKeepTrying = useCallback(
     (id: string) => {
       void maglevEngine.setHealth(id, '').then((res) => {
@@ -632,7 +632,7 @@ export default function TransfersScreen() {
           disabled={false}
           onPause={() => void bulk('Paused', pauseTorrent, pauseDownload)}
           onResume={() =>
-            // NATIVE_CONTRACT 47.4: a torrent held by a file health tag needs Recheck, so Resume skips it.
+            // A torrent held by a file health tag needs Recheck, so Resume skips it.
             void bulk('Resumed', resumeTorrent, resumeDownload, (id) => {
               const t = all.find((x) => x.id === id);
               return !!t && isHeldByFiles(t);

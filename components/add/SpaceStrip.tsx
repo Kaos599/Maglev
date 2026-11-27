@@ -14,7 +14,7 @@ interface Props {
   tooBig: boolean;
 }
 
-/** Space strip under the file count (UI_SPEC S9.2): selected bytes against free space on the target. */
+/** Space strip under the file count: selected bytes against free space on the target. */
 export function SpaceStrip({ selectedBytes, totalBytes, free, tooBig }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);

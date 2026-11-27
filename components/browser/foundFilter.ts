@@ -1,5 +1,5 @@
 /**
- * Pure logic for the found-files tray (docs/NATIVE_CONTRACT.md section 24.3): merge, count, filter, sort.
+ * Pure logic for the found-files tray: merge, count, filter, sort.
  * Items arrive in the order they were found, so a higher index is newer.
  */
 import type { FoundItem, FoundKind } from '../../modules/maglev-engine/src/MaglevBrowser';
@@ -133,7 +133,7 @@ function hlsParts(url: string): { origin: string; dir: string; path: string } | 
 }
 
 /**
- * Hides HLS media playlists that sit next to their master (section 24.8). The probe gives no variant addresses,
+ * Hides HLS media playlists that sit next to their master. The probe gives no variant addresses,
  * so this is address-based: an HLS playlist is hidden only when an EARLIER HLS playlist from the same page and
  * origin lives in the same folder or above it (a player asks for the master first, then the variants).
  * A lone HLS item is never hidden, the first one found always stays, and a playlist at the server root

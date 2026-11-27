@@ -31,7 +31,7 @@ export interface DownloadCardProps {
   onRemove?: (id: string) => void;
   /** The "Swipe to pause or remove" setting. Off: the card has no swipe wrapper at all. */
   swipeEnabled?: boolean;
-  /** Subtitle icon (36.10), top right: only after the user asked for subtitles on this item. */
+  /** Subtitle icon, top right: only after the user asked for subtitles on this item. */
   subtitle?: CardIconModel | null;
   /** Taps the subtitle icon: opens the subtitle sheet. */
   onSubtitles?: (id: string) => void;

@@ -25,7 +25,7 @@ interface Props {
 }
 
 /**
- * Option-card sheet for file priority (UI_SPEC S11.2). "Download first" reorders downloading; it
+ * Option-card sheet for file priority. "Download first" reorders downloading; it
  * does not change bandwidth, so the copy never says "faster".
  */
 export function PrioritySheet({ visible, onClose, title, subtitle, current, onSelect, error, skipBytes, freeBytes, onRemove }: Props) {
