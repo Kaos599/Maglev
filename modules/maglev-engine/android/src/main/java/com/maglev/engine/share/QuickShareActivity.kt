@@ -150,19 +150,30 @@ class QuickShareActivity : Activity() {
 
     /** MainActivity with the original intent, or with [uri] when given. Then this card goes away. */
     private fun openMaglev(uri: Uri?) {
-        val main = packageManager.getLaunchIntentForPackage(packageName)?.component
-        if (main == null) { finish(); return }
+        val launcher = packageManager.getLaunchIntentForPackage(packageName)
+        val main = launcher?.component
+        if (launcher == null || main == null) { finish(); return }
         val link = if (::cls.isInitialized) cls.source else null
         val isLocalUri = link != null && (link.startsWith("content://", true) || link.startsWith("file://", true))
-        val i = when {
-            uri != null -> Intent(Intent.ACTION_VIEW, uri)
+        val handOver: String? = when {
+            uri != null -> uri.toString()
             // MainActivity does not read PROCESS_TEXT: hand it the link that was found in the selection.
-            original.action == Intent.ACTION_PROCESS_TEXT && link != null -> Intent(Intent.ACTION_VIEW, Uri.parse(link))
+            original.action == Intent.ACTION_PROCESS_TEXT && link != null -> link
             // Hand over the extracted link directly (e.g. from SpannableString, clipData, EXTRA_SUBJECT, LINK_EXTRAS,
             // or EXTRA_TEXT alongside a preview image EXTRA_STREAM) so MainActivity does not re-parse and lose it.
-            // Keep Intent(original) for content:// and file:// URIs so stream/clipData URI grants stay intact.
-            link != null && !isLocalUri -> Intent(Intent.ACTION_VIEW, Uri.parse(link))
-            else -> Intent(original)
+            link != null && !isLocalUri -> link
+            // A local file (content://, file://) keeps the original intent so stream/clipData URI grants stay intact.
+            // Known gap: that intent is the task's start intent, so it can replay after the process dies; the grant has
+            // usually expired by then and the screen shows its normal error.
+            else -> null
+        }
+        val i = if (handOver != null) {
+            // The link waits in the one-shot store and the app starts with no data, so a later start from the launcher
+            // icon is never mistaken for this share. JS takes the link when it starts or comes back to the front.
+            ShareHandoff.put(applicationContext, handOver)
+            Intent(launcher)
+        } else {
+            Intent(original)
         }
         i.component = main
         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)

@@ -1,0 +1,29 @@
+import { useEffect } from 'react';
+import { AppState } from 'react-native';
+import { useRouter, type Href } from 'expo-router';
+import { redirectSystemPath } from '../app/+native-intent';
+import { appPath } from '../utils/browserUrl';
+import { takeSharedLink } from '../utils/shareHandoff';
+
+/**
+ * Opens a link the share card left while the app was already running. At start the same link is read by the start-up
+ * routing (app/+native-intent.tsx), so this only catches a link that arrives later: it looks on mount and every time
+ * the app comes back to the front. Renders nothing.
+ */
+export function ShareHandoff() {
+  const router = useRouter();
+  useEffect(() => {
+    const open = () => {
+      const link = takeSharedLink();
+      if (!link) return;
+      // The same routing a shared link always had, so every kind of link lands on the same screen as before.
+      router.navigate(appPath(redirectSystemPath({ path: link, initial: false })) as Href);
+    };
+    open();
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next === 'active') open();
+    });
+    return () => sub.remove();
+  }, [router]);
+  return null;
+}

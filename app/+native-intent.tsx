@@ -5,6 +5,7 @@
  * returns `string | Promise<string | null> | null`; a falsy value means no redirect).
  */
 
+import { takeStartLink } from '../utils/shareHandoff';
 import { parsePackedShare, setShareQueue } from '../utils/shareQueue';
 import { appPath, browserIntentRoute } from '../utils/browserUrl';
 import { visibleTabs } from '../components/tabs/tabPrefs';
@@ -23,8 +24,14 @@ function isTorrentLocation(url: string): boolean {
   return /\.torrent$/i.test(pathPart);
 }
 
-export function redirectSystemPath({ path }: { path: string; initial: boolean }): string {
+export function redirectSystemPath({ path, initial }: { path: string; initial: boolean }): string {
   try {
+    // A link the share card left for the app wins over whatever the start intent says: the card starts the app with
+    // no data, and the link is routed here exactly as if it had come in as the intent.
+    if (initial) {
+      const shared = takeStartLink();
+      if (shared) return redirectSystemPath({ path: shared, initial: false });
+    }
     const raw = (path ?? '').trim();
     // maglev://browser?url= opens that page in a new tab, through the link-tap refusals.
     const browser = browserIntentRoute(raw);

@@ -17,3 +17,17 @@ export function openQuickShare(url: string): boolean {
     return false;
   }
 }
+
+/**
+ * The link the share card left for the app, once, or null (nothing waiting, older than ten minutes, web, mock or any
+ * error). The card hands a link over this way instead of as the start intent, so a later start from the launcher icon
+ * never brings an old share back.
+ */
+export function takePendingShare(): string | null {
+  try {
+    const link = Native?.takePendingShare?.();
+    return typeof link === 'string' && link.length > 0 ? link : null;
+  } catch {
+    return null;
+  }
+}

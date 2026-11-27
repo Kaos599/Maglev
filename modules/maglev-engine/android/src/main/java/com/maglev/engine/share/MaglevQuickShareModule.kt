@@ -12,6 +12,11 @@ class MaglevQuickShareModule : Module() {
     override fun definition() = ModuleDefinition {
         Name("MaglevQuickShare")
 
+        // The link the share card left for the app, once (see ShareHandoff). Null when none is waiting.
+        Function("takePendingShare") {
+            appContext.reactContext?.let { ShareHandoff.take(it) }
+        }
+
         Function("open") { url: String ->
             val activity = appContext.currentActivity
             val context = activity ?: appContext.reactContext
