@@ -10,7 +10,7 @@ import java.nio.ByteBuffer
 
 /**
  * Joins the video part and the audio part of a saved HLS or DASH stream into one mp4, without re-encoding
- * (docs/NATIVE_CONTRACT.md section 24.8). The parts are MPEG-TS or fragmented MP4 files that Rust wrote by
+ *. The parts are MPEG-TS or fragmented MP4 files that Rust wrote by
  * concatenating segments; `MediaExtractor` reads both. Blocking: call it on an IO thread.
  *
  * Output goes to `<output>.mux.tmp` first and is renamed when the muxer has stopped cleanly. The temp file is

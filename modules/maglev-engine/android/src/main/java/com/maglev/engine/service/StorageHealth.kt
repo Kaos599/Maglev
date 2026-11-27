@@ -33,7 +33,7 @@ data class HealthTorrent(
 }
 
 /**
- * Pure SM-33 decisions (contract 18.5). No android.* imports.
+ * Pure decisions about storage-related pauses and recovery. No android.* imports.
  * A user pause wins: a torrent with pausedBy "user" is never counted as paused by this machine.
  */
 object StorageHealth {
@@ -80,13 +80,13 @@ object StorageHealth {
     fun removedTitle(n: Int) = "SD card removed · ${plural(n)}"
 }
 
-/** Pure SM-36 background error notice (contract 18.5, last bullet). */
+/** Background notice for a torrent that fails while the app is closed. */
 object ErrorNotice {
     /** Fires once on the edge into ERROR, never for a torrent first seen already in ERROR, never with the app in front. */
     fun shouldNotify(prevState: String?, state: String?, seenBefore: Boolean, appInFront: Boolean): Boolean =
         !appInFront && seenBefore && state == "ERROR" && prevState != "ERROR"
 
-    /** Plain-English message per SM-36. */
+    /** Plain-English message for an error code. */
     fun message(code: String?): String = when (code) {
         "DISK_FULL" -> "Storage full."
         "PERMISSION" -> "Maglev can't write to this folder."

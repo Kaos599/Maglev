@@ -1,4 +1,4 @@
-//! Pure queue, seed-limit and governance planner (contract section 4).
+//! Pure queue, seed-limit and governance planner.
 //!
 //! Input: facts about each torrent, the limits, and the set of active governance blocks.
 //! Output: the actions the engine must apply. Nothing here touches a session, so it is
@@ -6,22 +6,21 @@
 //!
 //! Vocabulary for `paused_by`: `"user"`, `"seed_limit"`, or any other string, which is treated
 //! as a governance tag (`"wifi_only"`, `"battery"`, `"charging_only"`). The health tags
-//! (`"files_missing"`, `"files_changed"`, `"storage_full"`, `"storage_unavailable"`, `"no_peers"`,
-//! contract section 18.2) are governance tags too, set by a torrent's own `health` field.
+//! (`"files_missing"`, `"files_changed"`, `"storage_full"`, `"storage_unavailable"`, `"no_peers"`) are governance tags too, set by a torrent's own `health` field.
 
 use serde::{Deserialize, Serialize};
 
 pub const PAUSED_BY_USER: &str = "user";
 pub const PAUSED_BY_SEED_LIMIT: &str = "seed_limit";
 
-/// Rule tags a single torrent or download can be exempted from ("Resume anyway", contract section 25).
+/// Rule tags a single torrent or download can be exempted from ("Resume anyway").
 /// Safety and physical tags (storage, VPN, offline, unvalidated) are never in this list.
 pub const EXEMPTABLE_TAGS: [&str; 5] = ["wifi_only", "battery", "charging_only", "schedule", "seed_metered"];
 
 /// Pause tag for seeding on a metered link. It applies to finished torrents only.
 pub const TAG_SEED_METERED: &str = "seed_metered";
 
-/// Governance tag for the low-storage reserve (contract 0.19 play-and-storage section 2). Same string as
+/// Governance tag for the low-storage reserve . Same string as
 /// `HEALTH_STORAGE_FULL`, so a paused transfer shows the one "Storage full" state either way.
 pub const TAG_STORAGE_FULL: &str = HEALTH_STORAGE_FULL;
 
@@ -46,7 +45,7 @@ pub fn is_governance_tag(tag: &str) -> bool {
     tag != PAUSED_BY_USER && tag != PAUSED_BY_SEED_LIMIT
 }
 
-/// Health tags (contract section 18.2 and 20).
+/// Health tags.
 pub const HEALTH_FILES_MISSING: &str = "files_missing";
 pub const HEALTH_FILES_CHANGED: &str = "files_changed";
 pub const HEALTH_STORAGE_FULL: &str = "storage_full";
@@ -64,7 +63,7 @@ pub fn is_health_tag(tag: &str) -> bool {
     HEALTH_TAGS.contains(&tag)
 }
 
-/// Default for "Stop waiting for peers after" (section 20.1), in seconds.
+/// Default for "Stop waiting for peers after", in seconds.
 pub const DEFAULT_PEER_TIMEOUT_SECS: u32 = 10 * 60;
 
 /// The window as milliseconds, or `None` when the user chose Never (`0`).
@@ -89,7 +88,7 @@ pub fn resolving_secs(resolving_since_ms: i64, now_ms: i64) -> i64 {
     now_ms.saturating_sub(resolving_since_ms).max(0) / 1000
 }
 
-/// The clock a magnet resumes with after the engine starts again (section 20). A lookup still inside
+/// The clock a magnet resumes with after the engine starts again. A lookup still inside
 /// its window keeps its start time, so restarts do not push `no_peers` back for ever. A clock that is
 /// already older than the window belongs to a process that was not running, so the lookup gets a
 /// fresh window.
@@ -133,7 +132,7 @@ pub fn finished_is_real(finished: bool, total_bytes: u64, included_bytes: u64) -
     finished && (total_bytes > 0 || included_bytes == 0)
 }
 
-/// What the tick knows about one torrent that has its metadata (section 20.1).
+/// What the tick knows about one torrent that has its metadata.
 #[derive(Debug, Clone, Copy)]
 pub struct StallInputs<'a> {
     /// librqbit says it is live: not checking, not paused, not in error.
@@ -198,7 +197,7 @@ pub enum TorrentState {
     Checking,
     Error,
     Completed,
-    /// Files are being moved to another folder (contract section 11.3). Set by the engine, never derived
+    /// Files are being moved to another folder. Set by the engine, never derived
     /// from librqbit state. The planner never sees a moving torrent.
     Moving,
 }
@@ -291,10 +290,10 @@ pub struct TorrentFacts {
     pub seeding_secs: i64,
     /// The user resumed this torrent after it hit a seed limit; do not pause it for limits again.
     pub limits_waived: bool,
-    /// A health tag (section 18.2). While set the torrent is not a candidate and is kept paused with
+    /// A health tag. While set the torrent is not a candidate and is kept paused with
     /// that tag, unless the user or a seed limit paused it first.
     pub health: Option<String>,
-    /// "Resume anyway" (section 25): the exemptable rule tags do not pause this torrent.
+    /// "Resume anyway": the exemptable rule tags do not pause this torrent.
     pub exempt: bool,
 }
 
@@ -1001,7 +1000,7 @@ mod tests {
 
     #[test]
     fn a_stalled_torrent_with_no_peers_tag_is_paused_by_the_planner() {
-        // Same planner rule as a magnet that gave up (18.2): the slot is freed.
+        // Same planner rule as a magnet that gave up: the slot is freed.
         let mut t = f("a", 1);
         t.health = Some("no_peers".into());
         let acts = plan(&[t], &cfg(), &[]);

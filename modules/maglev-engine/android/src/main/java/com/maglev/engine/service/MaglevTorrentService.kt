@@ -30,13 +30,13 @@ class MaglevTorrentService : Service() {
         const val ACTION_PAUSE_ALL = "com.maglev.engine.action.PAUSE_ALL"
         const val ACTION_RESUME_ALL = "com.maglev.engine.action.RESUME_ALL"
         const val ACTION_SHUTDOWN = "com.maglev.engine.action.SHUTDOWN"
-        /** Alarm or notification tap: the schedule allows transfers again (contract 11.5). */
+        /** Alarm or notification tap: the schedule allows transfers again. */
         const val ACTION_SCHEDULE_RESUME = "com.maglev.engine.action.SCHEDULE_RESUME"
-        /** Worker or notification tap: add queued feed matches (contract 11.6). */
+        /** Worker or notification tap: add queued feed matches. */
         const val ACTION_DRAIN_FEED_ADDS = "com.maglev.engine.action.DRAIN_FEED_ADDS"
-        /** Boot, package update or app-open check: start the engine headless (contract 19). */
+        /** Boot, package update or app-open check: start the engine headless. */
         const val ACTION_RESTART = "com.maglev.engine.action.RESTART"
-        /** Hourly worker or network change: clear no_peers tags (contract 20). */
+        /** Hourly worker or network change: clear no_peers tags. */
         const val ACTION_RESOLVE_RETRY = "com.maglev.engine.action.RESOLVE_RETRY"
 
         /**
@@ -163,7 +163,7 @@ class MaglevTorrentService : Service() {
         }
     }
 
-    /** Android 15 dataSync timeout. Must stop within seconds. Contract-compatible: pause via governance, tell the user. */
+    /** Android 15 dataSync timeout. Must stop within seconds. Pause via governance, tell the user. */
     override fun onTimeout(startId: Int, fgsType: Int) {
         Log.w(TAG, "foreground service timeout, type=$fgsType")
         EngineHost.onFgsTimeout()
@@ -211,7 +211,7 @@ class MaglevTorrentService : Service() {
         lastFastUpAt = 0L
     }
 
-    /** The app was swiped away while the service runs: empty the browser history if the user asked for that (contract 24.9). */
+    /** The app was swiped away while the service runs: empty the browser history if the user asked for that. */
     override fun onTaskRemoved(rootIntent: Intent?) {
         HistoryWipe.wipeIfArmed(applicationContext)
         super.onTaskRemoved(rootIntent)

@@ -1,4 +1,4 @@
-//! Download timing (contract section 34.1): how long an item really downloaded, when it finished and how many
+//! Download timing: how long an item really downloaded, when it finished and how many
 //! bytes moved over an unmetered or a metered link. Pure: no clock, no IO. Torrents (`meta.rs`) and link downloads
 //! (`http_dl/driver.rs`) both keep one `Timing` and feed it from their own one-second pass.
 

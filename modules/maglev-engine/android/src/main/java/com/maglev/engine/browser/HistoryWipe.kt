@@ -5,7 +5,7 @@ import android.database.sqlite.SQLiteDatabase
 import java.io.File
 
 /**
- * "Clear history when I close Maglev" (docs/NATIVE_CONTRACT.md section 24.9).
+ * "Clear history when I close Maglev".
  * JS owns the history table (expo-sqlite, `<filesDir>/SQLite/maglev-history.db`); native only keeps the flag and, when the app
  * closes, empties the table. JS also empties it on the next cold start, which covers a kill that has no callback.
  */
@@ -22,7 +22,7 @@ object HistoryWipe {
     fun isArmed(context: Context): Boolean =
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY, false)
 
-    /** How many times `wipeIfArmed` actually emptied the database. JS uses it to drop its in-memory tabs (section 30). */
+    /** How many times `wipeIfArmed` actually emptied the database. JS uses it to drop its in-memory tabs. */
     fun wipeCount(context: Context): Int =
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getInt(COUNT_KEY, 0)
 
@@ -40,7 +40,7 @@ object HistoryWipe {
             val db = SQLiteDatabase.openDatabase(file.path, null, SQLiteDatabase.OPEN_READWRITE)
             try {
                 db.execSQL("DELETE FROM pages")
-                // 24.10: tabs are not restored after a wipe. An older database has no tabs table, so each statement has its own try.
+                // Tabs are not restored after a wipe. An older database has no tabs table, so each statement has its own try.
                 try {
                     db.execSQL("DELETE FROM tabs")
                 } catch (_: Throwable) {

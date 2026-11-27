@@ -2,7 +2,7 @@ import type { GovernanceConfig, NativeConfig, NativeEncryption, PausedBy } from 
 import { SPEED_PRESET_MAP, type KotlinOnlySettings, type MaglevSettings } from './MaglevSettings.types.ts';
 
 /**
- * Pure mapping from persisted UI settings to the Rust `NativeConfig` (docs/NATIVE_CONTRACT.md section 3).
+ * Pure mapping from persisted UI settings to the Rust `NativeConfig`.
  * Keys are snake_case because the object is serialized as-is and deserialized by serde.
  */
 
@@ -80,7 +80,7 @@ export function toGovernance(settings: MaglevSettings): GovernanceConfig & Kotli
   };
 }
 
-/** Governance reason tags that appear in `Snapshot.pausedBy` (contract section 3). */
+/** Governance reason tags that appear in `Snapshot.pausedBy`. */
 export const GOVERNANCE_REASONS: Record<'wifiOnly' | 'chargingOnly' | 'batteryCutoff' | 'vpnOnly' | 'seedOnMobileData', PausedBy> = {
   seedOnMobileData: 'seed_metered',
   vpnOnly: 'vpn_required',
@@ -91,7 +91,7 @@ export const GOVERNANCE_REASONS: Record<'wifiOnly' | 'chargingOnly' | 'batteryCu
 
 /**
  * Human labels for fields that only take effect after an engine restart
- * (port, dht, upnp, proxy per contract section 2 `nativeApplyConfig`).
+ * (port, dht, upnp, proxy in `nativeApplyConfig`).
  */
 export function restartReasons(prev: NativeConfig, next: NativeConfig): string[] {
   const reasons: string[] = [];

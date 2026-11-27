@@ -14,7 +14,7 @@ export type SeedingRatioLimit = 0 | 1.0 | 1.5 | 2.0 | 3.0; // 0 = unlimited
 export type SeedingDurationLimit = 0 | 3600 | 21600 | 86400; // 0 = unlimited, 1h, 6h, 24h
 export type AutoRetryMode = 'off' | 'after';
 export type AutoRetryDelayMin = 1 | 5 | 15 | 60;
-/** "Stop waiting for peers after", minutes. 0 = never (NATIVE_CONTRACT 20.1). */
+/** "Stop waiting for peers after", minutes. 0 = never. */
 export type PeerTimeoutMins = 0 | 10 | 30 | 60 | 360;
 export const PEER_TIMEOUT_OPTIONS: readonly PeerTimeoutMins[] = [10, 30, 60, 360, 0];
 export const DEFAULT_PEER_TIMEOUT_MINS: PeerTimeoutMins = 10;
@@ -34,9 +34,9 @@ export interface ProxyConfig {
 
 export interface NetworkSettings {
   wifiOnly: boolean;
-  /** NATIVE_CONTRACT 21: pause while the active network is not a VPN. */
+  /** Pause while the active network is not a VPN. */
   vpnOnly: boolean;
-  /** NATIVE_CONTRACT 25.2: keep seeding on mobile data. Default false: seeding waits for Wi-Fi. */
+  /** Keep seeding on mobile data. Default false: seeding waits for Wi-Fi. */
   seedOnMobileData: boolean;
   ssidWhitelistEnabled: boolean;
   allowedSsids: string[];
@@ -80,7 +80,7 @@ export interface PowerSettings {
   downloadOnlyWhileCharging: boolean;
   batteryCutoffThreshold: BatteryCutoffThreshold;
   autoExitOnComplete: boolean;
-  /** SM-34: continue downloads after the phone restarts or Maglev updates. Read headless in Kotlin. */
+  /** Continue downloads after the phone restarts or Maglev updates. Read headless in Kotlin. */
   resumeAfterRestart: boolean;
   isCharging: boolean;
   batteryPercentage: number;
@@ -94,7 +94,7 @@ export interface StorageSettings {
   autoMoveCompleted: boolean;
   autoMoveDestinationPath: string;
   preAllocateDisk: boolean;
-  /** Quick share (contracts-0.19/quick-share.md): add a shared magnet, .torrent or file link at once, with no card. Read in Kotlin. */
+  /** Quick share: add a shared magnet, .torrent or file link at once, with no card. Read in Kotlin. */
   addWithoutAsking: boolean;
   /** Write a `.nomedia` in the download folder and skip the media scan, so Photos and video apps do not list Maglev's files. Read in Kotlin. */
   hideFromGallery: boolean;
@@ -117,7 +117,7 @@ export interface AppearanceSettings {
 
 export type SubtitleHearingPref = 'both' | 'prefer' | 'avoid';
 
-/** Subtitles (docs/NATIVE_CONTRACT.md section 36.2). UI only: never reaches toNativeConfig or Kotlin. */
+/** Subtitles. UI only: never reaches toNativeConfig or Kotlin. */
 export interface SubtitleSettings {
   /** Master switch. Off hides every entry point and makes no request. */
   enabled: boolean;
@@ -128,7 +128,7 @@ export interface SubtitleSettings {
   sourceEnabled: Record<string, boolean>;
   /** True after the user accepted the one-time notice before the first lookup. */
   privacyAck: boolean;
-  /** NATIVE_CONTRACT 44.6. Get subtitles for new videos once they start. Default off. */
+  /** Get subtitles for new videos once they start. Default off. */
   autoNewVideos: boolean;
 }
 
@@ -153,7 +153,7 @@ export interface MaglevSettings {
   bandwidth: BandwidthSettings;
   network: NetworkSettings;
   power: PowerSettings;
-  /** UI only (section 36.2). */
+  /** UI only. */
   subtitles: SubtitleSettings;
 }
 

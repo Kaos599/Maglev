@@ -3,7 +3,7 @@ package com.maglev.engine
 import com.maglev.engine.storage.StreamMuxer
 import java.io.File
 
-/** One stream download that waits for its video and audio parts to be joined (contract 24.8). */
+/** One stream download that waits for its video and audio parts to be joined. */
 internal data class MuxJob(val id: String, val folder: String, val name: String) {
     val video: File get() = File(folder, "$name.video.part")
     val audio: File get() = File(folder, "$name.audio.part")

@@ -8,7 +8,7 @@ import android.os.Build
 import com.maglev.engine.EngineHost
 
 /**
- * Receives the PackageInstaller session status (docs/NATIVE_CONTRACT.md section 27.5).
+ * Receives the PackageInstaller session status.
  * The PendingIntent that points here is FLAG_MUTABLE because the system adds EXTRA_STATUS to it (API 31+).
  */
 class UpdateInstallReceiver : BroadcastReceiver() {
@@ -49,7 +49,7 @@ class UpdateInstallReceiver : BroadcastReceiver() {
         }
     }
 
-    /** The notification's Install action (section 30). Falls back to the plain "ready" notice, which opens About. */
+    /** The notification's Install action. Falls back to the plain "ready" notice, which opens About. */
     private fun startInstall(app: Context, intent: Intent) {
         val path = intent.getStringExtra(EXTRA_PATH)
         val sha = intent.getStringExtra(EXTRA_SHA)

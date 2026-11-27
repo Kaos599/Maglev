@@ -1,4 +1,4 @@
-//! The IO half of URL downloads (`NATIVE_CONTRACT.md` section 17): reqwest requests, the part file, the sidecar,
+//! The IO half of URL downloads: reqwest requests, the part file, the sidecar,
 //! the persisted download list and the governance pass. Every decision comes from `machine::step` and `rules`.
 //!
 //! One download is one tokio task (`transfer`) on the engine's runtime. A task only reads and writes through
@@ -74,9 +74,9 @@ const STALLED_COPY: &str = "The server stopped sending data. Try again later.";
 const LOCAL_REDIRECT_COPY: &str = "A redirect tried to send Maglev to a device on your network, so it stopped.";
 const LAN_ADDRESS_COPY: &str = "This address points to a device on your network.";
 
-/// HLS and DASH downloads (contract section 24.8): probe, transfer, join and refresh live in this child module.
+/// HLS and DASH downloads: probe, transfer, join and refresh live in this child module.
 mod stream_run;
-/// Several connections for one link download (contract section 17, Segments).
+/// Several connections for one link download.
 mod segments;
 
 use segments::{Parts, PartsEnd, PartsShared};
@@ -124,7 +124,7 @@ pub struct ExpectedHash {
     pub hex: String,
 }
 
-/// `options` of `nativeAddDownload` / `nativeProbeUrl` / `nativeRefreshDownloadUrl` (contract section 17).
+/// `options` of `nativeAddDownload` / `nativeProbeUrl` / `nativeRefreshDownloadUrl`.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct DownloadOptions {
@@ -139,7 +139,7 @@ pub struct DownloadOptions {
     pub allow_lan: bool,
     /// The page the link was found on (in-app browser). Kept as `page_url` on the record (contract "Auto-refresh").
     pub page_url: Option<String>,
-    /// Save an HLS or DASH stream (contract 24.8): which variant and audio track.
+    /// Save an HLS or DASH stream: which variant and audio track.
     pub stream: Option<StreamSpec>,
     /// Save a video and an audio file from a video site and join them. Not with `stream`.
     pub parts: Option<PartsSpec>,
@@ -210,7 +210,7 @@ pub struct DlRecord {
     /// The link itself carried a user name and password. Only then is a 403 a sign-in problem (`AUTH_REQUIRED`);
     /// cookies from the in-app browser never set this. Not a secret.
     pub link_login: bool,
-    /// The user allowed the typed host to be on the local network (contract 17.w). Not a secret.
+    /// The user allowed the typed host to be on the local network. Not a secret.
     pub allow_lan: bool,
     /// The addresses of that host when it was allowed; its lookups may only return these.
     pub lan_pinned: Vec<String>,
@@ -218,14 +218,14 @@ pub struct DlRecord {
     /// whole; on disk a secret-looking query is cut off (`persisted`). Records from before this field load as None.
     #[serde(default)]
     pub page_url: Option<String>,
-    /// Set for an HLS or DASH download (contract 24.8): ids and counts, nothing secret.
+    /// Set for an HLS or DASH download: ids and counts, nothing secret.
     pub stream: Option<StreamRec>,
     /// All bytes of a stream with separate video and audio parts are in, and the join has not finished yet.
     pub mux_needed: bool,
-    /// "Resume anyway" (contract section 25): the exemptable rule tags do not pause this download.
+    /// "Resume anyway": the exemptable rule tags do not pause this download.
     /// Cleared when it finishes or the user pauses it. Saved, so it survives a restart.
     pub allowed_anyway: bool,
-    /// Active time, finish time, bytes by network (contract section 34.1). Records from before 0.26 load with zeros.
+    /// Active time, finish time, bytes by network. Records from before 0.26 load with zeros.
     pub timing: Timing,
 }
 
@@ -289,7 +289,7 @@ struct Live {
     stalled: bool,
     /// The positions of a download that runs over several connections right now.
     parts: Option<Arc<PartsShared>>,
-    /// The last `held` the timing pass saw (section 34.1); bytes between two readings are what was downloaded.
+    /// The last `held` the timing pass saw; bytes between two readings are what was downloaded.
     acct: Option<u64>,
 }
 
@@ -307,10 +307,10 @@ struct StoreFile {
 
 // ---- pure helpers ---------------------------------------------------------------------------------------------
 
-/// How often a running download's timing is written to disk. A crash or kill loses at most this much (section 34.1).
+/// How often a running download's timing is written to disk. A crash or kill loses at most this much.
 const TIMING_SAVE_EVERY: Duration = Duration::from_secs(30);
 
-/// One second of timing for one download (section 34.1): time and bytes count only while it is `Downloading`.
+/// One second of timing for one download: time and bytes count only while it is `Downloading`.
 /// Returns whether it was downloading, so the caller knows the record changed.
 fn account_one(rec: &mut DlRecord, live: &mut Live, elapsed: Duration, metered: bool) -> bool {
     let downloading = rec.state == State::Downloading;
@@ -330,7 +330,7 @@ fn account_leave(rec: &mut DlRecord, live: &mut Live, before: State, metered: bo
 }
 
 /// After a state change: the baseline follows `held` so bytes already on disk at a resume are never counted, and
-/// the finish is stamped once (section 34.1).
+/// the finish is stamped once.
 fn account_settle(rec: &mut DlRecord, live: &mut Live, now: i64) {
     live.acct = Some(rec.held);
     rec.timing.observe_finished(rec.state == State::Finished, now);
@@ -369,7 +369,7 @@ fn split_credentials(mut u: reqwest::Url) -> (reqwest::Url, Option<(String, Stri
 fn parse_http_url(raw: &str) -> Result<(reqwest::Url, Option<(String, String)>), EngineError> {
     let parsed = reqwest::Url::parse(raw.trim());
     let url_ok = matches!(&parsed, Ok(u) if (u.scheme() == "http" || u.scheme() == "https") && u.host_str().is_some());
-    // The machine owns the rule: only http and https start a download (SM-30 row 2).
+    // The machine owns the rule: only http and https start a download.
     let (_, effects) = step(State::None, Event::Add { url_ok });
     if effects.contains(&Effect::RejectInvalidSource) {
         return Err(EngineError::new(
@@ -398,7 +398,7 @@ fn blocks_network(tags: &[String]) -> bool {
     tags.iter().any(|t| t != OFFLINE_TAG && reason_for_tag(t) == PauseReason::Network)
 }
 
-/// The tags that pause one download: an exempt one ignores the exemptable rule tags (section 25).
+/// The tags that pause one download: an exempt one ignores the exemptable rule tags.
 fn effective_blocked(allowed_anyway: bool, blocked: &[String]) -> Vec<String> {
     blocked
         .iter()
@@ -407,7 +407,7 @@ fn effective_blocked(allowed_anyway: bool, blocked: &[String]) -> Vec<String> {
         .collect()
 }
 
-/// Tags that only concern torrents (`seed_metered`, section 25) never pause a link download.
+/// Tags that only concern torrents (`seed_metered`) never pause a link download.
 fn download_tags(blocked: &[String]) -> Vec<String> {
     blocked
         .iter()
@@ -416,7 +416,7 @@ fn download_tags(blocked: &[String]) -> Vec<String> {
         .collect()
 }
 
-/// How user-actionable a blocking tag is; the lowest rank wins when several apply (contract 17.z).
+/// How user-actionable a blocking tag is; the lowest rank wins when several apply.
 fn tag_rank(tag: &str) -> u8 {
     match tag {
         "storage_unavailable" => 0,
@@ -590,7 +590,7 @@ fn clean_page_url(raw: Option<&str>) -> Option<String> {
     (matches!(u.scheme(), "http" | "https") && u.host_str().is_some()).then(|| t.to_string())
 }
 
-/// What is written to disk of a page URL (contract item 6, the same rule as the link): a query with a secret-looking
+/// What is written to disk of a page URL (the same rule as for the link): a query with a secret-looking
 /// key is cut off, so are a user name and password, and a URL that is then empty is not saved.
 fn persisted_page_url(url: &str) -> Option<String> {
     let login = reqwest::Url::parse(url)
@@ -673,7 +673,7 @@ fn corrupt_backup_name(now: i64) -> String {
 
 // ---- resolving names ----------------------------------------------------------------------------------------------
 
-/// reqwest's resolver, with every answer checked against the download's own `LanScope` (contract 17.w). Runs for the
+/// reqwest's resolver, with every answer checked against the download's own `LanScope`. Runs for the
 /// first request and for every redirect hop, so a public name that answers a private address is refused (DNS
 /// rebinding).
 struct GuardedResolver {
@@ -1055,7 +1055,7 @@ fn read_headers(h: &HeaderMap) -> Headers {
 }
 
 pub(super) fn build_client(proxy: Option<&str>, scope: LanScope) -> Result<Client, String> {
-    // Contract section 17: redirects are followed by `redirect::send_following` (a cookie per hop's own host, at most
+    // Redirects are followed by `redirect::send_following` (a cookie per hop's own host, at most
     // 10 hops, https to http refused). This policy never follows: it refuses a hop onto the local network (unless the
     // link the user typed was already there; the scope was chosen from the typed host and also knows an allowed
     // host) and otherwise returns the 3xx answer as it is.
@@ -1106,7 +1106,7 @@ enum ProbeFail {
     Status(u16),
     Html,
     LocalRedirect,
-    /// The playlist can't be saved (contract 24.8).
+    /// The playlist can't be saved.
     Stream(StreamError),
 }
 
@@ -1144,7 +1144,7 @@ pub struct Downloads {
     max_active: AtomicU32,
     /// Held while a download takes a slot, so the cap can't be passed by two starts at once.
     start_lock: Mutex<()>,
-    /// The active network is metered, as the engine last said (section 34.1). Splits bytes only.
+    /// The active network is metered, as the engine last said. Splits bytes only.
     metered: AtomicBool,
     /// When the list was last written; the timing pass writes again once this is older than `TIMING_SAVE_EVERY`.
     last_save: Mutex<Instant>,
@@ -1193,7 +1193,7 @@ impl Downloads {
         self.session_dir.join(STORE_FILE)
     }
 
-    /// Loads the list entry by entry. Every download that was working goes back in the queue (SM-30 `Restore`).
+    /// Loads the list entry by entry. Every download that was working goes back in the queue.
     /// A download that needs a login that was never saved waits for a new link. When anything is unreadable the
     /// original file is kept as `maglev-downloads.corrupt-<time>.json` before the list is rewritten.
     fn restore(&self) {
@@ -1354,7 +1354,7 @@ impl Downloads {
         self.client_for(&url, allow, &pinned)
     }
 
-    /// Resolves the typed host once and keeps its addresses with the download (contract 17.w). Later lookups of that
+    /// Resolves the typed host once and keeps its addresses with the download. Later lookups of that
     /// host may only return these. Nothing to do when it is already pinned.
     async fn pin_lan_host(&self, id: &str) -> Result<(), EngineError> {
         let (url, allow, pinned) = self
@@ -1690,7 +1690,7 @@ impl Downloads {
         Ok(())
     }
 
-    /// "Resume anyway" (section 25): exempt the download from the rule tags, then resume it.
+    /// "Resume anyway": exempt the download from the rule tags, then resume it.
     pub fn resume_anyway(self: &Arc<Self>, id: &str) -> Result<(), EngineError> {
         self.state_of(id).ok_or_else(EngineError::not_found)?;
         self.update(id, |r, _| r.allowed_anyway = true);
@@ -1715,7 +1715,7 @@ impl Downloads {
         let State::Error(e) = s else {
             return Err(EngineError::new(ErrorCode::InvalidState, "Only a failed download can be retried"));
         };
-        // A failed join runs the join again; nothing is fetched (contract 24.8).
+        // A failed join runs the join again; nothing is fetched.
         if e == DlError::MuxFailed {
             self.dispatch(id, Event::RetryMux);
             return Ok(());
@@ -1725,7 +1725,7 @@ impl Downloads {
             self.update(id, |rec, live| {
                 delete_partial(rec);
                 rec.held = 0;
-                // A different file: the time, finish and bytes counted so far belong to the old one (section 34.1).
+                // A different file: the time, finish and bytes counted so far belong to the old one.
                 if changed {
                     rec.timing.reset();
                     live.acct = Some(0);
@@ -1842,12 +1842,12 @@ impl Downloads {
         }
     }
 
-    /// The engine's network word (section 34.1): metered or not. Only splits bytes; never pauses anything.
+    /// The engine's network word: metered or not. Only splits bytes; never pauses anything.
     pub fn set_metered(&self, metered: bool) {
         self.metered.store(metered, Ordering::Relaxed);
     }
 
-    /// The default network changed from one live network to another (contract section 17.x). A socket opened on the
+    /// The default network changed from one live network to another. A socket opened on the
     /// old network is dead, but nothing tells the transfer until a read timeout. Every working or probing download
     /// (streams included) gets its task aborted and started again at once: the transfer resumes from the written
     /// position (sidecar, Range) on the new network. No state change, no `paused_by`, no attempt counted.
@@ -1876,7 +1876,7 @@ impl Downloads {
         }
     }
 
-    /// The one-second timing pass, called from the engine's governance tick (section 34.1). `elapsed` is the wall time
+    /// The one-second timing pass, called from the engine's governance tick. `elapsed` is the wall time
     /// since the previous pass. Time and bytes count only for a download in `Downloading`; the list is written at
     /// most every `TIMING_SAVE_EVERY` while something downloads, so a kill loses no more than that.
     pub fn account(&self, elapsed: Duration, metered: bool) {
@@ -2267,7 +2267,7 @@ impl Downloads {
         let (folder, typed_host) = self
             .update(&id, |r, _| (PathBuf::from(&r.folder), host_of(&r.url)))
             .unwrap_or_default();
-        // One stall window for the whole transfer, across reconnects (contract 17.w).
+        // One stall window for the whole transfer, across reconnects.
         let mut clock = StallClock::new(Instant::now());
         loop {
             if self.state_of(&id) != Some(State::Downloading) {
@@ -2421,7 +2421,7 @@ impl Downloads {
 
     /// One failed attempt: ask the machine, wait the backoff, and say whether to go on.
     async fn transient(self: &Arc<Self>, id: &str, retry_after: Option<Duration>) -> bool {
-        // Nothing moves until the next request answers: no speed on the card (contract 17.v).
+        // Nothing moves until the next request answers: no speed on the card.
         self.update(id, |_, l| l.bps = 0);
         // While the phone is offline a failed request is expected: wait, and do not use up the retries.
         // The governance pass pauses the download with the reason `offline` and stops this task.
@@ -2596,10 +2596,10 @@ impl Downloads {
         let mut side = Sidecar::new(&url, &name, total, validator);
         let side_path = sidecar_path(&folder, &name);
         let mut last_space = Instant::now();
-        // The stall rule (contract 17.y, 17.w): the client's read timeout alone lets a server that sends one byte
+        // The stall rule: the client's read timeout alone lets a server that sends one byte
         // every 40 s hold a slot forever, so the clock is read here too. `clock` lives across reconnects.
         loop {
-            // SPEED_QUIET, not STALL_TICK: a body that goes quiet must stop showing its last speed (contract 17.v).
+            // SPEED_QUIET, not STALL_TICK: a body that goes quiet must stop showing its last speed.
             let chunk = match tokio::time::timeout(SPEED_QUIET, resp.chunk()).await {
                 Ok(Ok(Some(c))) => {
                     clock.on_bytes(Instant::now(), c.len() as u64);
@@ -3026,7 +3026,7 @@ fn finish_files(rec: &mut DlRecord) -> Result<(), String> {
     Ok(())
 }
 
-/// The video and audio parts and the temporary join output of a stream download (contract 24.8).
+/// The video and audio parts and the temporary join output of a stream download.
 fn remove_stream_parts(folder: &Path, name: &str) {
     for suffix in [".video.part", ".audio.part", ".mux.tmp"] {
         let _ = std::fs::remove_file(folder.join(format!("{name}{suffix}")));

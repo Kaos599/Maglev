@@ -1,4 +1,4 @@
-//! JSON shapes from `docs/NATIVE_CONTRACT.md` section 3.
+//! The JSON shapes the engine returns to Kotlin (snapshots, summaries, trackers).
 
 use serde::{Deserialize, Serialize};
 
@@ -37,7 +37,7 @@ pub struct Snapshot {
     pub finished: bool,
     pub progress_bytes: u64,
     pub total_bytes: u64,
-    /// Downloaded bytes of every file, skipped ones too: what deleting the files frees (section 18.4).
+    /// Downloaded bytes of every file, skipped ones too: what deleting the files frees.
     pub held_bytes: u64,
     pub uploaded_bytes: u64,
     pub down_bps: u64,
@@ -57,21 +57,21 @@ pub struct Snapshot {
     pub up_limit_bps: u64,
     /// 0 to 1 by bytes while the state is `MOVING`, otherwise null.
     pub move_progress: Option<f64>,
-    /// Health tag (contract section 18.2), or null.
+    /// Health tag, or null.
     pub health: Option<String>,
     /// Sum of the lengths of the included, non-padding files. 0 until the metadata is known.
     pub included_bytes: u64,
-    /// File name (last path part) of the largest included, non-padding file (section 38), so the list can
+    /// File name (last path part) of the largest included, non-padding file, so the list can
     /// show the file's kind. Null until the metadata is known.
     pub main_file: Option<String>,
-    /// Seconds a magnet has been looking for its metadata, or null once it has it (section 20).
+    /// Seconds a magnet has been looking for its metadata, or null once it has it.
     pub resolving_secs: Option<i64>,
-    /// Seconds a torrent with metadata has waited with no peer and no byte (section 20.1), or null.
+    /// Seconds a torrent with metadata has waited with no peer and no byte, or null.
     pub stalled_secs: Option<i64>,
-    /// "Resume anyway" (contract section 25): the rule pauses (Wi-Fi only, battery, charging, schedule,
+    /// "Resume anyway": the rule pauses (Wi-Fi only, battery, charging, schedule,
     /// seeding on mobile data) do not apply to this torrent.
     pub allowed_anyway: bool,
-    /// Seconds spent downloading, not counting pauses, queue, checking or seeding (section 34.1). 0 for items from before 0.26.
+    /// Seconds spent downloading, not counting pauses, queue, checking or seeding. 0 for items from before 0.26.
     pub active_secs: i64,
     /// Unix seconds when every wanted piece was first in. 0 until then, and 0 for items that were done before 0.26.
     pub finished_at: i64,
@@ -90,7 +90,7 @@ pub struct FileDetail {
     pub length: u64,
     pub progress_bytes: u64,
     /// Size on disk of a skipped file, 0 when it is not there (and always 0 for an included file). A
-    /// skipped file can still hold preallocated or partial data, which Remove deletes (section 14).
+    /// skipped file can still hold preallocated or partial data, which Remove deletes.
     pub on_disk_bytes: u64,
     pub included: bool,
     /// `first`, `normal` or `skip`. `included` is true for the first two.

@@ -1,7 +1,7 @@
 // Expo config plugin: accept Android share (ACTION_SEND / ACTION_SEND_MULTIPLE) of magnet text and .torrent files.
 // Expo only forwards `intent.data` to JS, and a share carries its payload in extras. So MainActivity
 // rewrites a share intent into a VIEW intent in place (before React reads it); app/+native-intent.tsx
-// then handles it like any other VIEW. The share, magnet and .torrent intent filters are declared in app.json for MainActivity, then moved to the quick share card by applyQuickShareManifest below (docs/contracts-0.19/quick-share.md). Several sources are packed as maglev://share?u=...&u=...
+// then handles it like any other VIEW. The share, magnet and .torrent intent filters are declared in app.json for MainActivity, then moved to the quick share card by applyQuickShareManifest below. Several sources are packed as maglev://share?u=...&u=...
 // Android docs: https://developer.android.com/training/sharing/receive
 const PACKAGE = 'com.maglev';
 const MARKER = 'MaglevShareIntent.rewrite';
@@ -16,7 +16,7 @@ import android.os.Build
 object MaglevShareIntent {
     private val MAGNET = Regex("magnet:\\\\?[^\\\\s\\"'<>]+", RegexOption.IGNORE_CASE)
     private val TORRENT_URL = Regex("https?://[^\\\\s\\"'<>]+\\\\.torrent(?:\\\\?[^\\\\s\\"'<>]*)?", RegexOption.IGNORE_CASE)
-    /** Any other web link in shared text starts a download from a link (NATIVE_CONTRACT 17). Magnets and .torrent links win. */
+    /** Any other web link in shared text starts a download from a link. Magnets and .torrent links win. */
     private val WEB_URL = Regex("https?://[^\\\\s\\"'<>]+", RegexOption.IGNORE_CASE)
 
     @JvmStatic
@@ -73,7 +73,7 @@ function applyMainActivity(src) {
   return out;
 }
 
-// --- Quick share (docs/contracts-0.19/quick-share.md) ---
+// --- Quick share ---
 const QUICK_ACTIVITY = 'com.maglev.engine.share.QuickShareActivity';
 const A = 'android.intent.action.';
 const C = 'android.intent.category.';
@@ -94,7 +94,7 @@ const WEB_MIME_TYPES = [
 ];
 
 /**
- * Download manager pickers (issue #89; contract quick-share section 8.1). Kiwi and its forks fill "External download
+ * Download manager pickers (issue #89). Kiwi and its forks fill "External download
  * manager" with the apps that answer VIEW http://test.com/file.rar with NO type, then send each download to the chosen
  * activity by name. A typed filter never matches that probe, so this one matches by path instead: any host, a path
  * that ends in a file extension. A page link (/news/article) still matches nothing. Same list as ShareClassify.kt

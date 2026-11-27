@@ -9,7 +9,7 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
 
-/** runPendingMuxes: which downloads get a join (MuxTracker) and what a join does (MuxRunner). Contract 24.8. */
+/** runPendingMuxes: which downloads get a join (MuxTracker) and what a join does (MuxRunner). */
 class MuxJobsTest {
     @get:Rule val tmp = TemporaryFolder()
 

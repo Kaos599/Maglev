@@ -26,7 +26,7 @@ const READ_TIMEOUT: Duration = Duration::from_secs(120);
 const WRITE_TIMEOUT: Duration = Duration::from_secs(60);
 const CHUNK: usize = 64 * 1024;
 
-/// How long after the last served byte a stream still counts as active (contract section 21).
+/// How long after the last served byte a stream still counts as active.
 pub const STREAM_ACTIVE_WINDOW_MS: u64 = 60_000;
 
 /// Wall clock time of the last chunk written to a player, in ms since the epoch. 0 means never.

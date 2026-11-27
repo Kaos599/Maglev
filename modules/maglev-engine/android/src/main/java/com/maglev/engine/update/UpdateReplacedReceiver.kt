@@ -5,7 +5,7 @@ import android.content.Context
 import android.content.Intent
 
 /**
- * MY_PACKAGE_REPLACED after a self-update (docs/NATIVE_CONTRACT.md section 27.5): posts "Maglev was updated to {version}"
+ * MY_PACKAGE_REPLACED after a self-update: posts "Maglev was updated to {version}"
  * only when Maglev itself started the install, and clears the downloaded file. BootReceiver handles the transfer restart.
  */
 class UpdateReplacedReceiver : BroadcastReceiver() {

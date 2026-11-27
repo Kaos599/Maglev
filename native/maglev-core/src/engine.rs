@@ -72,13 +72,13 @@ type Handle20 = Arc<ManagedTorrent>;
 
 const OP_TIMEOUT: Duration = Duration::from_secs(20);
 const DELETE_TIMEOUT: Duration = Duration::from_secs(90);
-/// How long Recheck waits for librqbit to check every piece before it hands the torrent back (section 47.2).
+/// How long Recheck waits for librqbit to check every piece before it hands the torrent back.
 /// Shorter than `DELETE_TIMEOUT`, so a slow check on a big torrent never turns Recheck into an error.
 const RECHECK_SETTLE: Duration = Duration::from_secs(45);
 const SOFT_SAVE_INTERVAL: Duration = Duration::from_secs(30);
 /// Meta entries with no torrent behind them are dropped after this long.
 const ORPHAN_GRACE_SECS: i64 = 180;
-/// The file health scan runs every this many one-second passes (section 18.3).
+/// The file health scan runs every this many one-second passes.
 const FILE_SCAN_EVERY_PASSES: u64 = 30;
 
 /// Clears the "a scan is running" flag when the scan ends, however it ends.
@@ -90,12 +90,12 @@ impl Drop for ScanReset<'_> {
     }
 }
 
-/// Contract section 41 (B5): held until Kotlin has run its first governance pass after `nativeInit`, so no restored
+/// Held until Kotlin has run its first governance pass after `nativeInit`, so no restored
 /// torrent or link download runs before the rules (VPN, Wi-Fi only, battery, schedule) have been judged. Kotlin
 /// releases it with `nativeSetTransfersAllowed(true, "startup")`. It is in memory only: every new engine adds it.
 pub const STARTUP_HOLD: &str = "startup";
 
-/// Contract section 41 (B5): the next session is built without DHT, the listening socket, local discovery and
+/// The next session is built without DHT, the listening socket, local discovery and
 /// trackers. librqbit cannot stop those on a live session, so Kotlin sets this and cycles the session (shutdown, then
 /// `nativeInit`) when the VPN rule starts or stops blocking. Process-wide because `nativeInit` has no spare argument.
 static NETWORK_OFF: AtomicBool = AtomicBool::new(false);
@@ -135,7 +135,7 @@ fn now_ms() -> i64 {
         .unwrap_or(0)
 }
 
-/// Sum of the lengths of the included, non-padding files (contract section 18.4).
+/// Sum of the lengths of the included, non-padding files.
 fn included_bytes(h: &Handle20) -> u64 {
     let only: Option<HashSet<usize>> = h.only_files().map(|o| o.into_iter().collect());
     h.with_metadata(|md| {
@@ -151,7 +151,7 @@ fn included_bytes(h: &Handle20) -> u64 {
     .unwrap_or(0)
 }
 
-/// The largest included, non-padding file's name, last path part only (contract section 38).
+/// The largest included, non-padding file's name, last path part only.
 fn main_file(h: &Handle20) -> Option<String> {
     let only: Option<HashSet<usize>> = h.only_files().map(|o| o.into_iter().collect());
     h.with_metadata(|md| {
@@ -328,7 +328,7 @@ fn is_running(rq: RqState) -> bool {
     )
 }
 
-/// True when the saved config says "Stop waiting for peers after: Never" (section 20.1).
+/// True when the saved config says "Stop waiting for peers after: Never".
 fn peer_timeout_is_never(cfg: &NativeConfig) -> bool {
     cfg.peer_timeout_secs == 0
 }
@@ -416,7 +416,7 @@ pub struct ApplyConfigResult {
 pub struct EffectiveConfig {
     #[serde(flatten)]
     pub config: NativeConfig,
-    /// The saved config differs from the running session in a restart-required field (contract section 41, B4).
+    /// The saved config differs from the running session in a restart-required field.
     pub restart_pending: bool,
     pub blocklist: BlocklistStatus,
 }
@@ -460,22 +460,22 @@ pub struct MaglevEngine {
     reannounce_limiter: Mutex<ReannounceLimiter>,
     /// Per-torrent speed limits, persisted in `maglev-limits.json`.
     limits: Mutex<LimitsStore>,
-    /// Trackers the user added or removed, persisted in `maglev-trackers.json` (section 15).
+    /// Trackers the user added or removed, persisted in `maglev-trackers.json`.
     trackers: Mutex<TrackerStore>,
     /// Torrents whose files are being moved right now (state `MOVING`).
     moves: Mutex<HashMap<String, Arc<MoveEntry>>>,
-    /// Magnet resolves in progress: peers seen on the DHT and the cancel signal (section 12.1).
+    /// Magnet resolves in progress: peers seen on the DHT and the cancel signal.
     resolves: Arc<ResolveRegistry>,
-    /// File size and time snapshots taken when a torrent finishes, `maglev-filehealth.json` (section 18.3).
+    /// File size and time snapshots taken when a torrent finishes, `maglev-filehealth.json`.
     filehealth: Mutex<HealthStore>,
     /// True while a file health scan runs, so scans never overlap.
     scanning: AtomicBool,
-    /// Downloads from http(s) links (section 17), persisted in `maglev-downloads.json`.
+    /// Downloads from http(s) links, persisted in `maglev-downloads.json`.
     downloads: Arc<Downloads>,
-    /// The active network is metered (mobile data), as Kotlin last said. False when unknown (section 34.1).
+    /// The active network is metered (mobile data), as Kotlin last said. False when unknown.
     network_metered: AtomicBool,
     /// Last progress reading per torrent, to count downloaded bytes between passes. Not persisted: bytes already on
-    /// disk at a restart are never counted (section 34.1).
+    /// disk at a restart are never counted.
     progress_seen: Mutex<HashMap<String, Option<u64>>>,
 }
 
@@ -540,7 +540,7 @@ fn join_warnings(existing: Option<String>, new: String) -> String {
 }
 
 fn build_options(cfg: &NativeConfig, session_dir: &Path, network_off: bool) -> SessionOptions {
-    // Network off (section 41, B5): no DHT, no listening socket, no UPnP, no local discovery, no trackers. The
+    // Network off: no DHT, no listening socket, no UPnP, no local discovery, no trackers. The
     // torrents are all held by the VPN rule; the session only exists so the list, settings and files keep working.
     let dht = if cfg.enable_dht && !network_off {
         Some(DhtSessionConfig {
@@ -646,7 +646,7 @@ impl MaglevEngine {
             }
         };
         meta.data.config = Some(cfg.clone());
-        // Section 41 (B5): nothing runs until Kotlin's first governance pass has released this hold.
+        // Nothing runs until Kotlin's first governance pass has released this hold.
         let mut blocked = meta.data.blocked.clone();
         if !blocked.iter().any(|r| r == STARTUP_HOLD) {
             blocked.push(STARTUP_HOLD.to_string());
@@ -822,7 +822,7 @@ impl MaglevEngine {
         let error = if let Some(e) = &m.last_error {
             Some(e.clone())
         } else if rq == RqState::Error && m.health.as_deref() != Some(HEALTH_STORAGE_FULL) {
-            // A full disk is a health state (section 18.2), not an error.
+            // A full disk is a health state, not an error.
             let (code, message) = classify_runtime_error(stats.error.as_deref().unwrap_or(""));
             Some(ErrorInfo { code, message })
         } else {
@@ -895,7 +895,7 @@ impl MaglevEngine {
             name: h.name().unwrap_or_else(|| "Unnamed torrent".to_string()),
             state,
             paused_by: m.paused_by.clone(),
-            // The finished edge never fires while files are missing (section 18.3).
+            // The finished edge never fires while files are missing.
             finished: finished && m.health.as_deref() != Some(HEALTH_FILES_MISSING),
             progress_bytes,
             total_bytes,
@@ -1223,7 +1223,7 @@ impl MaglevEngine {
                     progress: 0.0,
                 });
             }
-            // Web seeds (section 16) are not librqbit peers: one row per configured web seed.
+            // Web seeds are not librqbit peers: one row per configured web seed.
             for w in h.web_seeds() {
                 let key = format!("{prefix}ws|{}", w.url);
                 let fetched = w.downloaded_bytes;
@@ -1549,7 +1549,7 @@ impl MaglevEngine {
         let now = now_secs();
 
         let initial_meta = |pending: Option<PendingAdd>| TorrentMeta {
-            // A magnet starts its metadata lookup now (section 20).
+            // A magnet starts its metadata lookup now.
             resolving_since_ms: pending.as_ref().map(|_| now_ms()),
             added_at: now,
             paused_by: if opts.paused {
@@ -1752,7 +1752,7 @@ impl MaglevEngine {
                 .update(&id, |m| {
                     m.paused_by = Some(PAUSED_BY_USER.to_string());
                     m.queued = false;
-                    // A pause by the user ends "Resume anyway" (section 25).
+                    // A pause by the user ends "Resume anyway".
                     m.allowed_anyway = false;
                     m.allowed_anyway_seeding = false;
                 })
@@ -1772,7 +1772,7 @@ impl MaglevEngine {
         self.resume_with(id, false)
     }
 
-    /// "Resume anyway" (section 25): resume, and exempt the torrent from the rule tags until it finishes,
+    /// "Resume anyway": resume, and exempt the torrent from the rule tags until it finishes,
     /// is removed or the user pauses it.
     pub fn resume_anyway(&self, id: &str) -> Result<(), EngineError> {
         self.resume_with(id, true)
@@ -1781,7 +1781,7 @@ impl MaglevEngine {
     fn resume_with(&self, id: &str, allow: bool) -> Result<(), EngineError> {
         let (id, hash) = Self::parse_id(id)?;
         self.reject_if_moving(&id)?;
-        // A health tag keeps a torrent stopped (section 18.2). Resume does not override it, except a
+        // A health tag keeps a torrent stopped. Resume does not override it, except a
         // full disk: the user freed space, and a new write error puts the tag back.
         let health = self.meta.lock().get(&id).and_then(|m| m.health.clone());
         match health.as_deref() {
@@ -1933,8 +1933,8 @@ impl MaglevEngine {
     }
 
     /// Forget the torrent and add it back (paused, reusing the files on disk), so librqbit checks every
-    /// piece again. `folder` re-points the torrent at another output folder (the "Pick folder" fix of
-    /// section 18.3); `None` keeps the current one. The file snapshot is dropped: a new one is taken when
+    /// piece again. `folder` re-points the torrent at another output folder (the "Pick folder" fix);
+    /// `None` keeps the current one. The file snapshot is dropped: a new one is taken when
     /// the torrent finishes again.
     async fn recheck_async(
         &self,
@@ -1976,7 +1976,7 @@ impl MaglevEngine {
         added
     }
 
-    /// The end of a Recheck (section 47.2). The health tag still holds the torrent paused, so the planner
+    /// The end of a Recheck. The health tag still holds the torrent paused, so the planner
     /// cannot start it yet. Wait for librqbit to check every piece; when they are all valid take the file
     /// snapshot now, then clear the health tag and the pause it left behind. If the check takes longer than
     /// `RECHECK_SETTLE` the callers clear the tag as before, and the tick takes the snapshot once the
@@ -2151,7 +2151,7 @@ impl MaglevEngine {
 
     // ---- remove a file's data -----------------------------------------------------------------------
 
-    /// `nativeRemoveFiles` (`NATIVE_CONTRACT.md` section 14): the files stop downloading, their data is deleted
+    /// `nativeRemoveFiles`: the files stop downloading, their data is deleted
     /// from disk and the pieces that overlap them lose their have bits. Returns the verified bytes freed.
     ///
     /// librqbit can only rewrite the chunk tracker and delete files safely while the torrent is paused, so a
@@ -2368,7 +2368,7 @@ impl MaglevEngine {
         outcome
     }
 
-    // ---- trackers and .torrent export (contract section 15) ---------------------------------------
+    // ---- trackers and .torrent export ---------------------------------------
 
     fn save_trackers(&self, change: impl FnOnce(&mut TrackerStore)) {
         let mut store = self.trackers.lock();
@@ -2492,7 +2492,7 @@ impl MaglevEngine {
         })
     }
 
-    /// Section 21: a duplicate add brings its trackers to the torrent that already exists. Returns how many
+    /// A duplicate add brings its trackers to the torrent that already exists. Returns how many
     /// were new. Private torrents, torrents still resolving, invalid addresses and any failure give 0 or skip.
     fn merge_duplicate_trackers(&self, id: &str, urls: &[String]) -> usize {
         let valid: Vec<String> = urls
@@ -2789,7 +2789,7 @@ impl MaglevEngine {
         self.save_meta();
         match outcome {
             Ok(()) => {
-                // The files are in the new folder: take their size and time again (section 18.3).
+                // The files are in the new folder: take their size and time again.
                 if let Some(h) = self.find(job.hash) {
                     self.refresh_file_snapshot(&job.id, &h);
                 }
@@ -2799,7 +2799,7 @@ impl MaglevEngine {
         // The MOVING marker is removed when the guard drops, after the outcome is saved.
     }
 
-    /// The algorithm of contract section 11.3. Holds the tick lock for the whole move.
+    /// Moves the torrent's files and re-adds it at the new folder: pause, rename each file (copy and remove across volumes), forget and re-add, then check. A failure moves the files back. Holds the tick lock for the whole move.
     async fn do_move(&self, job: &MoveJob) -> Result<(), EngineError> {
         let _tick = self.tick_lock.lock().await;
         let old = job.old_folder.to_string_lossy().into_owned();
@@ -2894,7 +2894,7 @@ impl MaglevEngine {
             m.mark_dirty();
         }
         self.save_meta();
-        // Never (section 20.1): a torrent that gave up waiting for peers is released at once. Clearing
+        // Never: a torrent that gave up waiting for peers is released at once. Clearing
         // the tag the same way Keep trying does lets the planner resume it (or restarts a magnet's lookup).
         if peer_timeout_is_never(&self.config.lock()) {
             let gave_up: Vec<String> = self
@@ -2921,7 +2921,7 @@ impl MaglevEngine {
         EffectiveConfig { config, restart_pending, blocklist }
     }
 
-    /// Section 41 (B3). The running session knows how many rules it loaded; a file chosen after the session
+    /// The running session knows how many rules it loaded; a file chosen after the session
     /// started (a restart is pending) is counted from its text.
     fn blocklist_status_for(&self, cfg: &NativeConfig) -> BlocklistStatus {
         let path = match cfg.ip_filter_path.as_deref() {
@@ -2984,13 +2984,13 @@ impl MaglevEngine {
     }
 
     /// Kotlin's word on the active network: metered (mobile data) or not. Used only to split the bytes an item moved
-    /// (contract section 34.1); it never pauses anything. Unknown counts as unmetered, so Kotlin sends false then.
+    ///; it never pauses anything. Unknown counts as unmetered, so Kotlin sends false then.
     pub fn set_network_metered(&self, metered: bool) {
         self.network_metered.store(metered, Ordering::Relaxed);
         self.downloads.set_metered(metered);
     }
 
-    /// Kotlin's word that the default network changed to another live one (contract section 17.x): link downloads
+    /// Kotlin's word that the default network changed to another live one: link downloads
     /// reconnect on it. Torrents are untouched (the BitTorrent session finds the new route itself).
     pub fn network_changed(&self) {
         self.downloads.network_changed();
@@ -3010,7 +3010,7 @@ impl MaglevEngine {
                 let e = me.clone();
                 // A panic in one tick must not stop the loop.
                 let _ = tokio::spawn(async move { e.tick().await }).await;
-                // The file health scan (section 18.3) runs on its own task, outside the tick lock,
+                // The file health scan runs on its own task, outside the tick lock,
                 // because fixing a torrent can mean a recheck.
                 if passes % FILE_SCAN_EVERY_PASSES == 0 {
                     let e = me.clone();
@@ -3038,7 +3038,7 @@ impl MaglevEngine {
         let only = h.only_files();
         let folder = h.output_folder().to_path_buf();
         // Per-file verified bytes; empty while the torrent is checking or in error. A file with no
-        // verified bytes is not "missing": it is made again by its first write (section 18.1).
+        // verified bytes is not "missing": it is made again by its first write.
         let progress = h.stats().file_progress;
         let missing = h
             .with_metadata(|m| {
@@ -3076,7 +3076,7 @@ impl MaglevEngine {
         if rq == RqState::Paused || rq == (RqState::Initializing { paused: true }) {
             if rq == RqState::Paused {
                 // A file deleted from outside keeps a handle to the deleted file; drop it so the next
-                // write makes the file again (section 18.1).
+                // write makes the file again.
                 self.close_absent_handles(h);
             }
             if let Err(e) = self.session.unpause(h).await {
@@ -3084,7 +3084,7 @@ impl MaglevEngine {
                 warn!("resume failed: {e:#}");
                 self.meta.lock().update(id, |m| {
                     if code == ErrorCode::DiskFull {
-                        // A full disk is a health state, not an error (section 18.2).
+                        // A full disk is a health state, not an error.
                         m.health = Some(HEALTH_STORAGE_FULL.to_string());
                         m.paused_by = Some(HEALTH_STORAGE_FULL.to_string());
                     } else {
@@ -3158,7 +3158,7 @@ impl MaglevEngine {
         let now = now_secs();
         let cfg = self.config.lock().clone();
         let blocked = self.blocked.lock().clone();
-        // URL downloads follow the same governance reasons as torrents (section 17).
+        // URL downloads follow the same governance reasons as torrents.
         self.downloads.set_blocked(&blocked);
         let metered = self.network_metered.load(Ordering::Relaxed);
         self.downloads.account(elapsed, metered);
@@ -3166,7 +3166,7 @@ impl MaglevEngine {
         let mut by_id: HashMap<String, Handle20> = HashMap::with_capacity(handles.len());
         // Torrents being moved are not startable, not counted against the queue and never touched.
         let moving: HashSet<String> = self.moves.lock().keys().cloned().collect();
-        // Finished torrents with no file snapshot yet (section 18.3) and magnets that gave up (section 20).
+        // Finished torrents with no file snapshot yet and magnets that gave up.
         let mut to_snapshot: Vec<(String, Handle20)> = Vec::new();
         let mut to_unsnapshot: Vec<String> = Vec::new();
         let mut gave_up: Vec<String> = Vec::new();
@@ -3190,7 +3190,7 @@ impl MaglevEngine {
                 let mut changed = false;
                 let Some(m) = meta.get_mut(&id) else { continue };
                 let before = m.clone();
-                // "Resume anyway" ends when the download finishes (section 25).
+                // "Resume anyway" ends when the download finishes.
                 if m.allowed_anyway && stats.finished && !m.allowed_anyway_seeding {
                     m.allowed_anyway = false;
                 }
@@ -3204,7 +3204,7 @@ impl MaglevEngine {
                     m.max_progress_bytes = stats.progress_bytes;
                 }
                 // A full disk stops a torrent with a write error. Show it as a health state, not an error
-                // (section 18.2): the planner keeps it stopped until the space is back.
+                //: the planner keeps it stopped until the space is back.
                 if m.health.is_none()
                     && m.last_error.is_none()
                     && !matches!(
@@ -3240,7 +3240,7 @@ impl MaglevEngine {
                     elapsed,
                     state == TorrentState::Seeding,
                 );
-                // Section 34.1: active time, bytes by network, the finish edge. Only a torrent that is downloading
+                // Active time, bytes by network, the finish edge. Only a torrent that is downloading
                 // counts; uploads count in any state.
                 {
                     let downloading = state == TorrentState::Downloading;
@@ -3260,7 +3260,7 @@ impl MaglevEngine {
                     uploaded as f64 / stats.progress_bytes as f64
                 };
                 // A torrent with metadata that never began: no peer, no byte, for the whole timeout.
-                // It gets `no_peers` like a magnet that found no one (section 20.1), so the planner
+                // It gets `no_peers` like a magnet that found no one, so the planner
                 // frees its slot. Peers, bytes or any pause reset the clock; Never never runs it.
                 let (peers_now, fetched) = match &stats.live {
                     Some(l) => (
@@ -3335,7 +3335,7 @@ impl MaglevEngine {
             self.progress_seen.lock().retain(|k, _| by_id.contains_key(k));
 
             // A magnet that found no one for ten minutes stops looking and shows `no_peers`, so it
-            // holds no work and the service can stop (section 20). A user pause is left alone.
+            // holds no work and the service can stop. A user pause is left alone.
             let now_ms = now_ms();
             let timeout_ms = peer_timeout_ms(cfg.peer_timeout_secs);
             for (id, m) in meta.data.torrents.iter_mut() {
@@ -3364,7 +3364,7 @@ impl MaglevEngine {
             }
         }
 
-        // `offline` pauses URL downloads only; torrents wait for peers on their own (section 17).
+        // `offline` pauses URL downloads only; torrents wait for peers on their own.
         let actions = plan(&facts, &cfg.scheduler(), &torrent_blocked(&blocked));
         let structural = !actions.is_empty() || !gave_up.is_empty();
         for a in actions {
@@ -3386,7 +3386,7 @@ impl MaglevEngine {
         }
     }
 
-    // ---- health: files, storage, no peers (contract sections 18 and 20) ----------------------------
+    // ---- health: files, storage, no peers ----------------------------
 
     /// What the torrent knows about each file and what is on disk. A skipped or padding file is never
     /// looked up on disk.
@@ -3442,7 +3442,7 @@ impl MaglevEngine {
         }
         let probes = self.probe_files(h, stats);
         let mut snapshot = self.filehealth.lock().get(id).map(|s| s.by_index());
-        // Only a size change counts as changed (section 47.1). A file that kept its size but got a new
+        // Only a size change counts as changed. A file that kept its size but got a new
         // modified time (media scanner, file manager, player) gets its stamp refreshed in this pass.
         if let Some(snap) = snapshot.as_ref() {
             if let Some(next) = refresh_mtimes(&probes, stats.finished, snap) {
@@ -3459,7 +3459,7 @@ impl MaglevEngine {
     }
 
     /// Drops the open handle of every included file that is gone from disk, so the next write makes
-    /// the file again instead of writing into the deleted file (section 18.1).
+    /// the file again instead of writing into the deleted file.
     fn close_absent_handles(&self, h: &Handle20) {
         let stats = h.stats();
         for p in self.probe_files(h, &stats) {
@@ -3531,7 +3531,7 @@ impl MaglevEngine {
         self.save_meta();
     }
 
-    /// `scan_file_health()` (section 18.3): looks at the files of every torrent and sets or clears
+    /// `scan_file_health()`: looks at the files of every torrent and sets or clears
     /// `files_missing` and `files_changed`. Returns how many torrents changed. Scans never overlap.
     pub async fn scan_file_health(&self) -> usize {
         if self.scanning.swap(true, Ordering::SeqCst) {
@@ -3641,7 +3641,7 @@ impl MaglevEngine {
         })
     }
 
-    /// `nativeSetHealth`: `tag` is a health tag, or `""` to clear it (section 18.2).
+    /// `nativeSetHealth`: `tag` is a health tag, or `""` to clear it.
     pub fn set_health(self: &Arc<Self>, id: &str, tag: &str) -> Result<(), EngineError> {
         let (id, hash) = Self::parse_id(id)?;
         let tag = tag.trim();
@@ -3667,7 +3667,7 @@ impl MaglevEngine {
             .update(&id, |m| {
                 let before = m.health.take();
                 m.health = if tag.is_empty() { None } else { Some(tag.to_string()) };
-                // Keep trying (and any health change) starts the stall clock over (section 20.1).
+                // Keep trying (and any health change) starts the stall clock over.
                 m.stalled_since_ms = None;
                 before
             })
@@ -3806,7 +3806,7 @@ impl MaglevEngine {
         })
     }
 
-    /// `nativeResolveFiles` (section 18.3): what the user chose for files that went missing or changed.
+    /// `nativeResolveFiles`: what the user chose for files that went missing or changed.
     /// `stop`, `again`, `folder` (for missing files) and `recheck` (for changed files).
     pub fn resolve_files(
         &self,
@@ -3834,7 +3834,7 @@ impl MaglevEngine {
         };
         match action {
             "stop" => {
-                // The remove-file path (section 14); a file that is already gone is not an error.
+                // The remove-file path; a file that is already gone is not an error.
                 let indices = parse_indices()?;
                 let json = serde_json::to_string(&indices).map_err(|_| bad_indices())?;
                 self.remove_files(&id, &json)?;
@@ -3969,7 +3969,7 @@ impl MaglevEngine {
         Ok(())
     }
 
-    // ---- URL downloads (section 17) -------------------------------------------------------------
+    // ---- URL downloads -------------------------------------------------------------
 
     /// `Range: bytes=0-0` probe of a link for the add sheet. Nothing is stored.
     pub fn probe_url(&self, url: &str, options_json: &str, timeout_ms: i64) -> Result<ProbeResult, EngineError> {
@@ -3977,7 +3977,7 @@ impl MaglevEngine {
         self.run(limit, self.downloads.probe_url(url, options_json))?
     }
 
-    /// Reads an HLS or DASH link for the add sheet: qualities, audio tracks, estimates (contract 24.8). Nothing is stored.
+    /// Reads an HLS or DASH link for the add sheet: qualities, audio tracks, estimates. Nothing is stored.
     pub fn probe_stream(
         &self,
         url: &str,
@@ -3996,7 +3996,7 @@ impl MaglevEngine {
     pub fn add_download(&self, url: &str, options_json: &str) -> Result<AddedDownload, EngineError> {
         match self.downloads.add(url, options_json) {
             // The same link pasted again while that download waits for a new link (after a restart the saved link
-            // has no signed query): refresh it instead of adding a second one (contract 17.w).
+            // has no signed query): refresh it instead of adding a second one.
             Err(e) if e.code == ErrorCode::Duplicate && e.id.as_deref().is_some_and(|id| self.downloads.is_needs_link(id)) => {
                 let id = e.id.clone().unwrap_or_default();
                 self.run(Duration::from_secs(60), self.downloads.refresh_url(&id, url, options_json))??;

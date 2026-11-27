@@ -8,7 +8,7 @@ import android.os.Environment
 import androidx.core.content.ContextCompat
 import java.io.File
 
-/** Where the engine writes new torrents. Policy: docs/NATIVE_CONTRACT.md section 5. */
+/** Where the engine writes new torrents. By default that is `Download/Maglev`, visible in file managers. A custom folder is written directly when Maglev can write to its path, and otherwise staged and copied when the torrent completes. */
 data class DownloadTarget(
     /** Absolute POSIX directory handed to Rust as the output folder. */
     val path: String,
@@ -131,7 +131,7 @@ object StorageManager {
 
     /**
      * Frees the staged files of a torrent whose copy in the user's tree is verified by size. Seeding reads from
-     * staging (NATIVE_CONTRACT section 5), so call this only when the torrent is removed with its files kept in
+     * staging, so call this only when the torrent is removed with its files kept in
      * the tree, or has stopped seeding for good. Returns bytes freed. Blocking, call from IO.
      */
     fun freeStagedFiles(context: Context, outputFolder: String, relPaths: List<String>): Long {
@@ -144,7 +144,7 @@ object StorageManager {
 
     /**
      * Frees a staged link download once its copy in the user's tree is verified by size: the file, then the
-     * unfinished `.part` and `.maglev-dl.json` leftovers (docs/NATIVE_CONTRACT.md section 17). Returns bytes freed.
+     * unfinished `.part` and `.maglev-dl.json` leftovers. Returns bytes freed.
      * Blocking, call from IO.
      */
     fun freeStagedDownload(context: Context, folder: String, name: String, targetName: String = name): Long {

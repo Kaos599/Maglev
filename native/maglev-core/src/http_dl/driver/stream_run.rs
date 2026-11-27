@@ -1,4 +1,4 @@
-//! HLS and DASH downloads on top of the link downloader (`NATIVE_CONTRACT.md` section 24.8).
+//! HLS and DASH downloads on top of the link downloader.
 //!
 //! A child of `driver`, so it can use the manager's private state. The pure parts (parsers, plan, names, resume
 //! math) are in `http_dl::stream`; this file holds what needs the list, the files and the machine:
@@ -224,7 +224,7 @@ impl Downloads {
     }
 
     /// A new playlist link for a download in `needs_link`. When the segment list has the same size the download
-    /// goes on from the next missing segment; otherwise it starts over (contract 24.8).
+    /// goes on from the next missing segment; otherwise it starts over.
     pub(super) async fn refresh_stream_url(
         self: &Arc<Self>,
         id: &str,

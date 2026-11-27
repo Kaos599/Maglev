@@ -15,12 +15,12 @@ object DownloadRules {
                 (tapAgeMs <= PopupRules.TAP_MS || (samePage && (tapAgeMs <= VOUCH_MS || loading)))
             )
 
-    // NATIVE_CONTRACT 39.2 B1: a tap vouches for downloads from the same main-frame document for 30 s
+    // A tap vouches for downloads from the same main-frame document for 30 s
     // (longer while a load that tap started is still in flight). [samePage] is true while the document has not changed since the tap.
     const val VOUCH_MS = 30_000L
 }
 
-/** NATIVE_CONTRACT 39.2 B2: navigations that follow a real touch or key press. */
+/** Navigations that follow a real touch or key press. */
 object NavRules {
     const val JUMP_MS = 1000L
 
@@ -32,7 +32,7 @@ object NavRules {
         gesture && nthInGesture == 0 && inputAgeMs != null && inputAgeMs in 0..JUMP_MS
 }
 
-/** NATIVE_CONTRACT 39.2 B5: user activation since the previous history entry. Main thread only. */
+/** User activation since the previous history entry. Main thread only. */
 class ActivationLatch {
     private var armed = false
     fun arm() { armed = true }

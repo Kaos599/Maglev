@@ -3,7 +3,7 @@ package com.maglev.engine.share
 import android.content.Context
 
 /**
- * Settings the quick share card reads in its own activity, with no JS running (docs/contracts-0.19/quick-share.md section 6).
+ * Settings the quick share card reads in its own activity, with no JS running.
  * JS pushes them inside the `setGovernance` payload (`quickAdd`, `appearanceMode`); the module saves them here.
  */
 object QuickSharePrefs {
