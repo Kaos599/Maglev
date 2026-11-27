@@ -22,7 +22,8 @@ export function sharingWords(seeders: number | undefined, leechers: number | und
 
 export interface ResultFilter {
   hideDead: boolean;
-  minBytes: number;
+  /** Smallest size to show. Undefined or 0 means no minimum. */
+  minBytes?: number;
   /** Largest size to show. Undefined means no limit. */
   maxBytes?: number;
 }
@@ -30,7 +31,7 @@ export interface ResultFilter {
 /** Unknown counts and sizes are never filtered out. */
 export function passesResultFilter(r: { seeders?: number; sizeBytes?: number }, f: ResultFilter): boolean {
   if (f.hideDead && r.seeders === 0) return false;
-  if (f.minBytes > 0 && r.sizeBytes !== undefined && r.sizeBytes < f.minBytes) return false;
+  if (f.minBytes !== undefined && f.minBytes > 0 && r.sizeBytes !== undefined && r.sizeBytes < f.minBytes) return false;
   if (f.maxBytes !== undefined && r.sizeBytes !== undefined && r.sizeBytes > f.maxBytes) return false;
   return true;
 }

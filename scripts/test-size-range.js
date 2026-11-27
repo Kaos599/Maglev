@@ -22,11 +22,13 @@ check('first stop 0, last Infinity', r.SIZE_STOPS[0] === 0 && r.SIZE_STOPS[last]
 check('stops strictly increase', r.SIZE_STOPS.every((v, i) => i === 0 || v > r.SIZE_STOPS[i - 1]));
 check('stops are binary', r.SIZE_STOPS[1] === 50 * MB && r.SIZE_STOPS[3] === 250 * MB && r.SIZE_STOPS[5] === GB && r.SIZE_STOPS[11] === 64 * GB);
 
-check('rangeLabel both open', r.rangeLabel(0, last) === 'Any size');
-check('rangeLabel min only', r.rangeLabel(5, last) === 'Over 1 GB');
-check('rangeLabel max only', r.rangeLabel(0, 8) === 'Up to 8 GB');
-check('rangeLabel both', r.rangeLabel(5, 8) === '1 GB – 8 GB', r.rangeLabel(5, 8));
-check('rangeLabel MB', r.rangeLabel(1, last) === 'Over 50 MB');
+const both = (a, b) => r.sizeLabel({ minBytes: a, maxBytes: b });
+check('sizeLabel both open', r.sizeLabel({}) === 'Any size');
+check('sizeLabel min only', r.sizeLabel({ minBytes: GB }) === 'Over 1 GB');
+check('sizeLabel max only', r.sizeLabel({ maxBytes: 8 * GB }) === 'Under 8 GB');
+check('sizeLabel both in one unit', both(1.5 * GB, 4 * GB) === '1.5–4 GB', both(1.5 * GB, 4 * GB));
+check('sizeLabel both in two units', both(700 * MB, 1.5 * 1024 * GB) === '700 MB–1.5 TB', both(700 * MB, 1.5 * 1024 * GB));
+check('sizeLabel MB', r.sizeLabel({ minBytes: 50 * MB }) === 'Over 50 MB');
 check('stopLabel ends are Any', r.stopLabel(0) === 'Any' && r.stopLabel(last) === 'Any');
 check('stopLabel sizes', r.stopLabel(1) === '50 MB' && r.stopLabel(5) === '1 GB' && r.stopLabel(11) === '64 GB');
 
@@ -38,7 +40,7 @@ check('clampRange stays in bounds', (() => { const x = c(-4, 99); return x.low =
 const f = r.toFilter(5, 8);
 check('toFilter both', f.minBytes === GB && f.maxBytes === 8 * GB);
 const fo = r.toFilter(0, last);
-check('toFilter open', fo.minBytes === 0 && fo.maxBytes === undefined);
+check('toFilter open has no limits', fo.minBytes === undefined && fo.maxBytes === undefined);
 
 const base = { hideDead: false, minBytes: 0 };
 check('over max is dropped', s.passesResultFilter({ sizeBytes: 9 }, { ...base, maxBytes: 8 }) === false);
