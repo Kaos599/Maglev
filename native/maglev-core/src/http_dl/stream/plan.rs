@@ -150,11 +150,14 @@ pub struct Selected {
 /// The variant for `spec.variant_id` (`v<index>`), and its audio track: the one asked for when its group has it
 /// (or one with the same language), else the default, else the first. A variant with no audio group has none.
 pub fn select_hls(m: &Master, spec: &StreamSpec) -> Result<Selected, StreamError> {
-    let v = m
-        .variants
-        .iter()
-        .find(|v| format!("v{}", v.index) == spec.variant_id)
-        .ok_or(StreamError::Unsupported)?;
+    let v = if spec.variant_id == "auto" {
+        best_hls_variant(m).ok_or(StreamError::Unsupported)?
+    } else {
+        m.variants
+            .iter()
+            .find(|v| format!("v{}", v.index) == spec.variant_id)
+            .ok_or(StreamError::Unsupported)?
+    };
     let group = group_audio(m, v);
     let audio_uri = if group.is_empty() {
         None
@@ -261,7 +264,7 @@ pub fn base_name(requested: Option<&str>, url: &str) -> String {
     };
     let raw = requested.map(str::to_string).filter(|n| !n.trim().is_empty()).or_else(from_url).unwrap_or_else(|| "Video".to_string());
     let lower = raw.to_ascii_lowercase();
-    for ext in [".m3u8", ".mpd", ".mp4", ".m4v", ".ts", ".mkv", ".webm"] {
+    for ext in [".m3u8", ".mpd", ".mp4", ".m4v", ".m4a", ".ts", ".mkv", ".webm"] {
         if lower.ends_with(ext) && raw.len() > ext.len() {
             return raw[..raw.len() - ext.len()].trim().to_string();
         }
@@ -302,7 +305,18 @@ mod tests {
     use super::*;
 
     fn spec(kind: StreamKind, v: &str, a: Option<&str>) -> StreamSpec {
-        StreamSpec { kind, variant_id: v.to_string(), audio_id: a.map(str::to_string) }
+        StreamSpec {
+            kind,
+            variant_id: v.to_string(),
+            audio_id: a.map(str::to_string),
+            video_url: None,
+            audio_url: None,
+            video_bytes: None,
+            audio_bytes: None,
+            height: None,
+            ext: None,
+            subtitles: Vec::new(),
+        }
     }
 
     fn master(text: &str) -> Master {

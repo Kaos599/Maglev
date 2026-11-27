@@ -13,6 +13,7 @@
 pub mod dash;
 pub mod fetch;
 pub mod hls;
+pub mod mp4_mux;
 pub mod plan;
 
 pub use plan::StreamProbe;
@@ -29,6 +30,8 @@ pub const MAX_PLAYLIST_BYTES: u64 = 2 * 1024 * 1024;
 pub const MAX_SEGMENTS: usize = 20_000;
 /// Segments fetched at once; they are written strictly in order.
 pub const MAX_IN_FLIGHT: usize = 3;
+/// Concurrent connections for direct chunked pair downloads (e.g. YouTube & social videos) with dynamic work-stealing.
+pub const PAIR_IN_FLIGHT: usize = 24;
 /// One segment is held in memory while it is fetched. A bigger one is refused (`STREAM_UNSUPPORTED`).
 pub const MAX_SEGMENT_BYTES: u64 = 48 * 1024 * 1024;
 
@@ -37,6 +40,15 @@ pub const MAX_SEGMENT_BYTES: u64 = 48 * 1024 * 1024;
 pub enum StreamKind {
     Hls,
     Dash,
+    Pair,
+}
+
+/// One subtitle track to fetch and embed as an MP4 `tx3g` (`sbtl`) track.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SubtitleSpec {
+    pub lang: String,
+    pub name: String,
+    pub url: String,
 }
 
 /// `options.stream` of `nativeAddDownload`: which variant (and audio track) to save.
@@ -47,6 +59,20 @@ pub struct StreamSpec {
     pub variant_id: String,
     #[serde(default, alias = "audioId")]
     pub audio_id: Option<String>,
+    #[serde(default, alias = "videoUrl")]
+    pub video_url: Option<String>,
+    #[serde(default, alias = "audioUrl")]
+    pub audio_url: Option<String>,
+    #[serde(default, alias = "videoBytes")]
+    pub video_bytes: Option<u64>,
+    #[serde(default, alias = "audioBytes")]
+    pub audio_bytes: Option<u64>,
+    #[serde(default)]
+    pub height: Option<u32>,
+    #[serde(default)]
+    pub ext: Option<String>,
+    #[serde(default)]
+    pub subtitles: Vec<SubtitleSpec>,
 }
 
 /// What a download record keeps about its stream. Nothing secret: ids and counts only.
@@ -56,6 +82,20 @@ pub struct StreamRec {
     pub variant_id: String,
     pub audio_id: Option<String>,
     #[serde(default)]
+    pub video_url: Option<String>,
+    #[serde(default)]
+    pub audio_url: Option<String>,
+    #[serde(default)]
+    pub video_bytes: Option<u64>,
+    #[serde(default)]
+    pub audio_bytes: Option<u64>,
+    #[serde(default)]
+    pub height: Option<u32>,
+    #[serde(default)]
+    pub ext: Option<String>,
+    #[serde(default)]
+    pub subtitles: Vec<SubtitleSpec>,
+    #[serde(default)]
     pub segments_done: usize,
     #[serde(default)]
     pub segments_total: usize,
@@ -63,7 +103,18 @@ pub struct StreamRec {
 
 impl StreamRec {
     pub fn spec(&self) -> StreamSpec {
-        StreamSpec { kind: self.kind, variant_id: self.variant_id.clone(), audio_id: self.audio_id.clone() }
+        StreamSpec {
+            kind: self.kind,
+            variant_id: self.variant_id.clone(),
+            audio_id: self.audio_id.clone(),
+            video_url: self.video_url.clone(),
+            audio_url: self.audio_url.clone(),
+            video_bytes: self.video_bytes,
+            audio_bytes: self.audio_bytes,
+            height: self.height,
+            ext: self.ext.clone(),
+            subtitles: self.subtitles.clone(),
+        }
     }
 }
 
@@ -109,11 +160,15 @@ pub struct Segment {
     pub key: Option<SegKey>,
     /// A whole file that may be big: streamed to disk instead of held in memory. Never encrypted.
     pub whole_file: bool,
+    /// Exact byte offset in the output part file for out-of-order parallel chunked downloads (`Pair`).
+    pub write_offset: Option<u64>,
+    /// Expected byte length of this chunk when `write_offset` is set.
+    pub expected_len: Option<u64>,
 }
 
 impl Segment {
     pub fn plain(url: String) -> Segment {
-        Segment { url, range: None, key: None, whole_file: false }
+        Segment { url, range: None, key: None, whole_file: false, write_offset: None, expected_len: None }
     }
 }
 
@@ -153,6 +208,10 @@ pub struct TrackPlan {
     /// The init segment (when there is one) first.
     pub items: Vec<Segment>,
     pub fmp4: bool,
+    /// Original un-ranged URL for `StreamKind::Pair` tracks (enables cursor-resumed retries & work-stealing).
+    pub base_url: Option<String>,
+    /// Exact total byte length for `StreamKind::Pair` tracks when known.
+    pub total_bytes: Option<u64>,
 }
 
 /// A stream ready to download: what to fetch, in which files.
@@ -162,6 +221,7 @@ pub struct Resolved {
     pub duration_sec: f64,
     pub est_bytes: Option<u64>,
     pub height: Option<u32>,
+    pub ext_override: Option<String>,
 }
 
 impl Resolved {
@@ -170,8 +230,14 @@ impl Resolved {
         self.tracks.len() > 1
     }
 
-    /// `ts` only for a single MPEG-TS track; everything else ends up as `mp4`.
-    pub fn extension(&self) -> &'static str {
+    /// Explicit extension when provided (e.g. `m4a` for audio-only), else `ts` for a single MPEG-TS track, else `mp4`.
+    pub fn extension(&self) -> &str {
+        if let Some(ext) = self.ext_override.as_deref() {
+            let clean = ext.trim().trim_start_matches('.');
+            if !clean.is_empty() {
+                return clean;
+            }
+        }
         if self.mux_needed() || self.tracks.iter().any(|t| t.fmp4) {
             "mp4"
         } else {
@@ -182,6 +248,64 @@ impl Resolved {
     pub fn total_items(&self) -> usize {
         self.tracks.iter().map(|t| t.items.len()).sum()
     }
+}
+
+/// Builds the request URL and optional HTTP `Range` header `(offset, length)` for a direct `Pair` byte range.
+/// YouTube `googlevideo.com` URLs use `&range=start-end` query params (HTTP 200); other servers use `Range` headers.
+pub fn pair_range_request(base_url: &str, start: u64, len: u64) -> (String, Option<(u64, u64)>) {
+    let lower = base_url.to_ascii_lowercase();
+    let yt_query_range = lower.contains("googlevideo.com/") || lower.contains("/videoplayback");
+    if yt_query_range {
+        let sep = if base_url.contains('?') { '&' } else { '?' };
+        let end = start + len.saturating_sub(1);
+        (format!("{base_url}{sep}range={start}-{end}"), None)
+    } else {
+        (base_url.to_string(), Some((start, len)))
+    }
+}
+
+/// Slices a direct media URL into parallel byte-range chunks sized for consistent full link speed.
+/// Uses ~2 MiB chunks (safely inside YouTube's unthrottled burst window, small enough that paired
+/// dynamic work-stealing eliminates tail straggler drops across all `PAIR_IN_FLIGHT` connections).
+pub fn chunked_segments(url: &str, total_bytes: u64) -> Vec<Segment> {
+    if total_bytes == 0 {
+        return vec![Segment {
+            url: url.to_string(),
+            range: None,
+            key: None,
+            whole_file: true,
+            write_offset: None,
+            expected_len: None,
+        }];
+    }
+    const MIN_CHUNK: u64 = 128 * 1024;
+    const TARGET_CHUNK: u64 = 2 * 1024 * 1024;
+    let lanes = PAIR_IN_FLIGHT as u64;
+    let chunk_size = if total_bytes < MIN_CHUNK * lanes {
+        let n = total_bytes.div_ceil(MIN_CHUNK).clamp(1, lanes);
+        total_bytes.div_ceil(n)
+    } else if total_bytes < TARGET_CHUNK * lanes {
+        total_bytes.div_ceil(lanes)
+    } else {
+        TARGET_CHUNK
+    };
+    let num_chunks = total_bytes.div_ceil(chunk_size) as usize;
+    let mut out = Vec::with_capacity(num_chunks);
+    let mut offset = 0u64;
+    while offset < total_bytes {
+        let len = (total_bytes - offset).min(chunk_size);
+        let (req_url, range) = pair_range_request(url, offset, len);
+        out.push(Segment {
+            url: req_url,
+            range,
+            key: None,
+            whole_file: false,
+            write_offset: Some(offset),
+            expected_len: Some(len),
+        });
+        offset += len;
+    }
+    out
 }
 
 /// `rel` resolved against `base`. `None` when either is not a valid link.
@@ -246,7 +370,7 @@ async fn fetch_media(ctx: &fetch::ReqCtx, url: &str) -> Result<MediaPlan, Resolv
 }
 
 fn track_of(role: TrackRole, plan: &MediaPlan) -> TrackPlan {
-    TrackPlan { role, items: plan.items(), fmp4: plan.fmp4 }
+    TrackPlan { role, items: plan.items(), fmp4: plan.fmp4, base_url: None, total_bytes: None }
 }
 
 /// Reads the link the user is about to save: kinds, qualities, audio tracks, estimates.
@@ -269,8 +393,145 @@ pub async fn probe(ctx: &fetch::ReqCtx, url: &str) -> Result<plan::StreamProbe, 
     }
 }
 
+/// Probes exact byte length of a direct media URL via a 1-byte `Range: bytes=0-0` request
+/// (and `HEAD` fallback) so social media and direct video links without pre-known `contentLength`
+/// still download across all `PAIR_IN_FLIGHT` parallel work-stealing connections.
+async fn probe_pair_content_length(ctx: &fetch::ReqCtx, target_url: &str) -> u64 {
+    let (req_url, range) = pair_range_request(target_url, 0, 1);
+    if let Ok(Ok(resp)) = tokio::time::timeout(
+        std::time::Duration::from_secs(8),
+        ctx.send(&req_url, range),
+    )
+    .await
+    {
+        let status = resp.status().as_u16();
+        if status == 206 {
+            if let Some(cr) = resp.headers().get(reqwest::header::CONTENT_RANGE).and_then(|v| v.to_str().ok()) {
+                // e.g. "bytes 0-0/15728640"
+                if let Some(slash) = cr.rfind('/') {
+                    if let Ok(total) = cr[slash + 1..].trim().parse::<u64>() {
+                        if total > 1 {
+                            return total;
+                        }
+                    }
+                }
+            }
+        } else if status == 200 && req_url == target_url {
+            // Non-YouTube server answered 200 to Range: bytes=0-0; check if Accept-Ranges: bytes is still advertised.
+            let accepts_bytes = resp
+                .headers()
+                .get(reqwest::header::ACCEPT_RANGES)
+                .and_then(|v| v.to_str().ok())
+                .map(|v| v.to_ascii_lowercase().contains("bytes"))
+                .unwrap_or(false);
+            if accepts_bytes {
+                if let Some(cl) = resp.content_length() {
+                    if cl > 1 {
+                        return cl;
+                    }
+                }
+            }
+        }
+    }
+
+    // Fallback HEAD probe when Range: bytes=0-0 lacked Content-Range total.
+    let picker = crate::http_dl::redirect::CookiePicker {
+        host_cookies: ctx.host_cookies.clone(),
+        link_cookie: ctx.cookie.clone(),
+        link_host: ctx.origin_host.clone(),
+    };
+    let mut head_req = ctx.client.head(target_url);
+    if let Some(ua) = ctx.user_agent.as_deref().and_then(|v| reqwest::header::HeaderValue::from_str(v).ok()) {
+        head_req = head_req.header(reqwest::header::USER_AGENT, ua);
+    }
+    if let Some(r) = ctx.referer.as_deref().and_then(|v| reqwest::header::HeaderValue::from_str(v).ok()) {
+        head_req = head_req.header(reqwest::header::REFERER, r);
+    }
+    if let Ok(Ok(hresp)) = tokio::time::timeout(
+        std::time::Duration::from_secs(8),
+        crate::http_dl::redirect::send_following(&ctx.client, head_req, &picker),
+    )
+    .await
+    {
+        if hresp.status().is_success() {
+            let not_none = hresp
+                .headers()
+                .get(reqwest::header::ACCEPT_RANGES)
+                .and_then(|v| v.to_str().ok())
+                .map(|v| !v.to_ascii_lowercase().contains("none"))
+                .unwrap_or(true);
+            if not_none {
+                if let Some(cl) = hresp
+                    .headers()
+                    .get(reqwest::header::CONTENT_LENGTH)
+                    .and_then(|v| v.to_str().ok())
+                    .and_then(|s| s.trim().parse::<u64>().ok())
+                {
+                    if cl > 1 {
+                        return cl;
+                    }
+                }
+            }
+        }
+    }
+    0
+}
+
 /// Reads the playlists again for the variant (and audio track) the download was added with.
 pub async fn resolve(ctx: &fetch::ReqCtx, url: &str, spec: &StreamSpec) -> Result<Resolved, ResolveFail> {
+    if spec.kind == StreamKind::Pair {
+        let primary = spec.video_url.as_deref().filter(|s| !s.is_empty()).unwrap_or(url);
+        let mut v_bytes = spec.video_bytes.unwrap_or(0);
+        let mut a_bytes = spec.audio_bytes.unwrap_or(0);
+        let audio_opt = spec.audio_url.as_deref().filter(|s| !s.is_empty());
+        if v_bytes == 0 && audio_opt.is_some() && a_bytes == 0 {
+            let (vb, ab) = tokio::join!(
+                probe_pair_content_length(ctx, primary),
+                probe_pair_content_length(ctx, audio_opt.unwrap())
+            );
+            v_bytes = vb;
+            a_bytes = ab;
+        } else if v_bytes == 0 {
+            v_bytes = probe_pair_content_length(ctx, primary).await;
+        } else if let Some(a_url) = audio_opt {
+            if a_bytes == 0 {
+                a_bytes = probe_pair_content_length(ctx, a_url).await;
+            }
+        }
+        let mut tracks = Vec::new();
+        if let Some(audio) = audio_opt {
+            tracks.push(TrackPlan {
+                role: TrackRole::Video,
+                items: chunked_segments(primary, v_bytes),
+                fmp4: true,
+                base_url: Some(primary.to_string()),
+                total_bytes: (v_bytes > 0).then_some(v_bytes),
+            });
+            tracks.push(TrackPlan {
+                role: TrackRole::Audio,
+                items: chunked_segments(audio, a_bytes),
+                fmp4: true,
+                base_url: Some(audio.to_string()),
+                total_bytes: (a_bytes > 0).then_some(a_bytes),
+            });
+        } else {
+            tracks.push(TrackPlan {
+                role: TrackRole::Main,
+                items: chunked_segments(primary, v_bytes),
+                fmp4: true,
+                base_url: Some(primary.to_string()),
+                total_bytes: (v_bytes > 0).then_some(v_bytes),
+            });
+        }
+        let sum = v_bytes.saturating_add(a_bytes);
+        return Ok(Resolved {
+            tracks,
+            duration_sec: 0.0,
+            est_bytes: (sum > 0).then_some(sum),
+            height: spec.height,
+            ext_override: spec.ext.clone(),
+        });
+    }
     let (text, final_url) = fetch::fetch_text(ctx, url).await?;
     let found = detect(&text)?;
     let want = match found {
@@ -297,10 +558,10 @@ pub async fn resolve(ctx: &fetch::ReqCtx, url: &str, spec: &StreamSpec) -> Resul
                     }
                     None => tracks.push(track_of(TrackRole::Main, &video)),
                 }
-                Ok(Resolved { tracks, duration_sec: video.duration_sec, est_bytes: est, height: sel.height })
+                Ok(Resolved { tracks, duration_sec: video.duration_sec, est_bytes: est, height: sel.height, ext_override: None })
             }
             hls::Doc::Media(p) => {
-                if spec.variant_id != plan::SINGLE_VARIANT_ID {
+                if spec.variant_id != plan::SINGLE_VARIANT_ID && spec.variant_id != "auto" {
                     return Err(StreamError::Unsupported.into());
                 }
                 Ok(Resolved {
@@ -308,6 +569,7 @@ pub async fn resolve(ctx: &fetch::ReqCtx, url: &str, spec: &StreamSpec) -> Resul
                     duration_sec: p.duration_sec,
                     est_bytes: None,
                     height: None,
+                    ext_override: None,
                 })
             }
         },
@@ -328,7 +590,7 @@ pub async fn resolve(ctx: &fetch::ReqCtx, url: &str, spec: &StreamSpec) -> Resul
                 }
                 None => tracks.push(track_of(TrackRole::Main, &vp)),
             }
-            Ok(Resolved { tracks, duration_sec: d.duration_sec, est_bytes: est, height: video.height })
+            Ok(Resolved { tracks, duration_sec: d.duration_sec, est_bytes: est, height: video.height, ext_override: None })
         }
     }
 }
@@ -373,15 +635,31 @@ mod tests {
     #[test]
     fn extension_follows_the_tracks() {
         let seg = Segment::plain("https://a.test/a".into());
-        let t = |role, fmp4| TrackPlan { role, items: vec![seg.clone()], fmp4 };
-        let one_ts = Resolved { tracks: vec![t(TrackRole::Main, false)], duration_sec: 1.0, est_bytes: None, height: None };
+        let t = |role, fmp4| TrackPlan { role, items: vec![seg.clone()], fmp4, base_url: None, total_bytes: None };
+        let one_ts = Resolved { tracks: vec![t(TrackRole::Main, false)], duration_sec: 1.0, est_bytes: None, height: None, ext_override: None };
         assert_eq!(one_ts.extension(), "ts");
         assert!(!one_ts.mux_needed());
         let one_mp4 = Resolved { tracks: vec![t(TrackRole::Main, true)], ..one_ts.clone() };
         assert_eq!(one_mp4.extension(), "mp4");
+        let audio_m4a = Resolved { tracks: vec![t(TrackRole::Main, true)], ext_override: Some("m4a".into()), ..one_ts.clone() };
+        assert_eq!(audio_m4a.extension(), "m4a");
         let two = Resolved { tracks: vec![t(TrackRole::Video, false), t(TrackRole::Audio, false)], ..one_ts.clone() };
         assert_eq!(two.extension(), "mp4");
         assert!(two.mux_needed());
         assert_eq!(two.total_items(), 2);
+    }
+
+    #[test]
+    fn pair_chunks_use_query_range_for_googlevideo() {
+        let segs = chunked_segments("https://rr1.googlevideo.com/videoplayback?itag=137", 12 * 1024 * 1024);
+        assert_eq!(segs.len(), PAIR_IN_FLIGHT);
+        assert!(segs[0].url.ends_with("&range=0-524287"));
+        assert!(segs[0].range.is_none());
+        assert!(segs[PAIR_IN_FLIGHT - 1].url.ends_with("&range=12058624-12582911"));
+        // 80 MiB splits into 40 x 2 MiB chunks well inside YouTube's unthrottled burst window.
+        let big = chunked_segments("https://rr1.googlevideo.com/videoplayback?itag=137", 80 * 1024 * 1024);
+        assert_eq!(big.len(), 40);
+        assert_eq!(big[0].expected_len, Some(2 * 1024 * 1024));
+        assert_eq!(big[39].expected_len, Some(2 * 1024 * 1024));
     }
 }

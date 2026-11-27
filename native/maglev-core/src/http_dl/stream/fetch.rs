@@ -159,6 +159,16 @@ async fn open(ctx: &ReqCtx, url: &str, range: Option<(u64, u64)>) -> Result<reqw
     }
 }
 
+/// Opens a segment response and verifies HTTP 200 (or 206 for a byte range), returning the live
+/// response stream so callers can buffer and offload disk writes without blocking Tokio workers.
+pub async fn open_stream(
+    ctx: &ReqCtx,
+    url: &str,
+    range: Option<(u64, u64)>,
+) -> Result<reqwest::Response, FetchFail> {
+    open(ctx, url, range).await
+}
+
 /// The whole body in memory, at most `cap` bytes.
 pub async fn fetch_vec(ctx: &ReqCtx, url: &str, range: Option<(u64, u64)>, cap: u64) -> Result<Vec<u8>, FetchFail> {
     let mut resp = open(ctx, url, range).await?;

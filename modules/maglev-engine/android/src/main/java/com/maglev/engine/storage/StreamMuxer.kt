@@ -94,24 +94,31 @@ object StreamMuxer {
             for (f in listOf(vFormat, aFormat)) {
                 if (f.containsKey(MediaFormat.KEY_MAX_INPUT_SIZE)) capacity = maxOf(capacity, f.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE))
             }
-            val buf = ByteBuffer.allocate(capacity)
+            // Direct native buffer avoids per-frame JNI heap array copies in MediaExtractor/MediaMuxer.
+            val buf = ByteBuffer.allocateDirect(capacity)
             val info = MediaCodec.BufferInfo()
+            var vTime = vx.sampleTime
+            var aTime = ax.sampleTime
             while (true) {
-                val source = nextSource(vx.sampleTime, ax.sampleTime)
+                val source = nextSource(vTime, aTime)
                 if (source == Source.NONE) break
-                val ex = if (source == Source.VIDEO) vx else ax
-                val track = if (source == Source.VIDEO) vTrack else aTrack
+                val isVideo = source == Source.VIDEO
+                val ex = if (isVideo) vx else ax
+                val track = if (isVideo) vTrack else aTrack
                 buf.clear()
                 val size = ex.readSampleData(buf, 0)
                 if (size < 0) {
                     // This extractor has nothing more; the loop moves on to the other one.
-                    ex.unselectTrack(if (source == Source.VIDEO) vIdx else aIdx)
+                    ex.unselectTrack(if (isVideo) vIdx else aIdx)
+                    if (isVideo) vTime = -1L else aTime = -1L
                     continue
                 }
+                val sampleTime = if (isVideo) vTime else aTime
                 val flags = if (ex.sampleFlags and MediaExtractor.SAMPLE_FLAG_SYNC != 0) MediaCodec.BUFFER_FLAG_KEY_FRAME else 0
-                info.set(0, size, maxOf(0L, ex.sampleTime - base), flags)
+                info.set(0, size, maxOf(0L, sampleTime - base), flags)
                 m.writeSampleData(track, buf, info)
                 ex.advance()
+                if (isVideo) vTime = vx.sampleTime else aTime = ax.sampleTime
             }
             m.stop()
             started = false
