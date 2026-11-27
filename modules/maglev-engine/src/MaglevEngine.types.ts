@@ -539,7 +539,7 @@ export interface DownloadSnapshot {
   stream?: DownloadStream | null;
   /** True while the video and audio parts of a stream are being joined (state `verifying`). */
   muxNeeded?: boolean;
-  /** NATIVE_CONTRACT 34.1. Seconds spent downloading (not paused, queued, waiting, checking or seeding). 0 for items from before 0.26: show "—". */
+  /** Seconds spent downloading and then joining separate video and audio parts (not paused, queued or waiting). 0 for items from before 0.26: show "—". */
   activeSecs?: number;
   /** NATIVE_CONTRACT 34.1. Unix seconds when the item first finished. 0 until then. */
   finishedAt?: number;

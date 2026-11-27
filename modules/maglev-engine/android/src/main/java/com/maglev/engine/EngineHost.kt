@@ -1967,11 +1967,24 @@ object EngineHost {
     private fun runPendingMuxes(downloads: List<Map<String, Any?>>) {
         for (job in muxTracker.claim(downloads)) {
             ioScope.launch {
+                // How long the join takes on a real phone, for "Finishing" reports. Sizes and times only, no path.
+                val claimedAt = SystemClock.elapsedRealtime()
+                // Read before the join: the engine deletes the parts once it is told the join worked.
+                val partBytes = job.video.length() + job.audio.length()
+                var muxMs = -1L
                 val outcome = MuxRunner.run(
                     job,
-                    mux = { v, a, o -> StreamMuxer.mux(v, a, o) },
+                    mux = { v, a, o ->
+                        val t0 = SystemClock.elapsedRealtime()
+                        try {
+                            StreamMuxer.mux(v, a, o)
+                        } finally {
+                            muxMs = SystemClock.elapsedRealtime() - t0
+                        }
+                    },
                     finish = { id, ok, message -> isOk(call { NativeCore.nativeFinishMux(id, ok, message) }) },
                 )
+                Log.i(TAG, "join $outcome: $partBytes bytes of parts, muxer $muxMs ms, ${SystemClock.elapsedRealtime() - claimedAt} ms until the engine was told")
                 // The download was removed, or Rust couldn't be told: let the next poll try again if it still waits.
                 if (outcome == MuxOutcome.NOT_REPORTED) muxTracker.release(job.id)
                 pollNow()

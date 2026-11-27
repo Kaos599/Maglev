@@ -310,14 +310,17 @@ struct StoreFile {
 /// How often a running download's timing is written to disk. A crash or kill loses at most this much (section 34.1).
 const TIMING_SAVE_EVERY: Duration = Duration::from_secs(30);
 
-/// One second of timing for one download (section 34.1): time and bytes count only while it is `Downloading`.
-/// Returns whether it was downloading, so the caller knows the record changed.
+/// One second of timing for one download. Time counts while it is `Downloading` or `Verifying`:
+/// joining a video's separate video and audio parts happens in `Verifying` and can take a while, and "Done in"
+/// must cover it. Bytes count only while `Downloading`, since nothing is fetched during the join.
+/// Returns whether the timing changed, so the caller knows the record changed.
 fn account_one(rec: &mut DlRecord, live: &mut Live, elapsed: Duration, metered: bool) -> bool {
     let downloading = rec.state == State::Downloading;
-    rec.timing.tick(elapsed, downloading);
+    let timed = downloading || rec.state == State::Verifying;
+    rec.timing.tick(elapsed, timed);
     let got = gained(&mut live.acct, downloading, rec.held);
     rec.timing.add_down(got, metered);
-    downloading
+    timed
 }
 
 /// A download leaves `Downloading` (or the machine ran an event while it downloads): counts the bytes of the stretch
@@ -1877,8 +1880,9 @@ impl Downloads {
     }
 
     /// The one-second timing pass, called from the engine's governance tick (section 34.1). `elapsed` is the wall time
-    /// since the previous pass. Time and bytes count only for a download in `Downloading`; the list is written at
-    /// most every `TIMING_SAVE_EVERY` while something downloads, so a kill loses no more than that.
+    /// since the previous pass. Time counts for a download in `Downloading` or `Verifying` (the join), bytes only in
+    /// `Downloading`; the list is written at most every `TIMING_SAVE_EVERY` while something is timed, so a kill
+    /// loses no more than that.
     pub fn account(&self, elapsed: Duration, metered: bool) {
         self.metered.store(metered, Ordering::Relaxed);
         let mut any = false;
@@ -4020,7 +4024,7 @@ mod timing_tests {
     const SEC: Duration = Duration::from_secs(1);
 
     #[test]
-    fn only_a_downloading_download_counts() {
+    fn downloading_counts_time_and_bytes_and_finishing_counts_time_only() {
         let (rt, dir) = (rt(), tmp("only"));
         let d = manager(&rt, &dir, &[]);
         put(&d, "dl_d", State::Downloading, |r| r.held = 1000);
@@ -4044,7 +4048,10 @@ mod timing_tests {
         assert_eq!(s["active_secs"], 2);
         assert_eq!(s["session_bytes"], 500);
         assert_eq!((s["bytes_wifi"].as_u64(), s["bytes_mobile"].as_u64()), (Some(0), Some(500)));
-        for id in ["dl_paused", "dl_wifi", "dl_queued", "dl_resolving", "dl_verifying", "dl_error", "dl_done"] {
+        // Joining video and audio: the time is part of "Done in", but no byte is downloaded.
+        let s = snap(&d, "dl_verifying");
+        assert_eq!((s["active_secs"].as_i64(), s["session_bytes"].as_u64()), (Some(2), Some(0)));
+        for id in ["dl_paused", "dl_wifi", "dl_queued", "dl_resolving", "dl_error", "dl_done"] {
             let s = snap(&d, id);
             assert_eq!((s["active_secs"].as_i64(), s["session_bytes"].as_u64()), (Some(0), Some(0)), "{id}");
         }
