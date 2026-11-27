@@ -35,18 +35,49 @@ jobs:
           GH_REPO: ${{ github.repository }}
           INPUT_RUN: ${{ inputs.run_id }}
         run: |
-          RUN="$INPUT_RUN"
-          if [ -z "$RUN" ]; then
-            RUN=$(gh run list --workflow ci.yml --commit "$GITHUB_SHA" --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+          try_run() {
+            local r="$1"
+            [ -n "$r" ] || return 1
+            rm -rf ci-apks; mkdir -p ci-apks
+            if ! gh run download "$r" --name apks --dir ci-apks 2>/dev/null; then
+              return 1
+            fi
+            local found
+            found=$(find ci-apks -type f -name 'app-x86_64-release.apk' | head -n 1)
+            if [ -z "$found" ]; then
+              return 1
+            fi
+            APK="$found"
+            PICKED_RUN="$r"
+            return 0
+          }
+
+          APK=""
+          PICKED_RUN=""
+          if [ -n "$INPUT_RUN" ]; then
+            if ! try_run "$INPUT_RUN"; then
+              echo "::notice::CI run $INPUT_RUN has no live x86_64 APK; skipping E2E."
+              exit 0
+            fi
+          else
+            # Try a CI run for this exact commit first; release tags on main often reuse a PR's APKs,
+            # so fall back to the newest successful CI run on main that carries an x86_64 APK.
+            EXACT=$(gh run list --workflow ci.yml --commit "$GITHUB_SHA" --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+            if ! try_run "$EXACT"; then
+              for r in $(gh run list --workflow ci.yml --branch main --status success --limit 10 --json databaseId --jq '.[].databaseId'); do
+                if try_run "$r"; then
+                  echo "::notice::No x86_64 APK on commit $GITHUB_SHA; using CI run $r from main."
+                  break
+                fi
+              done
+            fi
           fi
-          if [ -z "$RUN" ]; then echo "::notice::No successful CI run for $GITHUB_SHA; skipping E2E."; exit 0; fi
-          rm -rf ci-apks; mkdir -p ci-apks
-          if ! gh run download "$RUN" --name apks --dir ci-apks; then
-            echo "::notice::CI run $RUN has no live apks artifact; skipping E2E."; exit 0
+          if [ -z "$APK" ]; then
+            echo "::notice::No successful CI run with a live x86_64 APK found; skipping E2E."
+            exit 0
           fi
-          APK=$(find ci-apks -type f -name 'app-x86_64-release.apk' | head -n 1)
-          if [ -z "$APK" ]; then echo "::notice::Run $RUN has no x86_64 APK (only main builds it); skipping E2E."; exit 0; fi
           echo "apk=$APK" >> "$GITHUB_OUTPUT"
+          echo "run_id=$PICKED_RUN" >> "$GITHUB_OUTPUT"
 
       - name: Enable KVM
         if: steps.apk.outputs.apk != ''
