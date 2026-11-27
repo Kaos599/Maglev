@@ -56,11 +56,13 @@ const release = (tag, over = {}) => ({
   const prefs = await import('../utils/prefs/update.ts');
 
   console.log('[tags]');
-  check('v0.23 parses', JSON.stringify(c.parseTag('v0.23')) === '{"major":0,"minor":23}');
-  check('beta, patch, bare and junk tags are ignored', ['v0.23-beta', 'v0.23.1', '0.23', 'v1', 'vx.y', '', null, 7].every((t) => c.parseTag(t) === null));
+  check('v0.23 parses', JSON.stringify(c.parseTag('v0.23')) === '{"major":0,"minor":23,"patch":0}');
+  check('v1.0.1 parses with a patch', JSON.stringify(c.parseTag('v1.0.1')) === '{"major":1,"minor":0,"patch":1}');
+  check('beta, four-part, bare and junk tags are ignored', ['v0.23-beta', 'v0.23.1-beta', 'v1.0.1.2', '0.23', 'v1', 'vx.y', '', null, 7].every((t) => c.parseTag(t) === null));
   check('minor and major compare', c.isNewer('v0.22', '0.21') && c.isNewer('v1.0', '0.99') && c.isNewer('v0.10', '0.9'));
   check('same or older is not newer', !c.isNewer('v0.21', '0.21') && !c.isNewer('v0.20', '0.21') && !c.isNewer('v0.9', '0.10'));
-  check('a beta tag is never newer', !c.isNewer('v0.22-beta', '0.21'));
+  check('a beta tag is never newer', !c.isNewer('v0.22-beta', '0.21') && !c.isNewer('v0.33-beta', '1.0'));
+  check('patch ordering: 1.0 < 1.0.1 < 1.0.2 < 1.1 = 1.1.0 < 1.10', c.isNewer('v1.0.1', '1.0') && c.isNewer('v1.0.2', '1.0.1') && c.isNewer('v1.1', '1.0.2') && c.isNewer('v1.10', '1.1.0') && !c.isNewer('v1.1', '1.1.0') && !c.isNewer('v1.1.0', '1.1') && !c.isNewer('v1.0', '1.0.1') && !c.isNewer('v1.0.1', '1.0.1') && !c.isNewer('v1.1', '1.10'));
 
   console.log('\n[assets]');
   check('ABI digits', c.abiForVersionCode(214) === 'arm64-v8a' && c.abiForVersionCode(211) === 'armeabi-v7a' && c.abiForVersionCode(213) === 'x86_64' && c.abiForVersionCode(210) === 'universal');

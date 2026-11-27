@@ -1,6 +1,6 @@
 # Release notes
 
-One file per version, named after `app.json` `expo.version` (for example `0.14.md`). The release workflow turns it into the GitHub release text, between a fixed intro and the install steps.
+One file per version, named after `app.json` `expo.version` (for example `0.14.md`, or `1.0.1.md` for a fix release). The release workflow turns it into the GitHub release text, between a fixed intro and the install steps.
 
 Use any of these sections, in this order, and leave out the ones a release doesn't have:
 

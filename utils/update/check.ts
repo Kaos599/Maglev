@@ -13,9 +13,9 @@ const ABI_BY_DIGIT: Readonly<Record<number, Abi>> = { 4: 'arm64-v8a', 1: 'armeab
 export type Abi = 'arm64-v8a' | 'armeabi-v7a' | 'x86_64' | 'universal';
 
 export interface UpdateInfo {
-  /** "0.23" */
+  /** "0.23" or "1.0.1" */
   version: string;
-  /** "v0.23" */
+  /** "v0.23" or "v1.0.1" */
   tag: string;
   /** Release notes, markdown, at most 4,000 characters. */
   notes: string;
@@ -27,7 +27,7 @@ export interface UpdateInfo {
 }
 
 export interface Installed {
-  /** app.json version, "0.21". */
+  /** app.json version, "0.21" or "1.0.1". */
   version: string;
   /** The installed versionCode (base * 10 + ABI digit). */
   versionCode: number;
@@ -41,26 +41,35 @@ class CheckError extends Error {
   }
 }
 
-/** `^v(\d+)\.(\d+)$`. Anything else, such as `v0.21-beta`, is ignored. */
-export function parseTag(tag: unknown): { major: number; minor: number } | null {
+export interface ParsedVersion {
+  major: number;
+  minor: number;
+  /** 0 when the version has no third part: 1.1 and 1.1.0 are the same version. */
+  patch: number;
+}
+
+/** `^v(\d+)\.(\d+)(\.\d+)?$`. Anything else, such as `v0.21-beta`, is ignored. */
+export function parseTag(tag: unknown): ParsedVersion | null {
   if (typeof tag !== 'string') return null;
-  const m = /^v(\d+)\.(\d+)$/.exec(tag);
-  return m ? { major: Number(m[1]), minor: Number(m[2]) } : null;
+  const m = /^v(\d+)\.(\d+)(?:\.(\d+))?$/.exec(tag);
+  return m ? { major: Number(m[1]), minor: Number(m[2]), patch: m[3] === undefined ? 0 : Number(m[3]) } : null;
 }
 
-/** app.json versions are `<major>.<minor>`. */
-export function parseVersion(version: unknown): { major: number; minor: number } | null {
+/** app.json versions are `<major>.<minor>` or `<major>.<minor>.<patch>`. */
+export function parseVersion(version: unknown): ParsedVersion | null {
   if (typeof version !== 'string') return null;
-  const m = /^(\d+)\.(\d+)(?:\.\d+)?$/.exec(version);
-  return m ? { major: Number(m[1]), minor: Number(m[2]) } : null;
+  const m = /^(\d+)\.(\d+)(?:\.(\d+))?$/.exec(version);
+  return m ? { major: Number(m[1]), minor: Number(m[2]), patch: m[3] === undefined ? 0 : Number(m[3]) } : null;
 }
 
-/** True when (major, minor) of the tag is greater than the installed version. */
+/** True when the tag is greater than the installed version, comparing each part as a number (a missing part is 0). */
 export function isNewer(tag: unknown, installedVersion: unknown): boolean {
   const t = parseTag(tag);
   const i = parseVersion(installedVersion);
   if (!t || !i) return false;
-  return t.major > i.major || (t.major === i.major && t.minor > i.minor);
+  if (t.major !== i.major) return t.major > i.major;
+  if (t.minor !== i.minor) return t.minor > i.minor;
+  return t.patch > i.patch;
 }
 
 export function abiForVersionCode(versionCode: unknown): Abi | null {
