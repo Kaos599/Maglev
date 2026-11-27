@@ -1,5 +1,5 @@
 /**
- * Choosing the zip member, decoding the text to UTF-8 and finding the format (docs/NATIVE_CONTRACT.md section 36.7).
+ * Choosing the zip member, decoding the text to UTF-8 and finding the format.
  * Pure: the zip is already unzipped (native `unzipSubtitles`), so this takes `{name, bytes}` members.
  * Hermes' TextDecoder only covers UTF-8 and isn't reliable, so UTF-8 and UTF-16 are decoded here by hand, and the
  * single-byte code pages are spelled out as tables (cp1251 comes from utils/search/charset.ts).
@@ -271,7 +271,7 @@ export type CodePage = 'cp1250' | 'cp1251' | 'cp1252' | 'cp1253' | 'cp1254' | 'c
 const CP1250_LANGS = new Set(['cs', 'hu', 'pl', 'ro', 'sk', 'sl', 'hr', 'bs']);
 const CP1251_LANGS = new Set(['ru', 'bg', 'uk', 'mk', 'be', 'kk']);
 const CP1256_LANGS = new Set(['ar', 'fa', 'ur']);
-/** Text in these languages that isn't Unicode is a multi-byte or other code page this version can't read (36.7). */
+/** Text in these languages that isn't Unicode is a multi-byte or other code page this version can't read. */
 const UNREADABLE_LANGS = new Set(['zh', 'ja', 'ko', 'he', 'th', 'vi', 'lt', 'lv']);
 
 function looksCyrillic(bytes: Uint8Array): boolean {
@@ -285,7 +285,7 @@ function looksCyrillic(bytes: Uint8Array): boolean {
   return high > ascii * 0.5;
 }
 
-/** The single-byte code page for a language (36.7), or null when its legacy encodings aren't supported. */
+/** The single-byte code page for a language, or null when its legacy encodings aren't supported. */
 export function codePageFor(language: string | undefined, bytes?: Uint8Array): CodePage | null {
   if (!language) return 'cp1252';
   const l = baseLanguage(language);
@@ -341,9 +341,8 @@ export function decodeSubtitleText(bytes: Uint8Array, language?: string): Decode
 /**
  * Whether decoded text holds at least one subtitle cue: SRT/VTT a `-->` line between two timestamps, VTT's `WEBVTT`
  * header, ASS/SSA a `Dialogue:` line. A short message, JSON or a "limit reached" page has none. The formats the app
- * supports are srt, vtt, ass and ssa (no MicroDVD).
+ * supports are srt, vtt, ass and ssa (no MicroDVD). A body with no cue is never saved: it is rejected as unreadable.
  */
-// NATIVE_CONTRACT 39.1 S1
 export function hasSubtitleCues(text: string): boolean {
   const t = text.replace(/^\uFEFF/, '');
   return /\d{1,2}:\d{2}(?::\d{2})?[,.:]\d{1,3}\s*-->\s*\d{1,2}:\d{2}/.test(t) || /^\s*WEBVTT/.test(t) || /^\s*Dialogue:/m.test(t);

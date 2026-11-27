@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Stats 0.27 (NATIVE_CONTRACT 34.2 "Live time for Stats"): live active seconds in stats_daily (tick accumulation, the 2x cap,
+// Stats live time: live active seconds in stats_daily (tick accumulation, the 2x cap,
 // local-midnight rollover, only Downloading counts, migration of an old table), plus the delight-pass rules: summary sentence,
 // "vs last week", thin-data mode, train day snapping, clock-face hand angle, fire stage, streak flag default and the order of
 // the Settings App rows. Needs Node 22.18+ (runs the TypeScript source directly).

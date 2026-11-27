@@ -1,5 +1,5 @@
 /**
- * Pure rules for the updater (docs/NATIVE_CONTRACT.md section 27.2, 27.3 and 27.5): what the network allows and
+ * Pure rules for the updater: what the network allows and
  * when an install is safe. No React Native imports, so Node tests run it.
  */
 
@@ -42,7 +42,7 @@ export interface SafeFacts {
  * An install restarts the app, so `auto` installs silently only when:
  *  - no torrent is downloading (or moving files) or seeding with an upload in the last 60 s;
  *  - no plain or stream download is running.
- *  - the player screen isn't open (section 30).
+ *  - the player screen isn't open.
  */
 export function safeToInstall(f: SafeFacts): boolean {
   if (f.playerOpen) return false;

@@ -1,7 +1,7 @@
 //! Maglev Core: the native BitTorrent engine behind the Android app.
 //!
-//! The engine wraps librqbit 9.x. Everything the app sees goes through the JSON
-//! contract in `docs/NATIVE_CONTRACT.md`.
+//! The engine wraps librqbit 9.x. Everything the app sees goes through JSON
+//! shapes defined in `types.rs` and `config.rs`, with error codes from `error.rs`.
 //!
 //! Pure, JVM-free and session-free modules (unit tested on any host):
 //! `activity`, `config`, `error`, `file_health`, `http_dl` (all but its driver), `source`, `scheduler`, `meta`, `priority`, `readiness`, `relocate`, `storage_guard`, `torrent_limits`, `trackers`, `simd`, and the parsing half of `streaming`.

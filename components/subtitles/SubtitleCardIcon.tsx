@@ -12,7 +12,7 @@ interface Props {
   onPress: () => void;
 }
 
-/** One badge cell is 2 dp (NATIVE_CONTRACT 44.8). Rows run top to bottom, `#` is a filled cell. */
+/** One badge cell is 2 dp. Rows run top to bottom, `#` is a filled cell. */
 const CELL = 2;
 const BADGE_BITMAPS = {
   /** A check mark, 5 x 4 cells. */
@@ -23,7 +23,7 @@ const BADGE_BITMAPS = {
 
 type BadgeState = keyof typeof BADGE_BITMAPS;
 
-/** The small check or ? drawn on a 2 dp grid (44.8), shared with the Subtitles row (44.14). Place it over the glyph's top right. */
+/** The small check or ? drawn on a 2 dp grid, shared with the Subtitles row. Place it over the glyph's top right. */
 export function SubtitleBadge({ state, color }: { state: BadgeState; color: string }) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -41,7 +41,7 @@ export function SubtitleBadge({ state, color }: { state: BadgeState; color: stri
 }
 
 /**
- * Top right of a transfer card, only after subtitles were asked for on that item (36.10, 44.8). The state is told
+ * Top right of a transfer card, only after subtitles were asked for on that item. The state is told
  * by shape, not by colour alone:
  * - getting: the dotted ring around the glyph, muted.
  * - saved: the glyph with a small check badge (accentText).

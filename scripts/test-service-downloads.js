@@ -6,7 +6,7 @@
  * an app open. headlessStart counted torrents only, summarize ignored the "offline" pause tag, and
  * downloads restored as needs_link were dropped without a word.
  *
- * Checks the Kotlin sources and docs/NATIVE_CONTRACT.md section 8.
+ * Checks the Kotlin sources and, where the private notes are checked out, their background-survival section.
  */
 const fs = require('fs');
 const path = require('path');
@@ -63,7 +63,7 @@ check('it looks for REASON_USER_REQUESTED', /REASON_USER_REQUESTED/.test(entry))
 
 check('RestartPolicy doc covers link downloads', /link download/i.test(policy));
 const sec8 = contract === null ? null : (contract.match(/## 8\. Background survival[\s\S]*?(?=\n## 9\.)/) || [''])[0];
-if (sec8 !== null) check('NATIVE_CONTRACT section 8 mentions link downloads', /link download/i.test(sec8));
-if (sec8 !== null) check('section 8 mentions offline', /offline/i.test(sec8));
+if (sec8 !== null) check('background-survival notes mention link downloads', /link download/i.test(sec8));
+if (sec8 !== null) check('background-survival notes mention offline', /offline/i.test(sec8));
 
 process.exit(failed ? 1 : 0);

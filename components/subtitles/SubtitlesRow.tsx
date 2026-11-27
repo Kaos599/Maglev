@@ -22,7 +22,7 @@ interface Props {
   requestKey: string;
   /** Key of the stored per-video state (`t:<id>` as the card writes it). Defaults to `requestKey`. */
   stateKey?: string;
-  /** The video has some bytes on disk (42.1). */
+  /** The video has some bytes on disk. */
   started: boolean;
   /** One video's sheet can open from here; the page owns the sheet and the target. */
   canOpenSheet: boolean;
@@ -30,12 +30,12 @@ interface Props {
   onOpenSheet: (start: SheetStart) => void;
   /** Season pack: opens MultiSubtitleSheet in status mode. */
   onSeeAll: () => void;
-  /** 44.15 D7: a pack with no request: asks for the whole pack. The row asks for the one-time OK first (D10). */
+  /** A pack with no request: asks for the whole pack. The row asks for the one-time OK first. */
   onAskPack?: () => void;
 }
 
 /**
- * NATIVE_CONTRACT 44.14: one card under the progress card and the "why" block. The icon, the label with the state
+ * One card under the progress card and the "why" block. The icon, the label with the state
  * line, and one text button. Tapping anywhere does what the button does. The page decides whether it shows.
  */
 function SubtitlesRowImpl({ requestKey, stateKey = requestKey, started, canOpenSheet, onOpenSheet, onSeeAll, onAskPack }: Props) {
@@ -105,7 +105,7 @@ function SubtitlesRowImpl({ requestKey, stateKey = requestKey, started, canOpenS
     </>
   );
 
-  // 45.5: "More sources" is a second button, so the card is a plain view with the row's own button inside.
+  // "More sources" is a second button, so the card is a plain view with the row's own button inside.
   if (m.extra) {
     return (
       <>

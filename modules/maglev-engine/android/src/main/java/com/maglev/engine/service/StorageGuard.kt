@@ -1,7 +1,7 @@
 package com.maglev.engine.service
 
 /**
- * Pure low-storage reserve math (docs/contracts-0.19/play-and-storage.md section 2). No android.* imports.
+ * Pure low-storage reserve math. No android.* imports.
  * Port of native/maglev-core/src/storage_guard.rs; both pass scripts/fixtures/storage-reserve-vectors.json.
  */
 object StorageGuard {
@@ -28,7 +28,7 @@ object StorageGuard {
     fun shareCardFree(free: Long, total: Long): Long =
         (free - (reserve(total) - com.maglev.engine.storage.Admission.RESERVE_BYTES).coerceAtLeast(0L)).coerceAtLeast(0L)
 
-    /** Notification title and text while storage pauses everything (contract section 2). */
+    /** Notification title and text while storage pauses everything. */
     const val PAUSED_TITLE = "Paused: phone storage is almost full"
     const val PAUSED_TEXT = "Free up space"
 }

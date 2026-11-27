@@ -7,7 +7,7 @@ import { holdSpeed, shouldShortenAmount, type LineLayout, type SpeedHoldState } 
 /**
  * What the card needs to pick the right side of its status line: the speed hold (speed stays for a few seconds
  * after data stops) and the large-font short amount. Keyed by id, because lists recycle cards.
- * `speedBytes` is 0 for anything that is not downloading. `downloading` feeds the shared flow clock (NATIVE_CONTRACT 43.1),
+ * `speedBytes` is 0 for anything that is not downloading. `downloading` feeds the shared flow clock,
  * which says how long no data has arrived; the card and the detail page read the same record.
  */
 export function useStatusOpts(
@@ -41,7 +41,7 @@ export function useStatusOpts(
 }
 
 /**
- * The flow clock for a detail page (NATIVE_CONTRACT 43.1): feeds the shared record from the telemetry the page already has
+ * The flow clock for a detail page: feeds the shared record from the telemetry the page already has
  * and ticks once a second while data is not flowing, so "Trying for" and the quiet threshold move on their own.
  * Returns what the status functions and the "why" block read.
  */

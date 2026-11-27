@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Tracker address rules (NATIVE_CONTRACT 15). Mirrors the Rust tests in native/maglev-core/src/trackers.rs.
+// Tracker address rules. Mirrors the Rust tests in native/maglev-core/src/trackers.rs.
 // Needs Node 22.18+ (runs the TypeScript sources directly via type stripping).
 process.removeAllListeners('warning');
 

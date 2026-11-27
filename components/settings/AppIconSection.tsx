@@ -29,8 +29,8 @@ function IconPreview({ id }: { id: string }) {
 
 /**
  * Settings > Appearance > App icon. A grid of the launcher icons; the chosen one has an accent ring.
- * Android only: it renders nothing elsewhere. The change reaches the launcher when the user leaves the app
- * (NATIVE_CONTRACT section 26), which the caption says.
+ * Android only: it renders nothing elsewhere. The change reaches the launcher when the user leaves the app,
+ * which the caption says.
  */
 export function AppIconSection() {
   const { colors } = useTheme();

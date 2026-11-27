@@ -1,5 +1,5 @@
 /**
- * Stats prefs (docs/NATIVE_CONTRACT.md section 34.2), kept on the phone in the kv store.
+ * Stats prefs, kept on the phone in the kv store.
  * `keepStats` off: nothing is recorded, what exists stays until Reset. `mobileLimitMb`: monthly mobile-data limit, null = off.
  */
 import { useSyncExternalStore } from 'react';

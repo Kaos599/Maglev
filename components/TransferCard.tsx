@@ -50,19 +50,19 @@ export interface TransferCardProps {
   onLongPress: (id: string) => void;
   onPause: (id: string) => void;
   onResume: (id: string) => void;
-  /** SM-37: clears the no_peers tag so the torrent looks for peers again. */
+  /** Clears the no_peers tag so the torrent looks for peers again. */
   onKeepTrying?: (id: string) => void;
   /** A finished card's button: opens the file (the detail screen when there are several). */
   onOpen?: (id: string) => void;
   /** Runs a paused torrent once although a rule (Wi-Fi only, battery, charger, schedule) paused it. */
   onResumeAnyway?: (id: string) => void;
-  /** Play button (0.19): streams or opens the torrent's video or audio file. Shown only when the card can tell it is playable. */
+  /** Play button: streams or opens the torrent's video or audio file. Shown only when the card can tell it is playable. */
   onPlay?: (id: string) => void;
   /** Swipe left: remove from the list, files kept, with Undo. Also the Remove accessibility action. */
   onRemove?: (id: string) => void;
   /** The "Swipe to pause or remove" setting. Off: the card has no swipe wrapper at all. */
   swipeEnabled?: boolean;
-  /** Subtitle icon (36.10), top right: only after the user asked for subtitles on this item. */
+  /** Subtitle icon, top right: only after the user asked for subtitles on this item. */
   subtitle?: CardIconModel | null;
   /** Taps the subtitle icon: opens the subtitle sheet. */
   onSubtitles?: (id: string) => void;

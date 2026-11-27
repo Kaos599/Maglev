@@ -1,4 +1,4 @@
-//! `NativeConfig` from `docs/NATIVE_CONTRACT.md` section 3.
+//! `NativeConfig`: the settings Kotlin hands to the engine as JSON.
 
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -69,7 +69,7 @@ pub struct NativeConfig {
     /// 0 = none.
     #[serde(deserialize_with = "lenient_u32")]
     pub seed_time_limit_mins: u32,
-    /// "Stop waiting for peers after" (contract section 20.1), seconds. 0 = never.
+    /// "Stop waiting for peers after", seconds. 0 = never.
     #[serde(deserialize_with = "lenient_u32")]
     pub peer_timeout_secs: u32,
     /// `socks5://user:pass@host:port`, or null.
@@ -165,7 +165,7 @@ impl NativeConfig {
     }
 }
 
-/// Contract section 41 (B3): what the IP blocklist setting is doing right now.
+/// What the IP blocklist setting is doing right now.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum BlocklistState {

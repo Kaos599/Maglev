@@ -5,10 +5,10 @@ import type { StyleProp, ViewStyle } from 'react-native';
 
 /**
  * Binding for the native browser view `MaglevBrowserView` and the block list calls of the `MaglevEngine` module.
- * Contract: docs/NATIVE_CONTRACT.md section 24. Native side: modules/maglev-engine/android/.../browser/.
+ * Native side: modules/maglev-engine/android/.../browser/.
  *
  * Where the native view does not exist (web, or a build without it) the component shows a plain message. It never
- * shows made-up pages or files (AGENTS.md section 4.1).
+ * shows made-up pages or files (AGENTS.md, reality rules).
  */
 
 export type FoundKind = 'video' | 'audio' | 'image' | 'document' | 'other';
@@ -83,7 +83,7 @@ export type BrowserLongPressEvent = {
   imageUrl: string | null;
   text: string | null;
 };
-/** A long press over a video the page script found (contract 24.10a). `json` is the payload; parse it with `parseMediaHit` (utils/browser/mediaHit.ts). */
+/** A long press over a video the page script found. `json` is the payload; parse it with `parseMediaHit` (utils/browser/mediaHit.ts). */
 export type BrowserMediaHitEvent = { json: string };
 /** A reload started (pull, menu or command) or ended. One end per start. */
 export type BrowserReloadStateEvent = { state: 'start' | 'end' };
@@ -117,7 +117,7 @@ export type MaglevBrowserProps = {
   textZoom?: number;
   /** Private browsing: the page cache is bypassed while true. */
   privateMode?: boolean;
-  /** Pull down at the top of a page to reload it (24.10a). Default true. */
+  /** Pull down at the top of a page to reload it. Default true. */
   pullToRefresh?: boolean;
   /** Refuse third-party cookies ("Block cookies from other sites"). Default true. */
   blockThirdPartyCookies?: boolean;
@@ -126,7 +126,7 @@ export type MaglevBrowserProps = {
   /** Spinner colours for pull to reload (hex). */
   refreshColor?: string;
   refreshBackground?: string;
-  /** Allow algorithmic darkening of light-only pages (24.10a). The app passes true when Maglev is dark and "Dark pages" is on. */
+  /** Allow algorithmic darkening of light-only pages. The app passes true when Maglev is dark and "Dark pages" is on. */
   darkPages?: boolean;
   /** The script that finds media under a long press (`mediaHitScript()` in utils/browser/mediaHitScript.ts). */
   mediaHitScript?: string;
@@ -158,7 +158,7 @@ export type MaglevBrowserRef = {
   scan(): void;
   /** Forget the files this page reported and scan it again. Rejects with VIEW_GONE once the view is destroyed. */
   resetFound(): Promise<void>;
-  /** Cookies and web storage (`cookies`), cache and form data (`cache`). History is not part of it (contract 24.9). */
+  /** Cookies and web storage (`cookies`), cache and form data (`cache`). History is not part of it. */
   clearData(options: BrowserClearOptions): void;
   /** Forget this screen's back/forward list. */
   clearHistoryList(): void;
@@ -172,7 +172,7 @@ export type MaglevBrowserRef = {
   findNext(forward: boolean): Promise<void>;
   /** Removes the highlights. Rejects with VIEW_GONE once the view is destroyed. */
   clearFind(): Promise<void>;
-  /** Clears this page's localStorage and sessionStorage (main frame; 24.10a). Reload afterwards. Rejects with VIEW_GONE once the view is destroyed. */
+  /** Clears this page's localStorage and sessionStorage (main frame only). Reload afterwards. Rejects with VIEW_GONE once the view is destroyed. */
   clearSiteStorage(): Promise<void>;
 };
 
@@ -321,7 +321,7 @@ export type BlocklistInfo = {
   source: 'bundled' | 'downloaded';
   urls: string[];
   bytes: number;
-  /** False when a conditional update found every address unchanged (contract 31.2). Absent from older builds. */
+  /** False when a conditional update found every address unchanged. Absent from older builds. */
   changed?: boolean;
 };
 
@@ -376,7 +376,7 @@ export async function clearTabStates(): Promise<void> {
   }
 }
 
-/** Tells native whether to empty the history when Maglev closes (contract 24.9). Resolves quietly where there is no native module. */
+/** Tells native whether to empty the history when Maglev closes. Resolves quietly where there is no native module. */
 export async function setHistoryWipeOnClose(enabled: boolean): Promise<void> {
   try {
     if (typeof Native?.setHistoryWipeOnClose === 'function') await Native.setHistoryWipeOnClose(enabled);
@@ -386,7 +386,7 @@ export async function setHistoryWipeOnClose(enabled: boolean): Promise<void> {
 }
 
 /**
- * How many times native emptied the history because Maglev closed (contract section 30). JS compares it with the last
+ * How many times native emptied the history because Maglev closed. JS compares it with the last
  * count it saw to know the in-memory tabs are stale. 0 where there is no native module (the mock).
  */
 export async function getHistoryWipeCount(): Promise<number> {

@@ -1,4 +1,4 @@
-// SM-27 Remove files (NATIVE_CONTRACT 14). Pure: no React, no IO. The component runs the effects.
+// Remove files. Pure: no React, no IO. The component runs the effects.
 // Anything not in the transition table is a no-op.
 import { formatBytes } from '../../constants/format.ts';
 
@@ -104,7 +104,7 @@ export function removeErrorCopy(code: string, message: string): string {
   }
 }
 
-/** One step of the SM-27 machine. Returns the next state and the effects to run. */
+/** One step of the remove-files machine. Returns the next state and the effects to run. */
 export function removeFilesStep(state: RemoveFilesState, event: RemoveFilesEvent): RemoveFilesStep {
   const same: RemoveFilesStep = { state, effects: [] };
   switch (state.kind) {

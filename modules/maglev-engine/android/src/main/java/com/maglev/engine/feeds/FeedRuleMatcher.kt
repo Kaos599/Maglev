@@ -1,7 +1,7 @@
 package com.maglev.engine.feeds
 
 /**
- * Feed rule matching, contract section 11.6. Pure Kotlin, no android.* imports.
+ * Feed rule matching. Pure Kotlin, no android.* imports.
  * The semantics are fixed by scripts/fixtures/feeds/rule-vectors.json, which the TS side must also pass.
  */
 data class FeedRule(

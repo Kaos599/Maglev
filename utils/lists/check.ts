@@ -1,5 +1,5 @@
 /**
- * One list check (docs/NATIVE_CONTRACT.md section 31.3). Pure: every outside thing (fetch, signature check, network
+ * One list check. Pure: every outside thing (fetch, signature check, network
  * facts, stored serial, applying) comes in through `ListDeps`, so Node tests run it with fakes.
  * The request carries no cookies and no identifiers: no custom headers, `credentials: 'omit'`.
  */
@@ -106,7 +106,7 @@ export interface ListDeps {
   verify(body: string, sigB64: string): Promise<boolean>;
   /** Provider ids the file may describe. */
   known: ReadonlySet<string>;
-  /** Subtitle provider ids the file may describe (section 36.9). Omit to keep every id. */
+  /** Subtitle provider ids the file may describe. Omit to keep every id. */
   knownSubtitles?: ReadonlySet<string>;
   net(): Promise<ListsNet | null>;
   rules(): NetRules;

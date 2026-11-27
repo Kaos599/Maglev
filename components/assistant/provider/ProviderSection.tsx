@@ -1,5 +1,5 @@
 /**
- * Settings → Assistant provider setup, driven 1:1 by SM-40 (utils/assistant/providerMachine.ts).
+ * Settings → Assistant provider setup, driven 1:1 by the provider-setup machine (utils/assistant/providerMachine.ts).
  *   noKey         sign-in button, "Use another provider or paste a key"
  *   editing       provider, key (not for custom), address (custom), model, Test model, sign-in link
  *   testing       the form stays in view, Test model shows it is running

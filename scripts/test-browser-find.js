@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Browser find in page and text size (NATIVE_CONTRACT section 28): static checks on the Kotlin view, module, TS wrapper and screens,
+// Browser find in page and text size: static checks on the Kotlin view, module, TS wrapper and screens,
 // plus the text size normalizer imported from the prefs.
 // Needs Node 22.18+ (runs the TypeScript source directly).
 process.removeAllListeners('warning');

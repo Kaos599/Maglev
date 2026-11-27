@@ -1,5 +1,5 @@
 /**
- * Subtitle prefs (docs/NATIVE_CONTRACT.md sections 36.2 and 36.10). Pure helpers over the `subtitles` section of
+ * Subtitle prefs. Pure helpers over the `subtitles` section of
  * the settings (modules/maglev-engine/src/MaglevSettings.types.ts, UI only: never in toNativeConfig), plus the
  * per-video state kept in kv `subtitles.state`.
  */
@@ -19,12 +19,12 @@ export const DEFAULT_SUBTITLE_SETTINGS: SubtitleSettings = {
   autoNewVideos: false,
 };
 
-/** The language order in force: the user's pick, or the phone's language then English (36.2). */
+/** The language order in force: the user's pick, or the phone's language then English. */
 export function effectiveLanguages(s: Pick<SubtitleSettings, 'languages'>, locale?: string | null): string[] {
   return s.languages.length > 0 ? s.languages.slice() : defaultLanguages(locale);
 }
 
-/** The one-time notice (36.10) is needed until the user accepted it. */
+/** The one-time notice is needed until the user accepted it. */
 export function needsPrivacyNotice(s: Pick<SubtitleSettings, 'privacyAck'>): boolean {
   return !s.privacyAck;
 }
@@ -35,7 +35,7 @@ export function privacyAckPatch(): Pick<SubtitleSettings, 'privacyAck'> {
 }
 
 /**
- * 44.15 D10: the functional settings update for accepting the notice (and optionally more fields in the same write).
+ * The functional settings update for accepting the notice (and optionally more fields in the same write).
  * It reads the settings as they are now, never a snapshot from an earlier render.
  */
 export function acceptPrivacy(more?: Partial<SubtitleSettings>): (prev: { subtitles: SubtitleSettings }) => { subtitles: SubtitleSettings } {
@@ -54,9 +54,9 @@ export function withLanguageAt(list: readonly string[], code: string, index: num
   return rest;
 }
 
-// ---------------------------------------------------------------- per-video state (36.10)
+// ---------------------------------------------------------------- per-video state
 
-/** 'none' (NATIVE_CONTRACT 44.8): nothing found, offline or limited; the icon shows a muted glyph with no badge. */
+/** 'none': nothing found, offline or limited; the icon shows a muted glyph with no badge. */
 export type SubtitleCardState = 'getting' | 'saved' | 'needs-look' | 'none';
 
 export interface SubtitleState {
@@ -81,7 +81,6 @@ const MAX_STATES = 300;
  * Whether the card icon still shows for this state: 'getting' for 2 minutes, 'saved' and 'needs-look' for 24 h.
  * An entry with no usable timestamp counts as expired.
  */
-// NATIVE_CONTRACT 39.1 S3
 export function stateVisible(entry: SubtitleState | null | undefined, now: number): boolean {
   if (!entry) return false;
   if (typeof entry.savedAt !== 'number' || !Number.isFinite(entry.savedAt)) return false;
@@ -93,7 +92,7 @@ function clean(raw: unknown): SubtitleState | null {
   if (!raw || typeof raw !== 'object') return null;
   const o = raw as Record<string, unknown>;
   if (o.state !== 'getting' && o.state !== 'saved' && o.state !== 'needs-look' && o.state !== 'none') return null;
-  // A state written without a timestamp is dropped: it counts as expired (S3).
+  // A state written without a timestamp is dropped: it counts as expired.
   if (typeof o.lang !== 'string' || typeof o.savedAt !== 'number' || !Number.isFinite(o.savedAt)) return null;
   return { lang: o.lang, file: typeof o.file === 'string' ? o.file : '', savedAt: o.savedAt, state: o.state };
 }
@@ -150,7 +149,6 @@ export function clearSubtitleState(videoKey: string): void {
  * At app start no download can still be running, so every stored 'getting' entry is stale: remove them. Entries
  * that already expired are dropped too. Returns how many were removed.
  */
-// NATIVE_CONTRACT 39.1 S3
 export function clearStaleStates(now: number): number {
   const all = readAll();
   let removed = 0;

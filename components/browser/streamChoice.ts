@@ -1,5 +1,5 @@
 /**
- * Pure choices for the stream sheet (docs/NATIVE_CONTRACT.md section 24.8): quality labels,
+ * Pure choices for the stream sheet: quality labels,
  * the preselected quality and audio track, and the selection sent to startDownload.
  */
 import type { StreamAudioTrack, StreamKind, StreamProbe, StreamSelection, StreamVariant } from '../../modules/maglev-engine/src/MaglevEngine.types';

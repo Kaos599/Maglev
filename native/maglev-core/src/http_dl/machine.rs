@@ -1,4 +1,5 @@
-//! SM-30 URL download state machine (`docs/STATE_MACHINES_AND_SCREENS.md` section 4, `NATIVE_CONTRACT.md` section 17).
+//! State machine for one link download (resolving, queued, downloading, paused, verifying, finished, needs a new
+//! link, error, gone).
 //!
 //! Pure: `step(state, event)` returns the next state and the effects the driver must run. No IO, no clock.
 //! Every row of the transition table has a unit test at the bottom of this file.
@@ -9,7 +10,7 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Max retries of one transfer before it gives up (contract section 17, retry policy).
+/// Max retries of one transfer before it gives up.
 pub const MAX_ATTEMPTS: u32 = 10;
 
 /// Max stall retries (too slow, or silent) before the download gives up. Smaller than `MAX_ATTEMPTS`: every
@@ -40,7 +41,7 @@ impl PauseReason {
     }
 }
 
-/// The error states of SM-30 (`Error(code)`).
+/// The error states of a link download (`Error(code)`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DlError {
     HttpStatus,
@@ -59,7 +60,7 @@ pub enum DlError {
     LanAddress,
     /// The server kept the connection open but sent almost nothing, again and again.
     Stalled,
-    /// Stream (contract 24.8): encrypted with something Maglev doesn't open, or DRM.
+    /// Stream: encrypted with something Maglev doesn't open, or DRM.
     StreamProtected,
     /// Stream: a live stream.
     StreamLive,
@@ -331,7 +332,7 @@ pub fn step(state: State, event: Event) -> (State, Vec<Effect>) {
         (S::NeedsLink, E::NewLink { matches: true }) => (S::Queued, vec![Effect::RebindUrl]),
         (S::NeedsLink, E::NewLink { matches: false }) => (S::Error(DlError::FileChanged), vec![]),
 
-        // Extra (streams, contract 24.8).
+        // Extra (streams).
         (S::Resolving, E::StreamRefused(e)) => (S::Error(e), vec![]),
         (S::Downloading, E::StreamRefused(e)) => (S::Error(e), vec![Effect::KeepPart]),
         (S::Verifying, E::MuxFailed) => (S::Error(DlError::MuxFailed), vec![Effect::KeepPart]),

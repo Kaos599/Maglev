@@ -8,7 +8,7 @@ import { StatGrid } from '../detail/StatGrid';
 import { TimingRow } from '../detail/TimingRow';
 
 /**
- * NATIVE_CONTRACT 40.2: what the download page shows about a link download's numbers. Its own component so a later
+ * What the download page shows about a link download's numbers. Its own component so a later
  * Compact mode can swap it. A 2x2 grid (Speed, Time left, Downloaded, Connections), then the timing row in every state.
  * Nothing is invented: a value the engine does not know, or that has no meaning right now, reads "—".
  */
@@ -17,7 +17,7 @@ export type DownloadStatsInput = Pick<
   'state' | 'downBps' | 'eta' | 'size' | 'downloaded' | 'segmentsActive' | 'activeSecs' | 'finishedAt' | 'addedAt' | 'sessionBytes' | 'bytesWifi' | 'bytesMobile'
 >;
 
-// NATIVE_CONTRACT 41.2: this is the link page's Detailed block. It takes only the fields it draws, so the Download page
+// This is the link page's Detailed block. It takes only the fields it draws, so the Download page
 // sheet can render it from fixed sample data.
 export function DownloadStats({ download: d }: { download: DownloadStatsInput }) {
   const { colors } = useTheme();

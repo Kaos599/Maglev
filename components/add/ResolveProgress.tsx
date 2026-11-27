@@ -6,7 +6,7 @@ import { ThemeColors, spacing, type } from '../../constants/theme';
 import { Button, ProgressBar } from '../ui';
 import { PixelIcon } from '../PixelIcon';
 
-/** NATIVE_CONTRACT 12.1: the secondary action appears after this long. */
+/** The secondary action appears after this long. */
 const START_NOW_AFTER_MS = 5000;
 const POLL_MS = 1000;
 
@@ -24,7 +24,7 @@ function clock(ms: number): string {
   return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 }
 
-/** Resolving block of the Add screen (UI_SPEC S9). Polls what the engine can see, never guesses. */
+/** Resolving block of the Add screen. Polls what the engine can see, never guesses. */
 export function ResolveProgress({ infoHash, starting, onStartNow, onCancel }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);

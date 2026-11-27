@@ -7,7 +7,7 @@ import androidx.documentfile.provider.DocumentFile
 import java.io.File
 
 /**
- * "Hide from gallery" (docs/NATIVE_CONTRACT.md, hideFromGallery). While on, an empty `.nomedia` sits in the folder
+ * "Hide from gallery" (the hideFromGallery setting). While on, an empty `.nomedia` sits in the folder
  * Maglev saves to, and Maglev does not ask the media scanner about its files. JS pushes the setting inside the
  * `setGovernance` payload and the module saves it here, so it is read with no JS running.
  *

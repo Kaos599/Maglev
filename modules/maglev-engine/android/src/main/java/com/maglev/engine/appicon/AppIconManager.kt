@@ -5,7 +5,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 
 /**
- * Launcher icon choice (docs/NATIVE_CONTRACT.md section 26).
+ * Launcher icon choice.
  *
  * plugins/withAppIcons.js writes one `<activity-alias>` per icon into the manifest, each with the MAIN/LAUNCHER
  * filter and `targetActivity=".MainActivity"`. Exactly one alias is enabled. Choosing an icon enables its alias

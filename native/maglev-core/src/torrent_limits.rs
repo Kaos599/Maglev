@@ -1,4 +1,4 @@
-//! Per-torrent speed limits (contract section 11.2).
+//! Per-torrent speed limits.
 //!
 //! Pure helpers plus the JSON sidecar `<sessionDir>/maglev-limits.json`, keyed by info-hash.
 //! The engine glue (applying a limit through the vendored `ManagedTorrent::set_ratelimits`) is in `engine.rs`.

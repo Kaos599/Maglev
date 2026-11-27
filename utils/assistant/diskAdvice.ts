@@ -1,12 +1,12 @@
 /**
- * Disk-space aware advice (docs/ASSISTANT_DESIGN.md §6).
+ * Disk-space aware advice. Rules R1 to R12 are listed in `DiskRuleId`; U1 and U2 are the "unknown input" cases.
  *
  * Pure: no React, no react-native, no engine. Free space and pending need come
  * in as arguments. Every number in a message is computed here and formatted
  * with formatBytes. Unknown input produces a U1/U2 advice and never a guess.
  * The model only words the output; it never picks numbers.
  *
- * Choices where §6 leaves room (listed in the test file header too):
+ * Choices made where the rules leave room:
  * - Partial packs (R2, R10) assume episodes are the same size: pack bytes / episode count.
  *   They use only counts whose admit() result is Fits, so the text never states a Tight fit.
  * - R3/R4 only name an existing candidate whose admit() result is Fits, since the text says "it fits".
@@ -172,7 +172,7 @@ function largestFittingCount(v: View, max: number, space: Space, staging: 1 | 2)
 // ---------------------------------------------------------------- main
 
 /**
- * Advice for a set of candidates, in rule order (§6.1).
+ * Advice for a set of candidates, in rule order.
  *
  * Each DoesntFit candidate gets R1, then the ladder R2 to R6 when it applies.
  * Each Tight candidate gets R5 (when finished downloads exist) and R7.

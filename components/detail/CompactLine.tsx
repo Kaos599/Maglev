@@ -15,7 +15,7 @@ export interface CompactLineProps {
 }
 
 /**
- * NATIVE_CONTRACT 41.1: the one line of Compact mode, inside the progress card under the bar. Used by the torrent page,
+ * The one line of Compact mode, inside the progress card under the bar. Used by the torrent page,
  * the link download page and the previews in the Download page sheet, so the three cannot drift.
  * "↓ 8.4 MB/s · ↑ 140 KB/s · 3 min left": down in the download colour, up in the upload colour, the rest muted.
  * Returns nothing when no part is known.

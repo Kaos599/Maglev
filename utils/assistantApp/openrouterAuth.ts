@@ -1,5 +1,5 @@
 /**
- * Sign in with OpenRouter (OAuth PKCE, headless mode) for SM-40.
+ * Sign in with OpenRouter (OAuth PKCE, headless mode).
  * https://openrouter.ai/docs/guides/overview/auth/oauth
  *
  * Flow: make a verifier, keep it in secure storage, open openrouter.ai/auth with only the S256 challenge

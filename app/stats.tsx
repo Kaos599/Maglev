@@ -1,5 +1,5 @@
 /**
- * Stats (docs/NATIVE_CONTRACT.md section 34.2): the Pixel city for a week, month or year, and the card kit under it.
+ * Stats: the Pixel city for a week, month or year, and the card kit under it.
  * Every figure comes from the local stats tables; nothing leaves the phone.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';

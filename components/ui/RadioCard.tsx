@@ -23,7 +23,7 @@ export interface RadioCardProps {
 
 /**
  * Option card with a square pixel radio: 32 px icon box, mono title, body description.
- * Selected state uses the `selBorder` and `selBg` tokens (UI_SPEC S11.2).
+ * Selected state uses the `selBorder` and `selBg` tokens.
  */
 export function RadioCard({
   title,

@@ -1,4 +1,4 @@
-// SM-38 Proposal card. Pure: no React, no IO. The component runs the effects.
+// Proposal card state machine. Pure: no React, no IO. The component runs the effects.
 // Anything not in the transition table is a no-op. Never add states.
 
 export type CardKind = 'proposed' | 'confirming' | 'executing' | 'done' | 'failed' | 'expired' | 'dismissed';
@@ -10,7 +10,7 @@ export interface CardState {
   reason?: string;
   /** One-line result after EXEC_OK. */
   summary?: string;
-  /** Message after EXEC_ERR (the SM-36 message for the code, chosen by the caller). */
+  /** Message after EXEC_ERR (the plain-English message for the engine code, chosen by the caller). */
   error?: string;
   /** Caption shown on an expired card. */
   caption?: string;
@@ -39,10 +39,10 @@ export interface CardStep {
 /** Caption of a card a newer card for the same target replaced. */
 export const CARD_REPLACED_CAPTION = 'A newer card replaced this one.';
 
-/** Fixed copy for an expired card (SM-38). */
+/** Fixed copy for an expired card. */
 export const CARD_EXPIRED_CAPTION = 'Expired. Ask again for a fresh plan.';
 
-/** One step of the SM-38 machine. Returns the next state and the effects to run. */
+/** One step of the card machine. Returns the next state and the effects to run. */
 export function cardStep(state: CardState, event: CardEvent): CardStep {
   const same: CardStep = { state, effects: [] };
   const id = state.cardId;

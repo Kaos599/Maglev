@@ -1,8 +1,8 @@
-// Per-session handle registry (SM-31, ASSISTANT_DESIGN §4.1). The model only ever sees short handles:
+// Per-session handle registry. The model only ever sees short handles:
 // r1.. search results, t1.. transfers, f1.. files, c1.. cards. The real ids (info-hashes, engine ids,
 // file indices) stay in this map and never reach the model. A handle is built from a prefix and a counter,
 // so it can never contain a hash, magnet or device path.
-// Clearing the chat (SM-31 `CLEAR`) calls clear(), which drops every handle but keeps the counters going, so a handle is never reused
+// Clearing the chat calls clear(), which drops every handle but keeps the counters going, so a handle is never reused
 // within the app's lifetime (a slow card prepared before Clear can never match a card made after it).
 // Pure TypeScript: no React, no React Native, no engine imports.
 
@@ -94,7 +94,7 @@ export class HandleRegistry {
     this.counters[kind] = 0;
   }
 
-  /** Drop all handles; counters keep counting. Called on chat clear and when the API key is removed (ASSISTANT_DESIGN §5, `CLEAR` / `KEY_REMOVED`). */
+  /** Drop all handles; counters keep counting. Called on chat clear and when the API key is removed. */
   clear(): void {
     this.byHandle.clear();
     this.byReal.clear();

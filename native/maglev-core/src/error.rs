@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
-/// The closed set of codes from `docs/NATIVE_CONTRACT.md` section 3, plus `TRACKER`,
+/// The closed set of codes that Kotlin and the app map to messages, plus `TRACKER`,
 /// which only appears inside a torrent snapshot's `error` object.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -29,7 +29,7 @@ pub enum ErrorCode {
     Internal,
     /// The app cancelled a magnet resolve. Not an error to show.
     Cancelled,
-    /// URL downloads (section 17): the server answered with a failing status (`http_status`).
+    /// URL downloads: the server answered with a failing status (`http_status`).
     HttpStatus,
     /// URL downloads: 401, or 403 on a link that carried a user name and password. The link needs a sign in.
     AuthRequired,
@@ -54,7 +54,7 @@ pub enum ErrorCode {
     LanAddress,
     /// Opening a finished file: no app on the phone can open it. Returned by the Kotlin layer only.
     NoApp,
-    /// Stream downloads (section 24.8): encrypted with something other than plain HLS AES-128, or DRM.
+    /// Stream downloads: encrypted with something other than plain HLS AES-128, or DRM.
     StreamProtected,
     /// Stream downloads: a live stream with no end.
     StreamLive,
@@ -64,7 +64,7 @@ pub enum ErrorCode {
     MuxFailed,
 }
 
-/// Copy of the stream errors (contract section 24.8). `scripts/test-stream-contract.js` checks these strings.
+/// Copy of the stream errors. `scripts/test-stream-contract.js` checks these strings.
 pub const STREAM_PROTECTED_MSG: &str = "This stream is protected. Maglev can't save it.";
 pub const STREAM_LIVE_MSG: &str = "This is a live stream. Maglev can only save videos that have an end.";
 pub const STREAM_UNSUPPORTED_MSG: &str = "Maglev can't save this kind of stream yet.";
@@ -119,7 +119,7 @@ pub struct EngineError {
     pub id: Option<String>,
     /// Set when a call was refused only because it came too soon (`nativeReannounce`).
     pub retry_after_secs: Option<u64>,
-    /// Set for `DUPLICATE`: how many trackers of the new source were added to the existing torrent (section 21).
+    /// Set for `DUPLICATE`: how many trackers of the new source were added to the existing torrent.
     pub merged_trackers: Option<usize>,
     /// Set for `HTTP_STATUS`: the status the server answered.
     pub http_status: Option<u16>,

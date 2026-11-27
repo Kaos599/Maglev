@@ -1,5 +1,5 @@
 /**
- * Tracker address rules (NATIVE_CONTRACT 15). The same rules run in Rust (`native/maglev-core/src/trackers.rs`),
+ * Tracker address rules. The same rules run in Rust (`native/maglev-core/src/trackers.rs`),
  * in the mock engine and in the Add tracker sheet, so a bad line is caught before it is sent and the three agree.
  */
 

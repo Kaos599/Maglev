@@ -10,7 +10,7 @@ data class ScanEntry(val url: String, val type: String, val width: Int, val heig
 data class ScanReport(val entries: List<ScanEntry>, val eme: Boolean, val blob: Boolean)
 
 /**
- * The page scan (docs/NATIVE_CONTRACT.md section 24.3 rule 2): the script we inject and the parser for what it sends back.
+ * The page scan: the script we inject and the parser for what it sends back.
  * Everything the page sends is untrusted: [parse] checks the nonce, the size and every field.
  */
 object PageScan {
@@ -111,7 +111,7 @@ object PageScan {
 })();
 """
 
-    /** Hides common ad containers. Injected only when ad blocking is on for the site (section 24.4). */
+    /** Hides common ad containers. Injected only when ad blocking is on for the site. */
     private val COSMETIC_JS = """
 (function(){
   var id = '__mg_cosmetic';

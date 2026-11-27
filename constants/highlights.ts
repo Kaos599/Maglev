@@ -1,7 +1,7 @@
 import type { PixelIconName } from '../components/PixelIcon';
 
 /**
- * New-feature highlight after an update (docs/NATIVE_CONTRACT.md section 37.1). Only versions with a headline
+ * New-feature highlight after an update. Only versions with a headline
  * feature have an entry. Keys are "major.minor".
  */
 export interface Highlight {

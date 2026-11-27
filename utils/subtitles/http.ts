@@ -1,5 +1,5 @@
 /**
- * The one bytes fetch and the one download-to-payload step for every subtitle source (contract 36.3).
+ * The one bytes fetch and the one download-to-payload step for every subtitle source.
  * `utils/search/http.ts` only reads text, so downloads and binary-safe pages come through here. Same User-Agent as
  * `httpText`, no cookies, no timeout of its own (the caller's AbortSignal ends the request).
  */
@@ -170,7 +170,7 @@ export function toPayload(bytes: Uint8Array, options: PayloadOptions | string = 
   const r = decodeSubtitleText(bytes, opts.language);
   const text = r.ok ? r.text : latin1(bytes);
   if (/^\s*<(!doctype|html|\?xml|head|body)/i.test(text)) throw new ProviderError('parse', 'The source sent a web page instead of a subtitle');
-  // NATIVE_CONTRACT 39.1 S1: every provider's body must hold a cue, whatever the provider passed.
+  // Every provider's body must hold a cue, whatever the provider passed.
   if (opts.requireCues !== false && !hasSubtitleCues(text)) {
     throw new ProviderError('parse', 'The source has no file for this subtitle right now');
   }

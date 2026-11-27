@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Browser hardening (NATIVE_CONTRACT 24.11): downloads without a tap, Back-button hijacking, HTTPS-first, the found-files
+// Browser hardening: downloads without a tap, Back-button hijacking, HTTPS-first, the found-files
 // hint and the mining block list. Pure TS rules run directly (Node 22.18+); the Kotlin side is checked as source, because
 // Kotlin is only compiled in CI. The Kotlin mirrors have JVM tests in BrowserHardeningTest.kt with the same vectors.
 process.removeAllListeners('warning');

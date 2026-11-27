@@ -7,7 +7,7 @@ import androidx.core.content.ContextCompat
 
 /**
  * Starts the foreground service from a place that has no visible UI (alarm receiver, worker).
- * Contract section 11, "Background-start rule". On API 31+ the platform may throw
+ * Background-start rule: on API 31+ the platform may throw
  * ForegroundServiceStartNotAllowedException, which extends IllegalStateException
  * (https://developer.android.com/reference/android/app/ForegroundServiceStartNotAllowedException).
  * Catching Exception also covers a SecurityException for a missing foreground-service permission, and keeps

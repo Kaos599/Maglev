@@ -19,7 +19,7 @@ export interface MessageProps {
 
 /**
  * One turn of text, after AI Elements' Message: the user's words in an accent-outlined bubble on the right, the
- * assistant's on the left with light formatting, plus one-line app notes and SM-31 errors.
+ * assistant's on the left with light formatting, plus one-line app notes and error notes.
  */
 export const Message = memo(function Message({ item, onTerm, onOpenSettings, onRetry }: MessageProps) {
   const { colors } = useTheme();

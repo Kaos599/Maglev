@@ -33,7 +33,7 @@ async function main() {
   // ---- constants
   const consts = await import('../constants/appIcons.ts');
   const ids = consts.APP_ICONS.map((i) => i.id);
-  check('constants list the 20 owner ids in order', same(ids, OWNER_IDS), ids.join(','));
+  check('constants list the 20 icon ids in order', same(ids, OWNER_IDS), ids.join(','));
   check('every icon has a name and a group', consts.APP_ICONS.every((i) => i.name && ['train', 'm', 'extra'].includes(i.group)));
   check('default icon is teal and first', consts.DEFAULT_APP_ICON === 'teal' && ids[0] === 'teal');
   check('ids are unique', new Set(ids).size === ids.length);

@@ -1,5 +1,5 @@
 // Hosts the user has passed a Cloudflare check on, with the User-Agent the WebView used.
-// Contract: docs/SEARCH_CONTRACT.md section 8. Memory only here; utils/prefs/search.ts persists and hydrates it.
+// The same User-Agent must be reused for the cookie to be accepted. Memory only here; utils/prefs/search.ts persists and hydrates it.
 
 import { hostOf } from './challenge.ts';
 

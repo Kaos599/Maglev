@@ -5,7 +5,7 @@ import { tabStore } from '../../utils/browser/tabStore';
 import { deleteSavedTabs, flushTabs, loadTabs, scheduleSaveTabs } from '../../utils/history';
 import { getBrowserPrefs, subscribeBrowserPrefs } from '../../utils/prefs/browser';
 
-// Section 30: bind the one store to the history database, the prefs and the native wipe counter, once per process.
+// Bind the one store to the history database, the prefs and the native wipe counter, once per process.
 tabStore.bind({
   load: loadTabs,
   scheduleSave: scheduleSaveTabs,
@@ -35,7 +35,7 @@ const actions = {
 };
 
 /**
- * The tabs of every browser screen (contract section 30). The state lives in utils/browser/tabStore.ts and is shared by
+ * The tabs of every browser screen. The state lives in utils/browser/tabStore.ts and is shared by
  * the Browse tab and the /browser stack route; this hook only reads it and restores it the first time it is needed.
  */
 export function useTabs() {

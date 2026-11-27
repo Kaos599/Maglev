@@ -53,7 +53,7 @@ Already-requested pieces are not cancelled. Files that are not selected (`only_f
     same length still updates the file's mtime on Linux/Android, so a finished torrent's files read as "changed" by
     Maglev's file-health check (`file_health.rs`, size and mtime) after every restart. Found on device (0.19 test).
 
-## Per-torrent speed limits (hunks 7-11, Wave 4, contract section 11.2)
+## Per-torrent speed limits (hunks 7-11)
 
 Why: librqbit builds the per-torrent limiter (`TorrentStateLive::ratelimits`) once, from
 `AddTorrentOptions.ratelimits` (`ManagedTorrentOptions.ratelimits`, stored immutably in `ManagedTorrentShared.options`),
@@ -85,7 +85,7 @@ The limiter's burst is now `burst_for(bps)` (hunk 12) and librqbit asks for one 
 before calling `set_ratelimits` (`src/torrent_limits.rs`).
 
 
-## Web seeds, BEP 19 (hunks 13-23, contract section 16)
+## Web seeds, BEP 19 (hunks 13-23)
 
 Source: https://github.com/ikatson/rqbit/pull/739 (open, head 272a3bf, "feat(webseed): download from BEP 19 web seeds"),
 applied with `patch -p3` onto the 9.1.0 sources; every hunk below applied without fuzz except the two marked CONFLICT.
@@ -140,7 +140,7 @@ Maglev wiring (`native/maglev-core/src/engine.rs`): `Snapshot.web_seeds` = `Mana
 gets one row per web seed with `client: "Web seed"`, the URL's host as `addr`, and a speed computed from
 `WebSeedStats::downloaded_bytes`.
 
-## Remove a file's data (hunk 24, contract section 14)
+## Remove a file's data (hunk 24)
 
 Why: librqbit can deselect a file (`update_only_files`) but never forgets pieces it already has, and never deletes
 a single file of a running torrent. Maglev's "Remove" needs both, and the have bits must go too or a restart (fast
@@ -181,7 +181,7 @@ so those few bytes land in an unlinked inode and vanish when the torrent is drop
 `FilesystemStorage::init` creates an empty file at that path again and a boundary download can leave up to one piece of
 that file's bytes there; the file is not selected, so nothing else is downloaded into it.
 
-25. Open only included files, and `close_file` (contract section 18.1; also `forget_files_data` for section 18.3 "Download again").
+25. Open only included files, and `close_file` (also `forget_files_data` for "Download again").
     - `src/storage/filesystem/fs.rs` `FilesystemStorage::init`: a file outside the include set gets `OpenedFile::new_lazy(path)`: no
       `create_dir_all`, no 0-byte file, no handle. The include set comes from the new `ManagedTorrentShared::init_only_files`
       (`src/torrent_state/mod.rs`, a `Mutex<Option<Vec<usize>>>`), because `StorageFactory::create_and_init(shared, metadata)` has no
@@ -209,7 +209,7 @@ that file's bytes there; the file is not selected, so nothing else is downloaded
 To rebase on a new librqbit version: re-apply hunks 1-12, 24 and 25 (`grep -rn "MAGLEV PATCH" src`) and hunks 13-23 (web seed
 files are whole files; diff them against the PR or its merged form).
 
-## Live tracker list (hunks T1-T4, Wave 6, contract section 15)
+## Live tracker list (hunks T1-T4)
 
 How librqbit holds trackers (checked, v9.1.0): `ManagedTorrentShared.trackers: HashSet<url::Url>` (`src/torrent_state/mod.rs:186`) is
 filled once in `add_torrent` (`src/session.rs:1358`, from the .torrent announce list, the magnet `tr=` params and
@@ -217,7 +217,7 @@ filled once in `add_torrent` (`src/session.rs:1358`, from the .torrent announce 
 `Session::make_peer_rx_managed_torrent` (`src/session.rs:1528`, called from `unpause` at `:1635`) passes it to `make_peer_rx`, which hands
 the set to `TrackerComms::start` (`:1595`) as a fixed set; each tracker gets its own announce task for the life of that peer stream.
 So there is no API to change trackers on a torrent, live or not, and a live torrent keeps announcing to the set it started with.
-The new list therefore takes effect when the peer stream is rebuilt, which is what pause + unpause does (the `nativeReannounce` mechanism, contract 10.2).
+The new list therefore takes effect when the peer stream is rebuilt, which is what pause + unpause does (the `nativeReannounce` mechanism).
 
 The hunks keep `trackers` as it is (it stays the list the torrent was added with) and add an override next to it, the same way hunks 1-3 and 7-9 do:
 

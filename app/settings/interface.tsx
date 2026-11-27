@@ -24,7 +24,7 @@ const MODES = [
   { value: 'light', label: 'Light' },
   { value: 'system', label: 'System' },
 ] as const;
-// NATIVE_CONTRACT 41.3: the row's second line and its spoken label, one pair per layout.
+// The row's second line and its spoken label, one pair per layout.
 const DENSITY_ROW: Record<TelemetryDensity, { line: string; spoken: string }> = {
   COMPACT: { line: 'Compact: speed and time left', spoken: 'Download page, Compact, speed and time left' },
   VERBOSE: { line: 'Detailed: adds amounts, connections and timing', spoken: 'Download page, Detailed, adds amounts, connections and timing' },
@@ -126,7 +126,7 @@ export default function InterfaceSettings() {
           })}
           <Caption>{fontStyleCopy.hint}</Caption>
         </View>
-        {/* NATIVE_CONTRACT 41.3: the "Transfers" heading, then the Download page row (the old Transfer details control is gone). */}
+        {/* The "Transfers" heading, then the Download page row (the old Transfer details control is gone). */}
         <Text style={s.sectionLabel} accessibilityRole="header">
           Transfers
         </Text>
@@ -186,7 +186,7 @@ export default function InterfaceSettings() {
           }
         />
       </Card>
-      {/* NATIVE_CONTRACT 41.4: tapping a card saves at once and the sheet stays open. */}
+      {/* Tapping a card saves at once and the sheet stays open. */}
       <DensitySheet
         visible={densityOpen}
         onClose={() => setDensityOpen(false)}

@@ -1,5 +1,5 @@
 /**
- * What a download card says and offers, per state (STATE_MACHINES_AND_SCREENS SM-30 "Copy").
+ * What a download card says and offers, per state.
  * Pure: no React, so `scripts/test-url-download.js` runs it directly.
  */
 import type { DownloadSnapshot } from 'maglev-engine';
@@ -63,12 +63,12 @@ export const FRESH_LINK_FAILED_TEXT = "Couldn't update. Check your connection, o
 export const VIDEO_SITES_UPDATE_LEAD = 'Video sites need an update';
 const VIDEO_SITES_UPDATE_TEXT = 'Video sites need an update. Tap Update to get the newest reader and try again.';
 
-/** A 403 with no sign-in details (NATIVE_CONTRACT 17, LINK_REFUSED): the site refused the link itself. */
+/** A 403 with no sign-in details (LINK_REFUSED): the site refused the link itself. */
 const LINK_REFUSED_TEXT = 'The site refused this link. Open its page again, then retry.';
 const LINK_REFUSED_PROBE_BODY =
   "The site refused this link. Open the page in Maglev's browser and start the download from there, or paste a fresh link.";
 
-/** The phone has no usable network (Kotlin's `offline` block, NATIVE_CONTRACT 35.4). */
+/** The phone has no usable network (Kotlin's `offline` block). A card that is not flowing says so instead of "Waiting for the server". */
 function isOffline(ctx: BlockContext): boolean {
   return !!ctx.blocks?.some((b) => b.tag === 'offline');
 }
@@ -110,7 +110,7 @@ function errorKind(code: string | undefined, httpStatus?: number | null): ErrorK
   if (c === 'PERMISSION' || c === 'EACCES') return 'permission';
   if (c === 'HTTP_STATUS') return isFinal4xx(httpStatus) ? 'httpGone' : 'network';
   if (c === 'NETWORK') return 'network';
-  // Exact codes from native/maglev-core (http_dl, NATIVE_CONTRACT §17).
+  // Exact codes from native/maglev-core (http_dl).
   if (c === 'FILE_TOO_LARGE') return 'tooBig';
   if (c === 'STORAGE_UNAVAILABLE') return 'folderGone';
   if (c === 'LOCAL_REDIRECT') return 'localBlocked';
@@ -162,7 +162,7 @@ export interface DownloadStatus {
   pct?: string;
   /** Right side: speed while data flows, else the amount, else the size, else "—". */
   value?: string;
-  /** While data flows: the amount, drawn in the normal telemetry colour before the speed in `value` (NATIVE_CONTRACT 43.3). */
+  /** While data flows: the amount, drawn in the normal telemetry colour before the speed in `value`. */
   amount?: string;
   slot?: DownloadSlot;
   tone: DownloadTone;
@@ -178,7 +178,7 @@ function mk(lead: string, tone: DownloadTone, pct: number | null, value?: string
 export type LinkSituation = 'flowing' | 'connecting' | 'waiting' | 'quiet';
 
 /**
- * NATIVE_CONTRACT 43.3. Waiting: the engine's `stalled` flag, or some downloaded and no data for QUIET_MS.
+ * Waiting: the engine's `stalled` flag, or some downloaded and no data for QUIET_MS.
  * Connecting: nothing downloaded and not flowing. Null when the download is not downloading.
  */
 export function linkSituation(
@@ -213,7 +213,7 @@ function amountOrSize(d: DownloadSnapshot, shortOpt: boolean | ((fullChars: numb
     // `extraChars` is what sits beside the amount on the right (" · 8.4 MB/s"), so the narrow-card test sees the whole text.
     const short = typeof shortOpt === 'function' ? shortOpt(full.length + extraChars) : shortOpt;
     if (!short) return { value: full, slot: 'amount' };
-    // NATIVE_CONTRACT 45.2 (and 43.3): while data flows, "134/587 MB" first; the amount alone only when that does not fit either.
+    // While data flows, "134/587 MB" first; the amount alone only when that does not fit either.
     if (compact) {
       const text = formatCompactAmount(d.downloaded, d.size, d.stream ? '~' : '');
       if (typeof shortOpt === 'function' && !shortOpt(text.length + extraChars)) return { value: text, slot: 'amount', full };
@@ -250,7 +250,7 @@ export function downloadStatus(
       const lead = hasEta ? `${eta} left` : 'Downloading';
       const pct = hasEta || flowing ? wholePercent(d) : startedPct(d);
       if (flowing) {
-        // Right side: the amount in the telemetry colour, then the speed (NATIVE_CONTRACT 43.3).
+        // Right side: the amount in the telemetry colour, then the speed.
         const speed = d.downBps > 0 ? formatSpeed(d.downBps) : '—';
         const amt = amountOrSize(d, opts.shortAmount, speed.length + 3, true);
         const full = amountOrSize(d);
@@ -260,7 +260,7 @@ export function downloadStatus(
       return mk(lead, 'download', pct, right.value, right.slot, right.full);
     }
     case 'paused': {
-      // Same as a torrent: danger, with the card's button ("Free up space") as the way out (docs/contracts-0.19/play-and-storage.md section 2).
+      // Same as a torrent: danger, with the card's button ("Free up space") as the way out.
       if (d.pausedBy === 'storage_full') return held(reasonFor('storage_full')!.short, 'danger');
       if (d.pausedBy === 'storage_unavailable') return held(FOLDER_GONE_CARD, 'danger', FOLDER_GONE_TEXT);
       return held(reasonFor(d.pausedBy, ctx)?.short ?? 'Paused', 'muted');
@@ -389,7 +389,7 @@ export function downloadActions(d: DownloadSnapshot, ctx: BlockContext = {}): Do
       if (d.pausedBy === 'storage_full') return [A.freeSpace];
       if (d.pausedBy === 'fgs_timeout') return [A.resume];
       if (isGovernancePause(d.pausedBy)) {
-        // The table decides: a rule that allows an override offers it, then the setting that holds it (NATIVE_CONTRACT 35.2).
+        // The table decides: a rule that allows an override offers it, then the setting that holds it.
         const reason = reasonFor(d.pausedBy, ctx);
         const out: DownloadAction[] = [];
         if (reason?.override && (d.pausedBy !== 'wifi_only' || wifiOverrideAllowed(ctx?.blocks))) out.push(d.pausedBy === 'wifi_only' ? A.resumeMobile : A.resumeAnyway);
@@ -505,13 +505,13 @@ export const OPEN_FOLDER_FAILED_TEXT = "Couldn't open the folder.";
 /** What to tell the user when the share sheet can't open for a finished download. */
 export const SHARE_FAILED_TEXT = "Couldn't share this file.";
 
-/** NATIVE_CONTRACT 40.2: what the page says when a tap copies the link. */
+/** What the page says when a tap copies the link. */
 export const LINK_COPIED_TEXT = 'Link copied';
-/** NATIVE_CONTRACT 40.2: the one-line hint under the progress card while a download that can't resume is running. */
+/** The one-line hint under the progress card while a download that can't resume is running. */
 export const CANT_RESUME_HINT = "This server can't resume. Pausing starts over.";
 
 /**
- * NATIVE_CONTRACT 40.2: the "Why it stopped" block of a download that needs a new link. The title is short; the text is the
+ * The "Why it stopped" block of a download that needs a new link. The title is short; the text is the
  * existing sign-in copy, or the engine's own message when it gave one.
  */
 export function linkProblem(d: DownloadSnapshot): { title: string; body: string } {
@@ -520,14 +520,14 @@ export function linkProblem(d: DownloadSnapshot): { title: string; body: string 
   return { title: 'Link expired', body: d.error?.message || 'The server no longer accepts this link.' };
 }
 
-/** The host of a download's address and nothing after it: never the path, a query or anything more (40.2 Source). */
+/** The host of a download's address and nothing after it: never the path, a query or anything more. */
 export function sourceHost(urlDisplay: string): string {
   const m = /^[a-z][a-z0-9+.-]*:\/\/([^/?#\s]+)/i.exec(urlDisplay.trim());
   const host = m ? m[1] : urlDisplay.trim().split(/[/?#]/)[0];
   return host.replace(/^[^@]*@/, '');
 }
 
-// ---- NATIVE_CONTRACT 43.4 / 43.5: "Why it hasn't started" and "Why it stopped" ----
+// ---- "Why it hasn't started" and "Why it stopped" ----
 
 export const whyCopy = {
   connectingTitle: "Why it hasn't started",
@@ -536,7 +536,7 @@ export const whyCopy = {
   torrentNoPeers: 'No one sharing this has been found yet. Maglev keeps asking trackers and other peers.',
   torrentWaiting: (quiet: string) => `No data for ${quiet}. The peers it had stopped sending. Maglev keeps looking.`,
   stopsWaiting: (limit: string) => ` After ${limit} with no one sharing, it stops waiting.`,
-  /** 45.1: a torrent that has no file list yet. */
+  /** A torrent that has no file list yet. */
   resolvingSentence: "Maglev needs this torrent's file list from someone who has it.",
   resolvingNoPeers: ' No one sharing it has been found yet.',
   resolvingAsking: (n: number) => ` Asking the ${n} it found.`,
@@ -596,7 +596,7 @@ export interface TorrentWhyInput {
   peerTimeoutMins: number;
 }
 
-/** 43.4: the torrent page's block. */
+/** The torrent page's block. */
 export function torrentWhy(i: TorrentWhyInput): WhyModel {
   const L = whyCopy.labels;
   if (i.situation === 'connecting') {
@@ -637,7 +637,7 @@ export interface TorrentResolvingWhyInput {
 }
 
 /**
- * 45.1: the block for a torrent in INITIALIZING (no file list yet). No button: the engine refuses `reannounce`
+ * The block for a torrent in INITIALIZING (no file list yet). No button: the engine refuses `reannounce`
  * until the torrent is downloading or seeding (engine.rs `reannounce`, UNSUPPORTED), so offering it would only fail.
  */
 export function torrentResolvingWhy(i: TorrentResolvingWhyInput): WhyModel {
@@ -662,7 +662,7 @@ export interface LinkWhyInput {
   lastDataAgoMs: number | null;
 }
 
-/** 43.5: the link page's block. No button. */
+/** The link page's block. No button. */
 export function linkWhy(i: LinkWhyInput): WhyModel {
   const L = whyCopy.labels;
   if (i.situation === 'connecting') {

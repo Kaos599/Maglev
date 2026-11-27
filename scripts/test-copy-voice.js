@@ -73,11 +73,11 @@ async function main() {
   collect(empty, ['empty'], 'empty', items);
   // Font setting descriptions follow the banner body rules (16 words, ends with a period).
   for (const o of copy.fontStyleCopy.options) collect(o.description, ['fontStyleCopy', o.value], 'banner.body', items);
-  // In-app updates (contract 27): notices and hints follow the notice and banner body rules.
+  // In-app updates: notices and hints follow the notice and banner body rules.
   collect(copy.updateCopy.notices, ['updateCopy', 'notices'], 'notice', items);
   collect(copy.updateCopy.hints, ['updateCopy', 'hints'], 'banner.body', items);
   for (const m of copy.updateCopy.modes) collect(m.description, ['updateCopy', 'modes', m.value], 'banner.body', items);
-  // Self-updating lists (contract 31): sentences follow the banner body rules, row values the universal rules.
+  // Self-updating lists: sentences follow the banner body rules, row values the universal rules.
   collect(copy.listsCopy.hints, ['listsCopy', 'hints'], 'banner.body', items);
   collect(copy.listsCopy.values, ['listsCopy', 'values'], 'value', items);
   collect(copy.listsCopy.providers, ['listsCopy', 'providers'], 'value', items);

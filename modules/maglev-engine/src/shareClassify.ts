@@ -1,5 +1,5 @@
 /**
- * Pure classification of what the user shared into Maglev (docs/contracts-0.19/quick-share.md section 3).
+ * Pure classification of what the user shared into Maglev.
  * The Kotlin twin is android/.../share/ShareClassify.kt. Both are tested against shareClassify.fixture.json.
  * Keep the two in step: same regexes, same order, same extension list.
  */

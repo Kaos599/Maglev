@@ -1,5 +1,5 @@
 /**
- * "Test model" probe (docs/ASSISTANT_DESIGN.md 8.3, SM-40).
+ * "Test model" probe.
  * One small non-streaming chat-completions request with one trivial tool. The reply tells the screen whether
  * the provider accepts the key and whether the model answers with a well-formed tool call.
  * Pure TypeScript: no React, no expo. `fetch` is injected so Node tests can fake it. The key is only ever

@@ -1,5 +1,5 @@
 /**
- * Stats runtime (docs/NATIVE_CONTRACT.md section 34.2): opens the database once, feeds engine snapshots to the recorder,
+ * Stats runtime: opens the database once, feeds engine snapshots to the recorder,
  * and offers the store to the Stats screen and to backup. Never throws into callers.
  */
 import type { DownloadSnapshot, Snapshot } from '../../modules/maglev-engine/src/MaglevEngine.types.ts';

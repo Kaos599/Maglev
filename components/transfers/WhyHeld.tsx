@@ -16,7 +16,7 @@ export interface WhyHeldProps {
   onNavigate?: () => void;
 }
 
-/** "Why it's paused": every rule that holds this item, each with the setting that changes it (NATIVE_CONTRACT 35.4). */
+/** "Why it's paused": every rule that holds this item, each with the setting that changes it. */
 export function WhyHeld({ item, blocks, queueLimit, onNavigate }: WhyHeldProps) {
   const router = useRouter();
   const { colors } = useTheme();
