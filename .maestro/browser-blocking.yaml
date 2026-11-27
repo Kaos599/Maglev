@@ -1,5 +1,5 @@
-# Ad blocking in the Browser: the per-site switch in Site settings and the global "Ad blocking" setting.
-# Ad blocking UI exists (app/browser.tsx:383 per-site row, app/settings/browser.tsx:119 global toggle), so this file is kept.
+# Ad blocking in the Browser: the per-site switch in Site settings and the global "Ad blocking" setting
+# (app/browser.tsx, app/settings/browser-blocking.tsx).
 # Test page: https://test-videos.co.uk/bigbuckbunny/mp4-h264 (no ads expected, so the "N blocked" count is not asserted).
 appId: com.maglev
 name: browser-blocking
@@ -7,17 +7,14 @@ name: browser-blocking
 - runFlow: subflows/onboard-if-needed.yaml
 - openLink: "maglev://browser?url=https%3A%2F%2Ftest-videos.co.uk%2Fbigbuckbunny%2Fmp4-h264"
 - extendedWaitUntil:
-    visible: "Address" # app/browser.tsx:268
+    visible: "Address"
     timeout: 30000
-# maglev://browser?url= only PREFILLS the address bar since 0.19 (app/browser.tsx: an external link never loads by itself), so submit it.
-- tapOn: "Address"
-- pressKey: Enter
-# "More" opens the "This page" sheet (app/browser.tsx:283, :368). The per-site row needs a loaded page host (:383).
+# Wait for the page host to load before opening the ⋮ menu and Site settings.
 - extendedWaitUntil:
-    visible: ".*test-videos\\.co\\.uk.*" # the bar shows the host once idle, or the full address while it has focus
+    visible: ".*test-videos\\.co\\.uk.*"
     timeout: 60000
 - tapOn: "More"
-- tapOn: "Site settings" # the ⋮ menu row; opens the Site settings sheet
+- tapOn: "Site settings"
 # The Ads toggle "Block ads on this site" is on by default. Its title and the switch share the label, so index 1 is the switch.
 - extendedWaitUntil:
     visible: "Block ads on this site"
@@ -26,7 +23,7 @@ name: browser-blocking
     text: "Block ads on this site"
     index: 1
 - extendedWaitUntil:
-    visible: "Ads allowed on .*" # constants/copy.ts notices.browser.adsAllowed
+    visible: "Ads allowed on .*"
     timeout: 15000
 - tapOn: "More"
 - tapOn: "Site settings"
@@ -34,26 +31,25 @@ name: browser-blocking
     text: "Block ads on this site"
     index: 1
 - extendedWaitUntil:
-    visible: "Blocking ads on .*" # constants/copy.ts notices.browser.adsBlocked
+    visible: "Blocking ads on .*"
     timeout: 15000
 - tapOn: "More"
-- tapOn: "Browser settings" # the menu row pushes the Browser settings hub (app/settings/browser.tsx)
+- tapOn: "Browser settings"
 - extendedWaitUntil:
-    visible: "Blocking" # hub row (the hub lists sections, the Ad blocking switch is one screen in)
+    visible: "Blocking"
     timeout: 30000
 - tapOn: "Blocking"
 - extendedWaitUntil:
-    visible: "Ad blocking" # app/settings/browser-blocking.tsx row title
+    visible: "Ad blocking"
     timeout: 30000
-# Global switch. The Toggle carries accessibilityLabel "Ad blocking" too (app/settings/browser.tsx:121),
-# so index 1 picks the switch, not the title. Assumption: verify on device.
+# Global switch (app/settings/browser-blocking.tsx). The Toggle shares accessibilityLabel "Ad blocking" with the row title, so index 1 picks the switch.
 - tapOn:
     text: "Ad blocking"
     index: 1
-- tapOn: "Go back" # in-app back; hardware Back after toggling a setting left the app in the 0.28 CI run
-- tapOn: "Go back" # from the hub to the page
+- tapOn: "Go back"
+- tapOn: "Go back"
 - tapOn: "More"
-# With ad blocking off the Ads section of Site settings is hidden (SiteSettingsSheet adBlockOn).
+# With ad blocking off the Ads section of Site settings is hidden.
 - tapOn: "Site settings"
 - extendedWaitUntil:
     visible: "Pop-ups and redirects"
@@ -73,9 +69,9 @@ name: browser-blocking
 - tapOn:
     text: "Ad blocking"
     index: 1
-- tapOn: "Go back" # in-app back; hardware Back after toggling a setting left the app in the 0.28 CI run
-- tapOn: "Go back" # from the hub to the page
+- tapOn: "Go back"
+- tapOn: "Go back"
 - tapOn: "More"
 - tapOn: "Site settings"
-- assertVisible: "Block ads on this site" # back to the default
+- assertVisible: "Block ads on this site"
 - pressKey: Back

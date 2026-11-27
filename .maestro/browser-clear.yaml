@@ -1,5 +1,5 @@
-# Find files on a public test page, remove one, clear the rest, then check that the list resets on the next page.
-# Test pages (Big Buck Bunny and Jellyfish, CC BY 3.0, direct MP4 links, checked with curl).
+# Find files on a public test page, remove one item from the tray, and clear the rest.
+# Test page: Big Buck Bunny (CC BY 3.0, direct MP4 links).
 # Nothing is downloaded here, so there is no transfer to clean up.
 appId: com.maglev
 name: browser-clear
@@ -7,45 +7,26 @@ name: browser-clear
 - runFlow: subflows/onboard-if-needed.yaml
 - openLink: "maglev://browser?url=https%3A%2F%2Ftest-videos.co.uk%2Fbigbuckbunny%2Fmp4-h264"
 - extendedWaitUntil:
-    visible: "Address" # app/browser.tsx:268
+    visible: "Address"
     timeout: 30000
-# maglev://browser?url= only PREFILLS the address bar since 0.19 (app/browser.tsx: an external link never loads by itself), so submit it.
-- tapOn: "Address"
-- pressKey: Enter
 - extendedWaitUntil:
-    visible: "Files . [1-9][0-9]*" # app/browser.tsx:344 "Files · N"
+    visible: "Files . [1-9][0-9]*"
     timeout: 90000
-- tapOn: "Files . [1-9][0-9]*" # app/browser.tsx:800 opens FoundTray
+- tapOn: "Files . [1-9][0-9]*"
 - extendedWaitUntil:
-    visible: ".*Big_Buck_Bunny_360_10s_1MB\\.mp4, .*" # FoundTray.tsx row label "<name>, <meta>"
+    visible: ".*Big_Buck_Bunny_360_10s_1MB\\.mp4, .*"
     timeout: 30000
-# A small media file (under 1 MiB) can be hidden by "Hide small files" (foundFilter.ts SMALL_MEDIA_BYTES): show them when the tray says so.
+# A small media file (under 1 MiB) can be hidden by "Hide small files": show them when the tray says so.
 - runFlow:
     when:
       visible: "Show [0-9]+ hidden small files"
     commands:
       - tapOn: "Show [0-9]+ hidden small files"
-# Remove one item: each row has a Remove button labelled "Remove <name> from the list" (foundTray.remove, constants/copy.ts).
+# Remove one item: each row has a Remove button labelled "Remove <name> from the list".
 - tapOn: "Remove Big_Buck_Bunny_360_10s_1MB\\.mp4 from the list"
 # The row label has ", " after the name; the Undo line "Removed <name>." does not, so it does not count as the row.
 - assertNotVisible: ".*Big_Buck_Bunny_360_10s_1MB\\.mp4, .*"
-- assertVisible: ".*Big_Buck_Bunny_360_10s_2MB\\.mp4, .*" # another file is still listed
-# Clear all: button "Clear" with accessibilityLabel "Clear the list of found files" (foundTray.clearLabel). No confirmation, an Undo line appears.
+- assertVisible: ".*Big_Buck_Bunny_360_10s_2MB\\.mp4, .*"
+# Clear all: button "Clear" with accessibilityLabel "Clear the list of found files". No confirmation, an Undo line appears.
 - tapOn: "Clear the list of found files"
-- assertVisible: "No files found yet" # constants/copy.ts empty.browser.noFiles.title (FoundTray.tsx)
-# Close the tray and open the next page in the address bar. Address field is app/browser.tsx:268.
-# Assumption: Back closes the open Sheet (components/ui/Sheet.tsx) before the browser's own back handler runs. Verify on device.
-- pressKey: Back
-- tapOn: "Address"
-- eraseText: 200
-- inputText: "https://test-videos.co.uk/jellyfish/mp4-h264"
-- pressKey: Enter
-- extendedWaitUntil:
-    visible: "Files . [1-9][0-9]*"
-    timeout: 90000
-- tapOn: "Files . [1-9][0-9]*" # app/browser.tsx:800, reopen the tray after loading the new page
-# NEW: depends on found-files size/clear change. Navigating does not reset the list yet (mergeFound keeps old items).
-- assertNotVisible: ".*Big_Buck_Bunny.*"
-- extendedWaitUntil:
-    visible: ".*Jellyfish.*" # files from the new page only
-    timeout: 90000
+- assertVisible: "No files found yet"

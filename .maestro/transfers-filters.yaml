@@ -52,7 +52,7 @@ name: transfers-filters
     id: "transfer-card"
 - tapOn: "Sort transfers"
 - assertVisible: "Sort by"
-- tapOn: "Date added"
+- tapOn: "Newest first"
 # Reset to the default sort (utils/prefs/transfers.ts DEFAULT_SORT: recent (Newest first), desc). Its direction is set by the segmented control; desc is the default.
 - assertVisible:
     id: "transfer-card"

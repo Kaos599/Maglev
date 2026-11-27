@@ -76,7 +76,13 @@ export default function WatchSettings() {
             variant="secondary"
             onPress={() => updateWatchInStore(w.id, { paused: !w.paused })}
           />
-          <Button label={watchCopy.delete} icon="trash" variant="danger" onPress={() => confirmDelete(w)} />
+          <Button
+            testID={`watch-delete-${w.query}`}
+            label={watchCopy.delete}
+            icon="trash"
+            variant="danger"
+            onPress={() => confirmDelete(w)}
+          />
         </View>
       ))}
       <Caption>{watchCopy.backgroundNote}</Caption>
@@ -87,6 +93,7 @@ export default function WatchSettings() {
         actions={
           <>
             <Button
+              testID="watch-delete-confirm"
               label={watchCopy.delete}
               variant="danger"
               fullWidth

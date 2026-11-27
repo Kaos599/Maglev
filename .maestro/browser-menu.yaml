@@ -8,9 +8,6 @@ name: browser-menu
 - extendedWaitUntil:
     visible: "Address"
     timeout: 30000
-# maglev://browser?url= only prefills the address bar, so submit it.
-- tapOn: "Address"
-- pressKey: Enter
 - extendedWaitUntil:
     visible: ".*test-videos\\.co\\.uk.*"
     timeout: 60000

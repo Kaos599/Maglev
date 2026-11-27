@@ -4,34 +4,36 @@ appId: com.maglev
 name: search-watch
 ---
 - runFlow: subflows/onboard-if-needed.yaml
-- tapOn: "Search"                                   # from app/(tabs)/_layout.tsx:169
+- tapOn: "Search"
 - tapOn:
-    text: "Search torrents"                         # from app/(tabs)/search.tsx:743
+    text: "Search torrents"
 - inputText: "Sintel"
 - pressKey: Enter
 - extendedWaitUntil:
-    visible: "Add .*"                               # from components/search/ResultRow.tsx:109
+    visible: "Add .*"
     timeout: 90000
 - tapOn:
-    text: "Watch this search|Watch"                 # from app/(tabs)/search.tsx:675-680 (accessibilityLabel "Watch this search", copy.ts:499; label "Watch", copy.ts:498)
+    text: "Watch this search|Watch"
 - extendedWaitUntil:
-    visible: "Watching \"Sintel\""                   # from app/(tabs)/search.tsx:535 and constants/copy.ts:500 (watchCopy.watching)
+    visible: "Watching \"Sintel\""
     timeout: 10000
-- tapOn: "Settings"                                 # from app/(tabs)/_layout.tsx:171
+- tapOn: "Settings"
 - runFlow:
     file: subflows/open-settings-row.yaml
     env:
       ROW: "Watches"
 - extendedWaitUntil:
-    visible: "Sintel"                               # from app/settings/watch.tsx:52 (row title = w.query)
+    visible: "Sintel"
     timeout: 15000
-- tapOn: "Delete"                                   # from app/settings/watch.tsx:79 and constants/copy.ts:509 (watchCopy.delete)
-- extendedWaitUntil:
-    visible: "Delete this watch\\?"                 # from constants/copy.ts:510 (watchCopy.deleteTitle)
-    timeout: 10000
-# The native Alert (title "Delete this watch?") hides the card behind it, so its DELETE button (id android:id/button1) is the only match.
+# Per-row testID targets the "Sintel" watch directly even if an earlier run left another watch above it.
 - tapOn:
-    id: "android:id/button1"
+    id: "watch-delete-Sintel"
 - extendedWaitUntil:
-    notVisible: "Sintel"                            # from app/settings/watch.tsx:52: row gone after delete
+    visible: "Delete this watch\\?"
+    timeout: 10000
+# The in-app Dialog has a dedicated testID on its Delete button so it cannot match the card behind it.
+- tapOn:
+    id: "watch-delete-confirm"
+- extendedWaitUntil:
+    notVisible: "Sintel"
     timeout: 10000

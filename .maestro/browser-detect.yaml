@@ -1,53 +1,50 @@
 # Open the Browser on a public test page with direct MP4 links, see the Files list with sizes,
 # download one file, find it in Transfers, then remove it and its files.
-# Test page: https://test-videos.co.uk/bigbuckbunny/mp4-h264 (Big Buck Bunny, CC BY 3.0). Checked with curl.
+# Test page: https://test-videos.co.uk/bigbuckbunny/mp4-h264 (Big Buck Bunny, CC BY 3.0).
 appId: com.maglev
 name: browser-detect
 ---
 - runFlow: subflows/onboard-if-needed.yaml
-# maglev://browser?url= loads the page (utils/browserUrl.ts browserIntentRoute).
+# maglev://browser?url= loads the page in a new tab (utils/browserUrl.ts browserIntentRoute).
 - openLink: "maglev://browser?url=https%3A%2F%2Ftest-videos.co.uk%2Fbigbuckbunny%2Fmp4-h264"
 - extendedWaitUntil:
-    visible: "Address" # app/browser.tsx:268 TextInput accessibilityLabel="Address"
+    visible: "Address"
     timeout: 30000
-# maglev://browser?url= only PREFILLS the address bar since 0.19 (app/browser.tsx: an external link never loads by itself), so submit it.
-- tapOn: "Address"
-- pressKey: Enter
-# Found-files indicator: "Files · N" (app/browser.tsx:344), accessibilityLabel "Files, N found" (:347).
+# Found-files indicator: "Files · N", accessibilityLabel "Files, N found".
 - extendedWaitUntil:
-    visible: "Files . [1-9][0-9]*" # app/browser.tsx:344
+    visible: "Files . [1-9][0-9]*"
     timeout: 90000
-- tapOn: "Files . [1-9][0-9]*" # app/browser.tsx:348-352 opens FoundTray
-- assertVisible: "Files" # components/browser/FoundTray.tsx:103 Sheet title "Files"
-# A small media file (under 1 MiB) can be hidden by "Hide small files" (foundFilter.ts SMALL_MEDIA_BYTES): show them when the tray says so.
+- tapOn: "Files . [1-9][0-9]*"
+- assertVisible: "Files"
+# A small media file (under 1 MiB) can be hidden by "Hide small files": show them when the tray says so.
 - runFlow:
     when:
       visible: "Show [0-9]+ hidden small files"
     commands:
       - tapOn: "Show [0-9]+ hidden small files"
-# Each row shows a size or "—" in its meta line (FoundTray.tsx:36, constants/format.ts formatBytes).
-# NEW: depends on found-files size/clear change (today the meta line omits the size when it is unknown).
+# Each row shows a size or "—" in its meta line.
 - assertVisible: ".*(KB|MB|GB|—).*"
-# Row label is "<name>, <size> · <host>" (FoundTray.tsx:42).
-- tapOn: ".*Big_Buck_Bunny_360_10s_1MB\\.mp4, .*" # FoundTray.tsx:118 tap starts FoundDownloadSheet
-# Name, size and folder sheet (FoundDownload.tsx:114 title "Download"). Start enables after the probe.
+# Row label is "<name>, <size> · <host>". Tap opens FoundDownloadSheet.
+- tapOn: ".*Big_Buck_Bunny_360_10s_1MB\\.mp4, .*"
+# Name, size and folder sheet. Start enables after the probe.
 - extendedWaitUntil:
-    visible: "Start" # components/browser/FoundDownload.tsx:141 Button label "Start"
+    visible: "Start"
     timeout: 60000
 - tapOn: "Start"
 - extendedWaitUntil:
-    visible: "Added to Transfers." # constants/copy.ts:106 notices.browser.addedToTransfers
+    visible: "Added to Transfers."
     timeout: 30000
-# Leave the browser stack screen (it covers the tabs). "Go back" is app/browser.tsx:220.
+# Leave the browser stack screen (it covers the tabs). Bounded to 5 presses so Back never loops forever.
 - repeat:
+    times: 5
     while:
-      notVisible: "Transfers" # the tab label, constants/copy.ts:349 tabsCopy.names.index
+      notVisible: "Transfers"
     commands:
-      - tapOn: "Go back"
+      - pressKey: Back
+- assertVisible: "Transfers"
 - tapOn: "Transfers"
 # A browser download is a link download, so it renders as DownloadCard, which has no "transfer-card"
 # testID (only torrents' TransferCard does): match by name, as transfers-link-download.yaml does.
-# Card label: "<name>, <status>, ..." (components/transfers/DownloadCard.tsx accessibilityLabel).
 - extendedWaitUntil:
     visible: ".*Big_Buck_Bunny_360_10s_1MB\\.mp4, .*"
     timeout: 120000
