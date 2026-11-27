@@ -1697,6 +1697,9 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
 
     /** A sub-resource or main request the page made. Background thread. */
     private fun noteNetwork(url: String, headers: Map<String, String>?) {
+        // DIAGNOSTIC BUILD ONLY (issue 169): which request headers the WebView hands to shouldInterceptRequest.
+        val al = headers?.entries?.firstOrNull { it.key.equals("Accept-Language", ignoreCase = true) }?.value
+        android.util.Log.w("Maglev169", "req ${url.take(90)} | keys=${headers?.keys?.sorted()} | accept-language=[${al ?: "ABSENT"}]")
         var accept: String? = null
         var hasRange = false
         if (headers != null) {
