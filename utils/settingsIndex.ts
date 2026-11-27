@@ -2039,30 +2039,8 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "Blocked pop-ups",
     "browser-blocking",
     "Browser · Blocking",
-    ["pop-up", "popup", "blocked", "remember", "log", "unblock", "always block", "block list"],
+    ["pop-up", "popup", "blocked", "remember", "log", "unblock", "always block", "block list", "allow instead", "clear log", "forget", "stop blocking"],
     "Pop-ups and redirects",
-  ),
-  // Actions on one site of the Blocked pop-ups list (routed to the Blocked pop-ups list so the user picks the site).
-  e(
-    "browser-blocked-popups-site-unblock",
-    "Unblock",
-    "browser-blocked-popups",
-    "Browser · Blocked pop-ups",
-    ["unblock", "stop blocking", "always blocked", "block list", "pop-up", "popup"],
-  ),
-  e(
-    "browser-blocked-popups-site-allow",
-    "Allow instead",
-    "browser-blocked-popups",
-    "Browser · Blocked pop-ups",
-    ["allow", "allowed", "move", "pop-up", "popup", "site"],
-  ),
-  e(
-    "browser-blocked-popups-site-clear",
-    "Clear log",
-    "browser-blocked-popups",
-    "Browser · Blocked pop-ups",
-    ["clear", "forget", "history", "blocked links", "log", "pop-up", "popup"],
   ),
   e(
     "backup-include-stats",
