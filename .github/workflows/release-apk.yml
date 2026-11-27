@@ -8,6 +8,11 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      allow_unreachable:
+        description: "Release even if apps on the previous version won't see this one in their updater"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -27,10 +32,27 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+        with:
+          # All tags and history: the updater guard reads the previous release's code with git show.
+          fetch-depth: 0
 
       - name: Tag matches app.json version (v<major>.<minor> or v<major>.<minor>.<patch>)
         if: startsWith(github.ref, 'refs/tags/')
         run: node scripts/bump-version.js check "${{ github.ref_name }}"
+
+      - name: Install TypeScript for the updater guard
+        if: startsWith(github.ref, 'refs/tags/')
+        # Only the compiler, at the locked version, outside the project so npm doesn't install the whole app.
+        run: |
+          TS=$(node -p "require('./package-lock.json').packages['node_modules/typescript'].version")
+          npm install --prefix "$RUNNER_TEMP/ts" --no-save --no-audit --no-fund "typescript@$TS"
+
+      - name: Apps on the previous release will see this one in their updater
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          NODE_PATH: ${{ runner.temp }}/ts/node_modules
+          ALLOW_UNREACHABLE: ${{ inputs.allow_unreachable && '1' || '' }}
+        run: node scripts/check-updater-reach.js "${{ github.ref_name }}"
 
       - name: Release notes exist for this version (release-notes/<version>.md)
         if: startsWith(github.ref, 'refs/tags/')
@@ -288,6 +310,7 @@ jobs:
           sparse-checkout: |
             release-notes
             scripts/release-notes.js
+            scripts/check-updater-reach.js
             app.json
 
       - name: Download APKs
@@ -332,6 +355,12 @@ jobs:
       - name: Write release notes
         run: node scripts/release-notes.js build "${{ github.ref_name }}" > release-body.md
 
+      # Apps up to 1.0 read only the latest release and can't read a patch tag, so a fix release (v1.1.1) never
+      # takes the latest mark from the last v<major>.<minor> release. Apps from 1.1 on still find it in the list.
+      - name: Mark as latest only for a v<major>.<minor> tag
+        id: latest
+        run: echo "make_latest=$(node scripts/check-updater-reach.js make-latest "${{ github.ref_name }}")" >> "$GITHUB_OUTPUT"
+
       - name: Create GitHub Release & Upload APKs
         uses: softprops/action-gh-release@v3
         with:
@@ -348,4 +377,4 @@ jobs:
           draft: false
           # A normal release is what GitHub shows in the repo sidebar.
           prerelease: false
-          make_latest: true
+          make_latest: ${{ steps.latest.outputs.make_latest }}

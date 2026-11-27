@@ -3,7 +3,11 @@
  * The request carries no token and nothing but the app version in its User-Agent.
  */
 
-const RELEASES_URL = 'https://api.github.com/repos/Kaos599/Maglev/releases/latest';
+/**
+ * The 20 most recent releases, not `/releases/latest`: a newest release with a tag this version can't read, or with
+ * no APK for this phone, must not hide an older one it can install. GitHub doesn't document the order, so we compare versions instead of taking the first.
+ */
+const RELEASES_URL = 'https://api.github.com/repos/Kaos599/Maglev/releases?per_page=20';
 const ISSUES_URL = 'https://github.com/Kaos599/Maglev/issues/new';
 const CHECK_TIMEOUT_MS = 15_000;
 const NOTES_MAX_CHARS = 4000;
@@ -121,6 +125,19 @@ export function parseRelease(json: unknown, installed: Installed): UpdateInfo | 
   };
 }
 
+/**
+ * The highest release in a list that `parseRelease` would offer, or null. Drafts, prereleases, tags it can't read,
+ * versions not newer than the installed one, and releases with no usable APK for this phone are skipped.
+ */
+export function pickRelease(list: readonly unknown[], installed: Installed): UpdateInfo | null {
+  let best: UpdateInfo | null = null;
+  for (const r of list) {
+    const info = parseRelease(r, installed);
+    if (info && (!best || isNewer(info.tag, best.version))) best = info;
+  }
+  return best;
+}
+
 export type FetchLike = (url: string, init: { headers: Record<string, string>; signal?: AbortSignal; credentials?: 'omit' | 'same-origin' | 'include' }) => Promise<{
   ok: boolean;
   status: number;
@@ -128,7 +145,8 @@ export type FetchLike = (url: string, init: { headers: Record<string, string>; s
 }>;
 
 /**
- * GET /releases/latest. Throws [CheckError] on a network, status or parse failure; the caller shows only
+ * GET the recent releases and offer the newest one this phone can install. Throws [CheckError] on a network, status
+ * or parse failure (a body that isn't a list counts as a parse failure); the caller shows only
  * "Couldn't check. Try again." and never the detail.
  */
 export async function checkForUpdate(
@@ -157,7 +175,8 @@ export async function checkForUpdate(
     } catch {
       throw new CheckError('parse', 'unreadable response');
     }
-    return parseRelease(json, installed);
+    if (!Array.isArray(json)) throw new CheckError('parse', 'not a list of releases');
+    return pickRelease(json, installed);
   } finally {
     if (timer) clearTimeout(timer);
   }
