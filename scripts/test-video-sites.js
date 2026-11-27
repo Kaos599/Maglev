@@ -166,9 +166,7 @@ const fixture = (n) => JSON.parse(read(`scripts/fixtures/video-sites/${n}.json`)
   // ---- yt-dlp stays current
   check('kotlin updates yt-dlp from the stable channel', /updateYoutubeDL\(context, YoutubeDL\.UpdateChannel\.STABLE\)/.test(kt));
   const resolveBody = kt.slice(kt.indexOf('fun resolve'), kt.indexOf('fun classify'));
-  check('kotlin: resolve waits on an update only while the built-in yt-dlp runs, within the user\'s update choices',
-    !/update|autoUpdate/i.test(resolveBody.replace(/\/\/.*$/gm, '')) && !kt.includes('shouldAutoUpdate') && resolveBody.includes('replaceBuiltIn(context)')
-    && /if \(running != builtInVersion\(context\)\) return/.test(kt) && kt.includes('VideoSitesUpdater.allowedNow(context)'));
+  check('kotlin: resolve never updates or waits on an update', !/update|autoUpdate/i.test(resolveBody.replace(/\/\/.*$/gm, '')) && !kt.includes('shouldAutoUpdate'));
   check('kotlin: one update at a time', /synchronized\(updateLock\)/.test(kt) && kt.includes('last_check_ms'));
   const upd = read('modules/maglev-engine/android/src/main/java/com/maglev/engine/videosites/VideoSitesUpdater.kt');
   check('kotlin: daily unique periodic work, unmetered unless mobile data is allowed, cancelled when off',

@@ -1,13 +1,12 @@
 package com.maglev.engine.videosites
 
 import android.content.Context
+import android.util.Log
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLRequest
 import java.io.BufferedInputStream
 import java.io.File
 import java.io.InputStream
-import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
 import java.util.zip.ZipInputStream
 import org.json.JSONArray
 import org.json.JSONObject
@@ -45,26 +44,29 @@ object VideoSites {
     }
 
     /**
-     * What the Settings row shows: the version of the yt-dlp file that actually runs. Before the library has put a
-     * file in place (no read yet), the tag it saved, else null (the built-in yt-dlp).
+     * What the Settings row shows: the version read from the yt-dlp file that actually runs. Before the library has put
+     * a file in place, the tag it saved, else null (the built-in yt-dlp). A file that can't be read shows "unknown",
+     * never the saved tag, which is what can be wrong.
      */
     fun versionLabel(context: Context): String? = try {
-        installedVersion(context) ?: YoutubeDL.versionName(context) ?: YoutubeDL.version(context)
+        if (installedFile(context).isFile) {
+            installedVersion(context) ?: "unknown"
+        } else {
+            YoutubeDL.versionName(context) ?: YoutubeDL.version(context)
+        }
     } catch (t: Throwable) {
         null
     }
 
     // The library's own settings file and keys (youtubedl_common SharedPrefsHelper, YoutubeDLUpdater `dlpVersion`,
     // `dlpVersionName`). They are private there, so they are named here. The backup rules exclude this file.
+    private const val TAG = "MaglevVideoSites"
     private const val LIB_PREFS = "youtubedl-android"
     private const val LIB_KEY_TAG = "dlpVersion"
     private const val LIB_KEY_NAME = "dlpVersionName"
 
     @Volatile
     private var installedCache: Triple<Long, Long, String?>? = null
-
-    @Volatile
-    private var builtInCache: String? = null
 
     /** The yt-dlp file the library runs (`noBackupFilesDir/youtubedl-android/yt-dlp/yt-dlp`). */
     private fun installedFile(context: Context): File =
@@ -81,24 +83,18 @@ object VideoSites {
             if (hit != null && hit.first == key.first && hit.second == key.second) {
                 hit.third
             } else {
-                val v = f.inputStream().use { zipVersion(it) }
+                val v = try {
+                    f.inputStream().use { zipVersion(it) }
+                } catch (t: Throwable) {
+                    null
+                }
+                if (v == null) Log.w(TAG, "couldn't read the version inside the yt-dlp file (${f.length()} bytes)")
                 installedCache = Triple(key.first, key.second, v)
                 v
             }
         }
     } catch (t: Throwable) {
         null
-    }
-
-    /** The version of the copy built into the library (what `YoutubeDL.init` puts in place when there is no file). */
-    private fun builtInVersion(context: Context): String? {
-        builtInCache?.let { return it }
-        return try {
-            context.resources.openRawResource(com.yausername.youtubedl_android.R.raw.ytdlp).use { zipVersion(it) }
-                ?.also { builtInCache = it }
-        } catch (t: Throwable) {
-            null
-        }
     }
 
     /**
@@ -138,14 +134,34 @@ object VideoSites {
     /**
      * The library skips the download when its saved tag equals GitHub's newest, and never looks at the file that runs.
      * The tag can outlive the file: a backup restore brings the library's settings back but never `no_backup`, where
-     * the file lives, so the built-in copy runs while every check says "up to date". A tag the file doesn't match is
-     * forgotten, so this check downloads.
+     * the file lives, and a kill between its delete and copy leaves the built-in copy behind. Then the old copy runs
+     * while every check says "up to date". A tag that the file's own version contradicts is forgotten, so the check
+     * downloads. A file that can't be read proves nothing, so it leaves the tag alone (no download loop).
      */
     private fun forgetStaleTag(context: Context) {
         val tag = YoutubeDL.version(context) ?: return
-        if (installedVersion(context) == tag) return
+        val running = installedVersion(context) ?: return
+        if (running == tag) return
+        Log.i(TAG, "yt-dlp file is $running but the saved tag says $tag: downloading again")
         context.getSharedPreferences(LIB_PREFS, Context.MODE_PRIVATE).edit()
             .remove(LIB_KEY_TAG).remove(LIB_KEY_NAME).commit()
+    }
+
+    /**
+     * True when the yt-dlp that runs is not a verified download: nothing downloaded yet (the built-in copy, far behind
+     * the sites), or a saved tag the file contradicts. [VideoSitesUpdater] then asks for one update soon instead of
+     * waiting for the daily one.
+     */
+    fun needsUpdateSoon(context: Context): Boolean = try {
+        val tag = YoutubeDL.version(context)
+        if (tag == null) {
+            true
+        } else {
+            val running = installedVersion(context)
+            running != null && running != tag
+        }
+    } catch (t: Throwable) {
+        false
     }
 
     data class UpdateResult(val status: String, val version: String?)
@@ -191,35 +207,6 @@ object VideoSites {
         0L
     }
 
-    private const val FIRST_UPDATE_WAIT_MS = 15_000L
-    private const val FIRST_UPDATE_RETRY_MS = 10 * 60 * 1000L
-
-    @Volatile
-    private var lastBuiltInTry = 0L
-
-    private val firstUpdate = Executors.newSingleThreadExecutor { r -> Thread(r, "maglev-ytdlp-first-update").apply { isDaemon = true } }
-
-    /**
-     * The copy built into the library is far behind YouTube, which refuses the links it reads. A read is otherwise
-     * never held up by an update (the daily work does them), but while that copy still runs the read fetches the
-     * newest one first: only when "Keep video sites working" is on and the network is one it may use, at most every
-     * 10 minutes, and waiting [FIRST_UPDATE_WAIT_MS] at most (a slow GitHub leaves the update running on its own).
-     */
-    private fun replaceBuiltIn(context: Context) {
-        val now = System.currentTimeMillis()
-        if (now - lastBuiltInTry < FIRST_UPDATE_RETRY_MS) return
-        val running = installedVersion(context) ?: return
-        if (running != builtInVersion(context)) return
-        if (!VideoSitesUpdater.allowedNow(context)) return
-        lastBuiltInTry = now
-        val job = firstUpdate.submit { update(context, false) }
-        try {
-            job.get(FIRST_UPDATE_WAIT_MS, TimeUnit.MILLISECONDS)
-        } catch (t: Throwable) {
-            // Timed out or failed: read with the copy there is.
-        }
-    }
-
     private fun ensureInit(context: Context) {
         if (ready) return
         synchronized(this) {
@@ -245,8 +232,7 @@ object VideoSites {
         if (host.isNullOrBlank()) {
             throw VideoSitesException(FAILED, "Couldn't read this video. Try again.")
         }
-        ensureInit(context)
-        replaceBuiltIn(context)
+        ensureInit(context) // never updates here: a resolve must not wait on a download (VideoSitesUpdater does it in the background)
         val request = YoutubeDLRequest(clean)
         request.addOption("--dump-single-json")
         request.addOption("--no-playlist")
