@@ -1957,6 +1957,9 @@ object EngineHost {
     /** Downloads whose join was started and whose state hasn't left `verifying` yet (see [MuxTracker]). */
     private val muxTracker = MuxTracker()
 
+    /** Leftover join files are cleared once per process (see [runPendingMuxes]). Read and set under the poll lock. */
+    private var joinWorkSwept = false
+
     /**
      * A stream download with separate video and audio parts waits in `verifying` with `mux_needed`.
      * Joins them once per wait on an IO thread (no re-encode), then tells Rust. Runs before the copy into a chosen
@@ -1965,26 +1968,39 @@ object EngineHost {
      * (an output finished before the restart is reported as joined). The logic lives in [MuxRunner] (JVM-tested).
      */
     private fun runPendingMuxes(downloads: List<Map<String, Any?>>) {
+        val c = ctx
+        // Before the first join of this process, so no running join can lose its file. Runs under the poll lock,
+        // and joins are only started below.
+        if (c != null && !joinWorkSwept) {
+            joinWorkSwept = true
+            try {
+                val n = StreamMuxer.sweepWork(c)
+                if (n > 0) Log.i(TAG, "join: removed $n leftover file(s) from an earlier run")
+            } catch (t: Throwable) {
+                Log.w(TAG, "join: couldn't clear leftovers (${t.javaClass.simpleName})")
+            }
+        }
         for (job in muxTracker.claim(downloads)) {
+            // The poll sees `verifying` at most one busy poll period after Rust enters it.
+            Log.i(TAG, "join ${job.id}: claimed")
+            val claimedAt = SystemClock.elapsedRealtime()
             ioScope.launch {
-                // How long the join takes on a real phone, for "Finishing" reports. Sizes and times only, no path.
-                val claimedAt = SystemClock.elapsedRealtime()
-                // Read before the join: the engine deletes the parts once it is told the join worked.
-                val partBytes = job.video.length() + job.audio.length()
-                var muxMs = -1L
                 val outcome = MuxRunner.run(
                     job,
                     mux = { v, a, o ->
-                        val t0 = SystemClock.elapsedRealtime()
-                        try {
+                        if (c == null) {
                             StreamMuxer.mux(v, a, o)
-                        } finally {
-                            muxMs = SystemClock.elapsedRealtime() - t0
+                        } else {
+                            val r = StreamMuxer.mux(c, job.id, v, a, o)
+                            Log.i(TAG, "join ${job.id}: ${r.bytes / 1024} KiB via ${r.route} (${r.reason}), mux ${r.muxMs} ms, copy ${r.copyMs} ms")
                         }
                     },
-                    finish = { id, ok, message -> isOk(call { NativeCore.nativeFinishMux(id, ok, message) }) },
+                    finish = { id, ok, message ->
+                        val told = isOk(call { NativeCore.nativeFinishMux(id, ok, message) })
+                        Log.i(TAG, "join $id: engine told ok=$ok accepted=$told, ${SystemClock.elapsedRealtime() - claimedAt} ms after the claim")
+                        told
+                    },
                 )
-                Log.i(TAG, "join $outcome: $partBytes bytes of parts, muxer $muxMs ms, ${SystemClock.elapsedRealtime() - claimedAt} ms until the engine was told")
                 // The download was removed, or Rust couldn't be told: let the next poll try again if it still waits.
                 if (outcome == MuxOutcome.NOT_REPORTED) muxTracker.release(job.id)
                 pollNow()
