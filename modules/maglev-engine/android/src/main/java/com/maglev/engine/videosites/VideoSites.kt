@@ -1,8 +1,13 @@
 package com.maglev.engine.videosites
 
 import android.content.Context
+import android.util.Log
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLRequest
+import java.io.BufferedInputStream
+import java.io.File
+import java.io.InputStream
+import java.util.zip.ZipInputStream
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -38,11 +43,125 @@ object VideoSites {
         null
     }
 
-    /** What the Settings row shows: the version name, else the tag, else null (the built-in yt-dlp). */
+    /**
+     * What the Settings row shows: the version read from the yt-dlp file that actually runs. Before the library has put
+     * a file in place, the tag it saved, else null (the built-in yt-dlp). A file that can't be read shows "unknown",
+     * never the saved tag, which is what can be wrong.
+     */
     fun versionLabel(context: Context): String? = try {
-        YoutubeDL.versionName(context) ?: YoutubeDL.version(context)
+        if (installedFile(context).isFile) {
+            installedVersion(context) ?: "unknown"
+        } else {
+            YoutubeDL.versionName(context) ?: YoutubeDL.version(context)
+        }
     } catch (t: Throwable) {
         null
+    }
+
+    // The library's own settings file and keys (youtubedl_common SharedPrefsHelper, YoutubeDLUpdater `dlpVersion`,
+    // `dlpVersionName`). They are private there, so they are named here. The backup rules exclude this file.
+    private const val TAG = "MaglevVideoSites"
+    private const val LIB_PREFS = "youtubedl-android"
+    private const val LIB_KEY_TAG = "dlpVersion"
+    private const val LIB_KEY_NAME = "dlpVersionName"
+
+    @Volatile
+    private var installedCache: Triple<Long, Long, String?>? = null
+
+    /** The yt-dlp file the library runs (`noBackupFilesDir/youtubedl-android/yt-dlp/yt-dlp`). */
+    private fun installedFile(context: Context): File =
+        File(File(File(context.noBackupFilesDir, YoutubeDL.baseName), YoutubeDL.ytdlpDirName), YoutubeDL.ytdlpBin)
+
+    /** The version inside the yt-dlp file that runs, or null when there is no file yet or it can't be read. */
+    fun installedVersion(context: Context): String? = try {
+        val f = installedFile(context)
+        if (!f.isFile) {
+            null
+        } else {
+            val key = f.length() to f.lastModified()
+            val hit = installedCache
+            if (hit != null && hit.first == key.first && hit.second == key.second) {
+                hit.third
+            } else {
+                val v = try {
+                    f.inputStream().use { zipVersion(it) }
+                } catch (t: Throwable) {
+                    null
+                }
+                if (v == null) Log.w(TAG, "couldn't read the version inside the yt-dlp file (${f.length()} bytes)")
+                installedCache = Triple(key.first, key.second, v)
+                v
+            }
+        }
+    } catch (t: Throwable) {
+        null
+    }
+
+    /**
+     * A yt-dlp file is a zip behind a `#!/usr/bin/env python3` line. Reads `__version__` from `yt_dlp/version.py`
+     * (an early entry) by streaming from the first local file header, so the zip's offsets don't matter.
+     */
+    internal fun zipVersion(raw: InputStream): String? {
+        val input = BufferedInputStream(raw, 8192)
+        input.mark(4096)
+        val head = ByteArray(4096)
+        val n = input.read(head).coerceAtLeast(0)
+        input.reset()
+        var start = -1
+        for (i in 0 until n - 3) {
+            if (head[i] == 'P'.code.toByte() && head[i + 1] == 'K'.code.toByte() && head[i + 2] == 3.toByte() && head[i + 3] == 4.toByte()) {
+                start = i
+                break
+            }
+        }
+        if (start < 0) return null
+        var skipped = 0L
+        while (skipped < start) {
+            val s = input.skip(start - skipped)
+            if (s <= 0) return null
+            skipped += s
+        }
+        val zip = ZipInputStream(input)
+        while (true) {
+            val entry = zip.nextEntry ?: return null
+            if (entry.name == "yt_dlp/version.py") {
+                val text = zip.readBytes().toString(Charsets.UTF_8)
+                return Regex("""__version__\s*=\s*['"]([^'"]+)['"]""").find(text)?.groupValues?.get(1)
+            }
+        }
+    }
+
+    /**
+     * The library skips the download when its saved tag equals GitHub's newest, and never looks at the file that runs.
+     * The tag can outlive the file: a backup restore brings the library's settings back but never `no_backup`, where
+     * the file lives, and a kill between its delete and copy leaves the built-in copy behind. Then the old copy runs
+     * while every check says "up to date". A tag that the file's own version contradicts is forgotten, so the check
+     * downloads. A file that can't be read proves nothing, so it leaves the tag alone (no download loop).
+     */
+    private fun forgetStaleTag(context: Context) {
+        val tag = YoutubeDL.version(context) ?: return
+        val running = installedVersion(context) ?: return
+        if (running == tag) return
+        Log.i(TAG, "yt-dlp file is $running but the saved tag says $tag: downloading again")
+        context.getSharedPreferences(LIB_PREFS, Context.MODE_PRIVATE).edit()
+            .remove(LIB_KEY_TAG).remove(LIB_KEY_NAME).commit()
+    }
+
+    /**
+     * True when the yt-dlp that runs is not a verified download: nothing downloaded yet (the built-in copy, far behind
+     * the sites), or a saved tag the file contradicts. [VideoSitesUpdater] then asks for one update soon instead of
+     * waiting for the daily one.
+     */
+    fun needsUpdateSoon(context: Context): Boolean = try {
+        val tag = YoutubeDL.version(context)
+        if (tag == null) {
+            true
+        } else {
+            val running = installedVersion(context)
+            running != null && running != tag
+        }
+    } catch (t: Throwable) {
+        false
     }
 
     data class UpdateResult(val status: String, val version: String?)
@@ -63,6 +182,7 @@ object VideoSites {
     fun update(context: Context, @Suppress("UNUSED_PARAMETER") force: Boolean): UpdateResult = synchronized(updateLock) {
         try {
             ensureInit(context)
+            forgetStaleTag(context)
             val status = YoutubeDL.updateYoutubeDL(context, YoutubeDL.UpdateChannel.STABLE)
             recordCheck(context)
             UpdateResult(if (status == YoutubeDL.UpdateStatus.DONE) UPDATED else CURRENT, versionLabel(context))

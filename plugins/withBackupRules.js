@@ -1,7 +1,9 @@
 // Expo config plugin: keep the engine's session and in-progress downloads out of Android Auto Backup.
 // The session folder (`filesDir/session`, StorageManager.sessionDir) holds librqbit's resume state, which is
 // tied to this install and useless on another device. Staging and fallback downloads live in
-// `getExternalFilesDir(DOWNLOADS)` (domain "external"), which can be gigabytes.
+// `getExternalFilesDir(DOWNLOADS)` (domain "external"), which can be gigabytes. The video-site reader's settings
+// (youtubedl-android's `youtubedl-android.xml`) name the yt-dlp file it downloaded; that file lives in `no_backup`, so
+// a restored name would point at a file that isn't there and stop every update.
 // - Android 6-11 reads android:fullBackupContent; Android 12+ reads android:dataExtractionRules (cloud + device transfer).
 // Docs: https://developer.android.com/identity/data/autobackup
 const FULL_BACKUP = '@xml/maglev_backup_rules';
@@ -10,6 +12,7 @@ const DATA_EXTRACTION = '@xml/maglev_data_extraction_rules';
 const EXCLUDES = [
   '<exclude domain="file" path="session/"/>',
   '<exclude domain="external" path="Download/"/>',
+  '<exclude domain="sharedpref" path="youtubedl-android.xml"/>',
 ];
 
 const fullBackupXml = () =>
