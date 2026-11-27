@@ -28,9 +28,10 @@ const eff = dl.slice(dl.indexOf('const lastIncoming'), dl.indexOf('// Free space
 check('hand-off runs submit() (same code path as the button)', /handoff[\s\S]*void submit\(clean\)/.test(eff));
 check('hand-off needs a valid download link', /isDownloadLink\(clean\)/.test(eff));
 check('auto-run is guarded to once per link (lastIncoming)', /incoming === lastIncoming\.current\) return/.test(eff));
-check('an empty Add a link does not submit (returns when no incoming link)', /if \(!incoming \|\| /.test(eff));
-check('plain url/source (search, clipboard chip) still only fills the field',
-  /setText\(clean\);\s*\}, \[params\.url/.test(eff));
+check('an empty Add a link does not submit (returns when no incoming link)', /if \(!incoming\) \{\s*lastIncoming\.current = null;\s*return;/.test(eff));
+// A plain link only fills the field. It submits later only when Android confirms the share card opened it.
+check('plain url/source (search, clipboard chip) only fills the field unless a trusted share confirms it',
+  /setText\(clean\);(\s*\/\/[^\n]*)*\s*if \(typeof params\.url === 'string'\) \{\s*void consumeTrustedShare\(incoming\)\.then\(\(trusted\) => \{\s*if \(trusted && lastIncoming\.current === incoming\) void submit\(clean\)/.test(eff));
 check('search direct-add stays manual (no from marker)', !/params: \{ source: r\.directUrl, from/.test(read('utils/search/aggregate.ts')));
 
 // 2. Sheet keyboard
