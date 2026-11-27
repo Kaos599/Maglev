@@ -1,6 +1,6 @@
 // One background pass over the watches: pure, with every outside call injected. A watch is checked only when it is due,
 // and only on a network its settings allow.
-import { evaluateWatch, isDue, networkAllows, notificationId, openUrl, downloadUrl, watchNotificationText, type NetworkState, type Watch } from './logic.ts';
+import { evaluateWatch, isDue, networkAllows, notificationFor, notificationId, NO_RISK, type NetworkState, type Watch, type WatchSafety } from './logic.ts';
 import type { MergedResult } from '../search/types.ts';
 
 export interface WatchNotification {
@@ -21,6 +21,11 @@ export interface CycleDeps {
   search(query: string, category: Watch['category']): Promise<MergedResult[]>;
   /** True when the notification was posted. */
   notify(n: WatchNotification): Promise<boolean>;
+  /**
+   * Which copies Search would mark "Risky source", and the Watches setting that decides whether one gets Download.
+   * Read once per run. The background job always passes it; without it nothing counts as risky.
+   */
+  safety?(): WatchSafety;
   /** Stop starting new checks after this long (default 8 minutes). */
   budgetMs?: number;
 }
@@ -41,6 +46,8 @@ export async function runWatchCycle(deps: CycleDeps): Promise<CycleSummary> {
   const due = deps.list().filter((w) => isDue(w, started));
   if (due.length === 0) return summary;
   const net = await deps.network().catch((): NetworkState => ({ connected: false, unmetered: false, globalWifiOnly: false }));
+  const safety = deps.safety?.() ?? NO_RISK;
+  const isRisky = (r: MergedResult) => safety.riskyOf(r) !== null;
 
   for (const w of due) {
     if (deps.now() - started > budget) break;
@@ -51,13 +58,11 @@ export async function runWatchCycle(deps: CycleDeps): Promise<CycleSummary> {
     try {
       const results = await deps.search(w.query, w.category);
       const now = deps.now();
-      const ev = evaluateWatch(w, results, now);
+      const ev = evaluateWatch(w, results, now, isRisky);
       let next: Watch = { ...w, lastCheckedAt: now, seen: ev.nextSeen };
       if (ev.best) {
-        const { title, text } = watchNotificationText(w, ev.best);
-        const note: WatchNotification = { id: w.id, title, text, openUrl: openUrl(w) };
-        const dl = downloadUrl(ev.best);
-        if (dl) note.downloadUrl = dl;
+        // A copy only risky sources list gets no Download unless the user allowed it; see notificationFor.
+        const note: WatchNotification = { id: w.id, ...notificationFor(w, ev.best, safety) };
         const posted = await deps.notify(note).catch(() => false);
         if (!posted) {
           // Not recorded: the next run finds it new again and tries once more.

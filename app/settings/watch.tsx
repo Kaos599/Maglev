@@ -8,6 +8,7 @@ import { Button, Dialog, ListRow, Toggle } from '../../components/ui';
 import { Caption, Card, ChipGroup, SettingsPage } from '../../components/settings/SettingsParts';
 import { INTERVALS, filtersLine, lastCheckedText, type IntervalHours, type Watch } from '../../utils/watch/logic';
 import { refreshWatches, removeWatchFromStore, updateWatchInStore, useWatches } from '../../utils/watch/store';
+import { useSearchPrefs } from '../../utils/prefs/search';
 
 function subtitleOf(w: Watch, now: number): string {
   const last = w.lastNewAt > 0 && w.lastNewName ? watchCopy.lastNew(w.lastNewName) : watchCopy.noneNew;
@@ -17,6 +18,7 @@ function subtitleOf(w: Watch, now: number): string {
 export default function WatchSettings() {
   const { colors } = useTheme();
   const watches = useWatches();
+  const [prefs, updatePrefs] = useSearchPrefs();
   const [now, setNow] = useState(() => Date.now());
   const [pendingDelete, setPendingDelete] = useState<Watch | null>(null);
   const styles = useMemo(
@@ -44,6 +46,22 @@ export default function WatchSettings() {
     <SettingsPage title={watchCopy.title}>
       <Stack.Screen options={{ headerShown: false }} />
       <Caption>{watchCopy.intro}</Caption>
+      <Card>
+        {/* Watches call a copy risky by Search's rule, so with Search's warnings off this switch would change nothing. */}
+        <ListRow
+          title={watchCopy.riskyRow}
+          subtitle={prefs.warnUnsafe ? watchCopy.riskyHint : watchCopy.riskyHintNoWarnings}
+          disabled={!prefs.warnUnsafe}
+          accessory={
+            <Toggle
+              value={prefs.watchRiskySources}
+              disabled={!prefs.warnUnsafe}
+              onValueChange={(watchRiskySources) => updatePrefs({ watchRiskySources })}
+              accessibilityLabel={watchCopy.riskyRow}
+            />
+          }
+        />
+      </Card>
       {watches.length === 0 ? <Caption>{watchCopy.empty}</Caption> : null}
       {watches.map((w) => (
         <View key={w.id} style={styles.block}>

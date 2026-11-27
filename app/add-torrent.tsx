@@ -19,7 +19,10 @@ import { fileExt } from '../components/detail/torrentLabels';
 import { admit, pendingNeedOf, type AdmissionOutcome } from '../utils/admission';
 import { admissionCaption } from '../utils/admissionCopy';
 import { takePrefetchedMetadata } from '../components/search/metadataCache';
-import { banners, empty, mobileDataLine, notices } from '../constants/copy';
+import { banners, empty, mobileDataLine, notices, watchCopy } from '../constants/copy';
+import { providerMap } from '../components/search/meta';
+import { getSearchPrefs } from '../utils/prefs/search';
+import { riskyNotice } from '../utils/watch/logic';
 import { pickFolderForThisDownload } from '../utils/downloadFolder';
 import { useSettings } from '../context/SettingsContext';
 import { fileKind } from '../utils/fileKind';
@@ -54,9 +57,10 @@ export default function AddTorrentScreen() {
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ source?: string; uri?: string; magnet?: string }>();
+  const params = useLocalSearchParams<{ source?: string; uri?: string; magnet?: string; risky?: string }>();
   const { telemetry, downloads, defaultStoragePath, showNotice, onMeteredNetwork, restartEngine } = useMaglevEngine();
   const { settings } = useSettings();
+  const risky = useMemo(() => (params.risky ? riskyNotice(params.risky, providerMap(getSearchPrefs())) : null), [params.risky]);
 
   const [text, setText] = useState('');
   const [phase, setPhase] = useState<Phase>('input');
@@ -423,6 +427,12 @@ export default function AddTorrentScreen() {
   };
 
   const isMagnetSource = !fromFileRef.current && /^magnet:/i.test(sourceRef.current);
+  // A watch's Download for a copy only risky sources list carries `risky=<source ids>` in its route, so the warning
+  // Search shows reaches this screen too. It stays with that link only: a different link typed here has no banner.
+  const riskyHere = risky && sourceRef.current === (params.source ?? '').trim() ? risky : null;
+  const riskyBanner = riskyHere ? (
+    <Banner tone="warning" title={watchCopy.riskyBanner(riskyHere.names.join(', '))} body={riskyHere.reason} />
+  ) : null;
   const destination = folder?.label ?? defaultStoragePath;
   const destShort = friendlyFolder(destination);
 
@@ -460,6 +470,7 @@ export default function AddTorrentScreen() {
         <Text style={styles.meta}>
           {formatBytes(meta.totalBytes)} · {meta.files.length} {meta.files.length === 1 ? 'file' : 'files'}
         </Text>
+        {riskyBanner}
         {exts.size > 1 ? (
           <View style={styles.chips}>
             {[...exts.entries()].map(([ext, idx]) => (
@@ -575,6 +586,7 @@ export default function AddTorrentScreen() {
   if (phase === 'resolving' || phase === 'validating') {
     return (
       <Screen title="Add torrent" onBack={close}>
+        {riskyBanner ? <View style={styles.riskTop}>{riskyBanner}</View> : null}
         <ResolveProgress
           infoHash={isMagnetSource ? parseSource(sourceRef.current)?.infoHash ?? null : null}
           starting={starting}
@@ -606,6 +618,7 @@ export default function AddTorrentScreen() {
   if (phase === 'timeout') {
     return (
       <Screen title="Add torrent" onBack={close}>
+        {riskyBanner ? <View style={styles.riskTop}>{riskyBanner}</View> : null}
         <EmptyBlock
           icon="clock"
           title={addStopped ? empty.engineStopped.title : empty.addTorrent.timedOut.title}
@@ -679,6 +692,7 @@ export default function AddTorrentScreen() {
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     inputContent: { padding: spacing.lg, gap: spacing.md },
+    riskTop: { paddingHorizontal: spacing.lg, paddingTop: spacing.md },
     actions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
     gap: { marginTop: spacing.sm },
     centered: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.lg, paddingHorizontal: spacing.xxxl },

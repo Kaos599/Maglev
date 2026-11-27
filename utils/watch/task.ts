@@ -10,15 +10,19 @@ import { loadExtraProviders } from '../../components/search/extra';
 import { providerMap } from '../../components/search/meta';
 import { getSearchPrefs } from '../prefs/search';
 import { searchAll } from '../search/aggregate';
+import { riskySources } from '../search/safety';
 import { runWatchCycle, type CycleDeps } from './cycle';
-import { hasActive, jobIntervalMinutes, type Watch } from './logic';
+import { hasActive, jobIntervalMinutes, type Watch, type WatchSafety } from './logic';
 import { postWatchNotification, watchNetwork } from './native';
 import { onWatchesChanged } from './store';
 import { createWatchStore } from './storeCore';
 
 const WATCH_TASK = 'maglev-watch-check';
 
-/** Searches the way the Search tab does, never adult, and fails when no source answered. */
+/**
+ * Searches the way the Search tab does, never adult, and fails when no source answered. The prefs go in whole, so
+ * "Trusted uploaders only" drops the same uploads here as in Search.
+ */
 async function searchOnce(query: string, category: Watch['category']) {
   const prefs = getSearchPrefs();
   const providers = providerMap(prefs);
@@ -36,6 +40,16 @@ async function searchOnce(query: string, category: Watch['category']) {
   return update.results;
 }
 
+/** Judges copies with Search's own rule and provider list, so a watch calls risky exactly what Search marks. */
+function watchSafety(): WatchSafety {
+  const prefs = getSearchPrefs();
+  const providers = providerMap(prefs);
+  return {
+    riskyOf: (r) => (riskySources(r, providers, prefs.warnUnsafe) ? [...r.sources] : null),
+    allowRisky: prefs.watchRiskySources,
+  };
+}
+
 function liveDeps(): CycleDeps {
   const store = createWatchStore(Storage);
   return {
@@ -45,6 +59,7 @@ function liveDeps(): CycleDeps {
     network: watchNetwork,
     search: searchOnce,
     notify: postWatchNotification,
+    safety: watchSafety,
   };
 }
 

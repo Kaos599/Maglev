@@ -1726,6 +1726,22 @@ export const SETTINGS_INDEX: SettingEntry[] = [
 
   // Watches
   e(
+    "watch-risky-sources",
+    "Download from risky sources",
+    "watch",
+    "Watches",
+    [
+    "risky",
+    "unsafe",
+    "malware",
+    "fake",
+    "pirate bay",
+    "notification",
+    "download button",
+    "watch",
+  ],
+  ),
+  e(
     "watch-mobile-data",
     "Use mobile data",
     "watch",
