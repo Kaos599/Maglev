@@ -46,4 +46,5 @@ Start from [`_template/`](_template/). It is a working model, so `npm run models
 | Folder | Feature |
 |---|---|
 | [`share-handoff/`](share-handoff/) | How a shared link, a magnet or a notification tap reaches the right screen when Android closes, rebuilds or updates Maglev in between. |
+| [`download-timing/`](download-timing/) | How the detail row and Timing sheet agree for transfers that finish in under a second, in seconds, or in hours. |
 | [`_template/`](_template/) | Pausable downloads. The example to copy, with one design that passes and one that was rejected. |

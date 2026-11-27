@@ -251,6 +251,14 @@ async function main() {
   check('timing before 0.26 is unknown, never made up', !pre.known && pre.took === null && pre.avg === null && pre.network === null);
   check('average shown for a 2 s download (bytes / time)', F.timingView({ activeSecs: 2, finishedAt: added + 2, sessionBytes: 10 * MBy }, NOW, 0).avg === '5.0 MB/s');
   check('no average without bytes or time', F.timingView({ activeSecs: 0, sessionBytes: 5 * MBy }, NOW, 0).avg === null && F.timingView({ activeSecs: 4, sessionBytes: 0 }, NOW, 0).avg === null);
+  const sub = F.timingView({ activeSecs: 0, addedAt: added, finishedAt: added + 1, sessionBytes: 614 * 1024 }, NOW, 0);
+  check('sub-second download shows under 1 s and wall-clock avg', sub.known && sub.tookLabel === 'Took' && sub.took === 'under 1 s' && sub.avg === '614 KB/s');
+  check('sub-second Timing sheet agrees with detail row', sub.span.totalLabel === '1 s' && sub.span.downloadingLabel === 'under 1 s');
+  const instant = F.timingView({ activeSecs: 0, addedAt: added, finishedAt: added, sessionBytes: 614 * 1024 }, NOW, 0);
+  check('instant finish (same second) shows under 1 s and no made-up avg', instant.known && instant.took === 'under 1 s' && instant.avg === null && instant.span.totalLabel === 'under 1 s' && instant.span.downloadingLabel === 'under 1 s');
+  const noBytes = F.timingView({ activeSecs: 0, addedAt: added, finishedAt: added + 1, sessionBytes: 0 }, NOW, 0);
+  check('sub-second with unknown bytes keeps avg null', noBytes.took === 'under 1 s' && noBytes.avg === null);
+  check('done lead for sub-second finish', F.doneLead(0, added + 1) === 'Done in under 1 s');
 
   console.log('phone fixes');
   // 1. A 10 MB link download that took 2 s: Average speed is 5 MB/s, not "—".
