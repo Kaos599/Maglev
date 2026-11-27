@@ -6,6 +6,7 @@ import { ThemeColors, spacing, type } from '../../constants/theme';
 import { IconButton } from './IconButton';
 
 export interface ScreenProps {
+  /** Leave it out to keep back and actions with no title, when the screen shows its own heading. */
   title?: string;
   /** What a screen reader says for the title, when it should say more than the title shows (a name and a state). */
   titleAccessibilityLabel?: string;
@@ -39,9 +40,15 @@ export function Screen({
       {hasHeader ? (
         <View style={styles.header}>
           {onBack ? <IconButton icon="back" onPress={onBack} accessibilityLabel="Go back" /> : null}
-          <Text style={[styles.title, !onBack && styles.titleNoBack]} numberOfLines={1} accessibilityRole="header" accessibilityLabel={titleAccessibilityLabel}>
-            {title}
-          </Text>
+          {title ? (
+            <Text style={[styles.title, !onBack && styles.titleNoBack]} numberOfLines={1} accessibilityRole="header" accessibilityLabel={titleAccessibilityLabel}>
+              {title}
+            </Text>
+          ) : (
+            // No title: the screen draws its own heading below (a detail screen's name), and an empty
+            // heading here would be a stop with nothing to read. The spacer keeps the actions on the right.
+            <View style={styles.spacer} />
+          )}
           <View style={styles.actions}>{actions}</View>
         </View>
       ) : null}
@@ -63,5 +70,6 @@ const makeStyles = (c: ThemeColors) =>
     header: { minHeight: 56, flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.sm },
     title: { ...type.heading, fontSize: type.size.xl, color: c.text, flex: 1, marginLeft: spacing.xs },
     titleNoBack: { marginLeft: spacing.sm },
+    spacer: { flex: 1 },
     actions: { flexDirection: 'row', alignItems: 'center' },
   });

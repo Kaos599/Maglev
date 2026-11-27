@@ -841,6 +841,13 @@ export const textSizeCopy = {
 } as const;
 // endregion browser find and text size
 
+// region long names: a transfer's whole name on its detail screen and above the selection bar
+export const longNameCopy = {
+  more: 'Show more',
+  less: 'Show less',
+} as const;
+// endregion long names
+
 // region star prompt (docs/NATIVE_CONTRACT.md section 33)
 export const starCopy = {
   title: 'Enjoying Maglev?',

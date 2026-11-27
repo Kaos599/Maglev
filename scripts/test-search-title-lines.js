@@ -56,7 +56,7 @@ function check(name, cond, extra) {
   const itf = read('app/settings/interface.tsx');
   check('Search sources offers "Result name lines" in a Results section', /SectionHeader title="Results"/.test(sp) && /Result name lines/.test(sp) && /resultNameLines/.test(sp));
   check('options 1, 2, 3 and Full name', /value: 1, label: '1'/.test(sp) && /value: 2, label: '2'/.test(sp) && /value: 3, label: '3'/.test(sp) && /value: 0, label: 'Full name'/.test(sp));
-  check('Appearance no longer has it', !/name lines|resultNameLines/.test(itf));
+  check('Appearance no longer has it', !/Result name lines|resultNameLines/.test(itf));
 
   console.log('\n[full name]');
   const sheet = read('components/search/ResultPreviewSheet.tsx');

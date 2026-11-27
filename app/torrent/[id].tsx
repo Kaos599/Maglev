@@ -21,7 +21,7 @@ import { useSubtitleAvailability } from '../../components/subtitles/useSubtitleE
 import { fileEntryMode, torrentEntryMode, torrentTarget, type SubtitleTarget } from '../../components/subtitles/flow';
 import { OPEN_FOLDER_FAILED_TEXT } from '../../utils/downloadCopy';
 import { friendlyPath } from '../../components/settings/SettingsParts';
-import { Banner, Button, EmptyBlock, IconButton, ListRow, PressableScale, ProgressBar, Screen, SegmentedControl } from '../../components/ui';
+import { Banner, Button, EmptyBlock, IconButton, ListRow, LongName, PressableScale, ProgressBar, Screen, SegmentedControl } from '../../components/ui';
 import { SpeedChart } from '../../components/SpeedChart';
 import { PiecesMatrix } from '../../components/PiecesMatrix';
 import { StateBadge } from '../../components/detail/StateBadge';
@@ -29,7 +29,6 @@ import { TorrentStats } from '../../components/detail/TorrentStats';
 import { CompactLine } from '../../components/detail/CompactLine';
 import { TimeRows } from '../../components/detail/TimeRows';
 import { ProgressCard } from '../../components/detail/ProgressCard';
-import { FullName } from '../../components/detail/FullName';
 import { useSettings } from '../../context/SettingsContext';
 import { PeerRow, TrackerRow } from '../../components/detail/rows';
 import { DoneActions, OpenFolderButton } from '../../components/detail/DoneActions';
@@ -825,7 +824,10 @@ export default function TorrentDetailScreen() {
 
   const header = (
     <View>
-      <FullName name={snap.name || 'Torrent'} />
+      {/* The whole name, under back and the actions. While a magnet is still resolving it reads "Torrent", as the header did. */}
+      <View style={styles.nameRow}>
+        <LongName name={snap.name || 'Torrent'} heading testID="detail-name" />
+      </View>
       {notice ? (
         <View style={styles.block}>
           <Banner tone={notice.tone} title={notice.text} onDismiss={() => setNotice(null)} />
@@ -1048,7 +1050,7 @@ export default function TorrentDetailScreen() {
   }
 
   return (
-    <Screen title={snap.name || 'Torrent'} onBack={goBack} actions={headerActions}>
+    <Screen onBack={goBack} actions={headerActions}>
       <FlatList
         data={data}
         keyExtractor={(item) => (tab === 'files' ? String((item as DetailFile).index) : (rowKeys.get(item) ?? String(item)))}
@@ -1287,6 +1289,7 @@ const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
     content: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxxl },
     block: { marginBottom: spacing.md },
+    nameRow: { paddingTop: spacing.xs, marginBottom: spacing.md },
     speedRow: {
       minHeight: 48,
       flexDirection: 'row',

@@ -84,12 +84,15 @@ export function ChipGroup<T extends string | number>({
   options,
   value,
   onChange,
+  minChipWidth,
 }: {
   label: string;
   caption?: string;
   options: readonly { value: T; label: string }[];
   value: T | null;
   onChange: (v: T) => void;
+  /** A floor for each chip's width. A one-character label ("1") leaves a chip narrower than the 44 dp touch target. */
+  minChipWidth?: number;
 }) {
   const { colors } = useTheme();
   const s = useMemo(() => makeStyles(colors), [colors]);
@@ -98,9 +101,17 @@ export function ChipGroup<T extends string | number>({
       <View style={s.group} accessibilityRole="radiogroup" accessibilityLabel={label}>
         <Text style={s.groupLabel}>{label}</Text>
         <View style={s.chips}>
-          {options.map((o) => (
-            <Chip key={String(o.value)} label={o.label} selected={o.value === value} onPress={() => onChange(o.value)} />
-          ))}
+          {options.map((o) => {
+            const chip = <Chip key={String(o.value)} label={o.label} selected={o.value === value} onPress={() => onChange(o.value)} />;
+            // The wrapper sets the floor and the chip stretches to it.
+            return minChipWidth ? (
+              <View key={String(o.value)} style={{ minWidth: minChipWidth }}>
+                {chip}
+              </View>
+            ) : (
+              chip
+            );
+          })}
         </View>
         {caption ? <Caption>{caption}</Caption> : null}
       </View>
