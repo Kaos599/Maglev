@@ -171,7 +171,7 @@ globalThis.__fake = { Platform: { OS: 'android' }, native };
   }
 
   console.log(failed ? `\n${failed} FAILED` : '\nall passed');
-  process.exit(failed ? 1 : 0);
+  process.exit(failed || process.exitCode ? 1 : 0);
 })();
 
 // Notification and tile actions start the engine first when Android killed it (Pause all / Resume all).
