@@ -56,11 +56,13 @@ const release = (tag, over = {}) => ({
   const prefs = await import('../utils/prefs/update.ts');
 
   console.log('[tags]');
-  check('v0.23 parses', JSON.stringify(c.parseTag('v0.23')) === '{"major":0,"minor":23}');
-  check('beta, patch, bare and junk tags are ignored', ['v0.23-beta', 'v0.23.1', '0.23', 'v1', 'vx.y', '', null, 7].every((t) => c.parseTag(t) === null));
+  check('v0.23 parses', JSON.stringify(c.parseTag('v0.23')) === '{"major":0,"minor":23,"patch":0}');
+  check('v1.0.1 parses with a patch', JSON.stringify(c.parseTag('v1.0.1')) === '{"major":1,"minor":0,"patch":1}');
+  check('beta, four-part, bare and junk tags are ignored', ['v0.23-beta', 'v0.23.1-beta', 'v1.0.1.2', '0.23', 'v1', 'vx.y', '', null, 7].every((t) => c.parseTag(t) === null));
   check('minor and major compare', c.isNewer('v0.22', '0.21') && c.isNewer('v1.0', '0.99') && c.isNewer('v0.10', '0.9'));
   check('same or older is not newer', !c.isNewer('v0.21', '0.21') && !c.isNewer('v0.20', '0.21') && !c.isNewer('v0.9', '0.10'));
-  check('a beta tag is never newer', !c.isNewer('v0.22-beta', '0.21'));
+  check('a beta tag is never newer', !c.isNewer('v0.22-beta', '0.21') && !c.isNewer('v0.33-beta', '1.0'));
+  check('patch ordering: 1.0 < 1.0.1 < 1.0.2 < 1.1 = 1.1.0 < 1.10', c.isNewer('v1.0.1', '1.0') && c.isNewer('v1.0.2', '1.0.1') && c.isNewer('v1.1', '1.0.2') && c.isNewer('v1.10', '1.1.0') && !c.isNewer('v1.1', '1.1.0') && !c.isNewer('v1.1.0', '1.1') && !c.isNewer('v1.0', '1.0.1') && !c.isNewer('v1.0.1', '1.0.1') && !c.isNewer('v1.1', '1.10'));
 
   console.log('\n[assets]');
   check('ABI digits', c.abiForVersionCode(214) === 'arm64-v8a' && c.abiForVersionCode(211) === 'armeabi-v7a' && c.abiForVersionCode(213) === 'x86_64' && c.abiForVersionCode(210) === 'universal');
@@ -87,11 +89,12 @@ const release = (tag, over = {}) => ({
     return { ok, status, json: async () => json };
   };
   const inst = { version: '0.21', versionCode: 214 };
-  const got = await c.checkForUpdate(okFetch(release('v0.22')), inst);
-  check('request is GET releases/latest with the right headers only', calls[0].url === 'https://api.github.com/repos/Kaos599/Maglev/releases/latest' && calls[0].init.headers.Accept === 'application/vnd.github+json' && calls[0].init.headers['User-Agent'] === 'Maglev/0.21' && Object.keys(calls[0].init.headers).length === 2 && !('Authorization' in calls[0].init.headers));
-  check('parsed result', got && got.version === '0.22');
+  const list = [release('v0.24.1-rc'), release('v0.22'), release('v0.23'), release('v0.25', { draft: true }), release('v0.26', { prerelease: true }), release('v0.27', { assets: [asset('v0.27', 'universal')] })];
+  const got = await c.checkForUpdate(okFetch(list), inst);
+  check('request is GET the 20 most recent releases with the right headers only', calls[0].url === 'https://api.github.com/repos/Kaos599/Maglev/releases?per_page=20' && calls[0].init.headers.Accept === 'application/vnd.github+json' && calls[0].init.headers['User-Agent'] === 'Maglev/0.21' && Object.keys(calls[0].init.headers).length === 2 && !('Authorization' in calls[0].init.headers));
+  check('offers the highest release it can install, skipping unreadable tags, drafts, prereleases and releases with no APK for this phone', got && got.version === '0.23');
   check('the request omits credentials, so no github.com cookies go out', calls[0].init.credentials === 'omit');
-  check('up to date gives null', (await c.checkForUpdate(okFetch(release('v0.21')), inst)) === null);
+  check('up to date gives null', (await c.checkForUpdate(okFetch([release('v0.21'), release('v0.20')]), inst)) === null && (await c.checkForUpdate(okFetch([]), inst)) === null);
   const fails = async (f) => {
     try {
       await c.checkForUpdate(f, inst);
@@ -102,7 +105,7 @@ const release = (tag, over = {}) => ({
   };
   check('network failure throws', (await fails(async () => { throw new Error('offline'); })) === 'network');
   check('HTTP error throws', (await fails(okFetch({}, false, 403))) === 'status');
-  check('unreadable body throws', (await fails(async () => ({ ok: true, status: 200, json: async () => { throw new Error('x'); } }))) === 'parse');
+  check('unreadable body or a body that is not a list throws', (await fails(async () => ({ ok: true, status: 200, json: async () => { throw new Error('x'); } }))) === 'parse' && (await fails(okFetch(release('v0.22')))) === 'parse');
   const abortFetch = (url, init) => new Promise((_, rej) => init.signal.addEventListener('abort', () => rej(new Error('aborted'))));
   check('timeout aborts the request', (await (async () => { try { await c.checkForUpdate(abortFetch, inst, 20); return null; } catch (e) { return e.kind; } })()) === 'network');
 
