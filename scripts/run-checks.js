@@ -136,7 +136,7 @@ test-stats|stats|Stats schema, store, recorder, insights, prefs, backup section.
 test-stats-screen|stats|Ranges, buckets, streaks and card kit behind the Stats screen.
 test-stats-delight|stats|Live active time, daily cap, midnight rollover, old-table migration.
 test-download-timing|downloads,engine|Timing and data-use fields pass through types, bridge and dev simulator.
-test-private-docs|build|The private-docs helper skips without docs/ and fails loudly on a partial checkout.
+test-private-docs|build|The private-docs helper skips without the private notes folder and fails loudly on a partial checkout.
 test-blocks|transfers,engine|Why a transfer is held: one copy table, banner order, overrides, per-item lines.
 test-add-collision|downloads,engine|Wiring for moving old files from a previous install to a numbered folder.
 test-swipe|transfers|Swipe actions per row state, the setting and the wiring.
@@ -336,7 +336,7 @@ async function main() {
   const quiet = flag('--quiet');
   const results = [];
 
-  // test-private-docs makes and removes a docs/ folder. Other checks read that folder, so it runs alone first.
+  // test-private-docs makes and removes a private notes folder. Other checks read that folder, so it runs alone first.
   const alone = selected.filter((c) => c.name === 'test-private-docs');
   const rest = selected.filter((c) => c.name !== 'test-private-docs');
   const width = Math.max(...selected.map((c) => c.name.length));

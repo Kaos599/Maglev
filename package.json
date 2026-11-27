@@ -31,6 +31,9 @@
     "test:url-download": "node scripts/test-url-download.js",
     "test:update": "node scripts/test-update.js && node scripts/test-update-native.js && node scripts/test-ux-027.js",
     "test:manifest-permissions": "node scripts/test-manifest-permissions.js",
+    "check": "node scripts/run-checks.js",
+    "check:refs": "node scripts/check-private-refs.js",
+    "models": "node scripts/check-models.js",
     "e2e:phone": "bash scripts/e2e-phone.sh"
   },
   "dependencies": {
