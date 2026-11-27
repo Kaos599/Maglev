@@ -53,6 +53,22 @@ const fixture = (n) => JSON.parse(read(`scripts/fixtures/video-sites/${n}.json`)
   check('youtube: playlists and storyboards are never offered', yt.options.every((o) => /^https:\/\//.test(o.video.url) && !/sb\d|233|234|m3u8/.test(o.id)));
   check('youtube: at most six qualities plus audio', yt.options.length === 7);
 
+  // ---- YouTube with 5.1 surround audio (258) + muxed 360p (18): prefers stereo (140) so sizes stay monotonic (#217)
+  const ytSurround = V.buildVideoSiteInfo({
+    title: 'Big Buck Bunny', id: 'bbb', duration: 635, extractor_key: 'Youtube',
+    formats: [
+      { format_id: '140', url: 'https://a.test/140.m4a', ext: 'm4a', vcodec: 'none', acodec: 'mp4a.40.2', audio_channels: 2, abr: 129, tbr: 129, filesize: 10271496, protocol: 'https' },
+      { format_id: '258', url: 'https://a.test/258.m4a', ext: 'm4a', vcodec: 'none', acodec: 'mp4a.40.2', audio_channels: 6, abr: 388, tbr: 388, filesize: 30767611, protocol: 'https' },
+      { format_id: '160', url: 'https://a.test/160.mp4', ext: 'mp4', vcodec: 'avc1.4D400C', acodec: 'none', height: 144, width: 256, tbr: 55, filesize: 4323893, protocol: 'https' },
+      { format_id: '133', url: 'https://a.test/133.mp4', ext: 'mp4', vcodec: 'avc1.4D4015', acodec: 'none', height: 240, width: 426, tbr: 118, filesize: 9323483, protocol: 'https' },
+      { format_id: '18', url: 'https://a.test/18.mp4', ext: 'mp4', vcodec: 'avc1.42001E', acodec: 'mp4a.40.2', height: 360, width: 640, tbr: 360, filesize: null, filesize_approx: 28526904, protocol: 'https' },
+      { format_id: '135', url: 'https://a.test/135.mp4', ext: 'mp4', vcodec: 'avc1.4D401F', acodec: 'none', height: 480, width: 854, tbr: 356, filesize: 28207144, protocol: 'https' },
+    ],
+  });
+  check('youtube surround: picks stereo 140 over 6ch 258', ytSurround.options.filter((o) => o.audio).every((o) => o.id.endsWith('+140')), ytSurround.options.map((o) => o.id));
+  const surroundSizes = ytSurround.options.map((o) => o.estBytes);
+  check('youtube surround: sizes decrease monotonically', surroundSizes.every((s, i) => s !== null && (i === 0 || surroundSizes[i - 1] >= s)), surroundSizes);
+
   // ---- X: plain MP4 files that already have sound
   const x = V.buildVideoSiteInfo(fixture('x'));
   check('x: two single files, tallest first', x.options.map((o) => `${o.height}:${o.id}`).join() === '360:http-832,180:http-256', x.options.map((o) => o.id));

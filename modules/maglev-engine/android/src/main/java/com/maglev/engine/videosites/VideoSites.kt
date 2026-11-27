@@ -30,7 +30,7 @@ object VideoSites {
     private val TOP_KEYS = listOf("id", "title", "thumbnail", "duration", "extractor_key", "webpage_url")
     private val FORMAT_KEYS = listOf(
         "format_id", "url", "ext", "vcodec", "acodec", "height", "width", "filesize", "filesize_approx",
-        "tbr", "abr", "protocol", "http_headers", "language",
+        "tbr", "abr", "audio_channels", "protocol", "http_headers", "language",
     )
 
     @Volatile

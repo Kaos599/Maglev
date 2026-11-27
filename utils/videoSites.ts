@@ -117,6 +117,7 @@ interface RawFormat {
   filesize_approx?: number | null;
   tbr?: number | null;
   abr?: number | null;
+  audio_channels?: number | null;
   protocol?: string;
   http_headers?: Record<string, string>;
 }
@@ -208,7 +209,11 @@ export function buildVideoSiteInfo(raw: unknown): VideoSiteInfo {
     .map((fmt, index) => ({ fmt, index }))
     .filter((c) => c.fmt && isFile(c.fmt));
 
-  const audio = best(all.filter((c) => kindOf(c.fmt) === 'audio' && (c.fmt.ext === 'm4a' || /^mp4a/.test(c.fmt.acodec ?? '')) && !/-drc$/.test(c.fmt.format_id ?? '')));
+  const audioCands = all.filter((c) => kindOf(c.fmt) === 'audio' && (c.fmt.ext === 'm4a' || /^mp4a/.test(c.fmt.acodec ?? '')) && !/-drc$/.test(c.fmt.format_id ?? ''));
+  // Prefer stereo/mono over multi-channel surround (e.g. YouTube 5.1 formats 256/258, two to three times the
+  // stereo size) so low qualities don't carry a surround audio track bigger than a higher muxed quality.
+  const stereoAudio = audioCands.filter((c) => (num(c.fmt.audio_channels) ?? 2) <= 2);
+  const audio = best(stereoAudio.length > 0 ? stereoAudio : audioCands);
   const videos = all.filter((c) => kindOf(c.fmt) === 'video' && c.fmt.ext === 'mp4' && /^avc[13]/.test(c.fmt.vcodec ?? '') && shortEdge(c.fmt));
   const singles = all.filter((c) => kindOf(c.fmt) === 'single' && (c.fmt.ext === 'mp4' || c.fmt.ext === 'm4v'));
 
