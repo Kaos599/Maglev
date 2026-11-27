@@ -7,7 +7,7 @@
  * The model only words the output; it never picks numbers.
  *
  * Choices made where the rules leave room:
- * - Partial packs (R2, R10) assume episodes are the same size: pack bytes / episode count.
+ * - Partial packs assume episodes are the same size: pack bytes / episode count.
  *   They use only counts whose admit() result is Fits, so the text never states a Tight fit.
  * - R3/R4 only name an existing candidate whose admit() result is Fits, since the text says "it fits".
  *   R7 offers a smaller Fits option too. R11/R12 accept any non-DoesntFit alternative.
@@ -52,9 +52,9 @@ export interface DiskAdviceInput {
   pendingNeed?: number;
   /** 2 when the folder is SAF-staged, else 1. */
   stagingFactor: 1 | 2;
-  /** Number of unfinished downloads, for the R9 sentence. */
+  /** Number of unfinished downloads, for the advice sentence. */
   unfinishedCount?: number;
-  /** Finished downloads that could be removed (R5). */
+  /** Finished downloads that could be removed. */
   finished?: readonly FinishedDownload[];
   storage?: { onSdCard?: boolean; hasRoomElsewhere?: boolean };
   /** R10. Seasons the user asked for. */

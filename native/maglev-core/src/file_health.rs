@@ -530,7 +530,7 @@ mod tests {
         assert!(!dir.join("maglev-filehealth.json.tmp").exists());
 
         let raw = std::fs::read_to_string(dir.join(SIDECAR_FILE)).unwrap();
-        // The shape in the contract: id -> files -> index -> {size, mtime_ms}.
+        // The saved shape: id -> files -> index -> {size, mtime_ms}.
         let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
         assert_eq!(v["abc"]["files"]["0"]["size"], 100);
         assert_eq!(v["abc"]["files"]["2"]["mtime_ms"], -5);

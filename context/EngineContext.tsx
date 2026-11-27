@@ -108,7 +108,7 @@ interface EngineContextType {
     sequential?: boolean,
     selectedFileIndices?: number[]
   ) => Promise<string>;
-  /** Raw contract call: never throws, returns the Result envelope. */
+  /** Raw native call: never throws, returns the Result envelope. */
   addTorrent: (source: string, options?: AddTorrentOptions) => Promise<EngineResult<{ id: string; infoHash: string }>>;
   resolveMetadata: (source: string, timeoutMs?: number) => Promise<EngineResult<Metadata>>;
   setFilePriority: (id: string, fileIndex: number, priority: 0 | 1 | 2) => Promise<boolean>;
@@ -118,12 +118,12 @@ interface EngineContextType {
   getFreeSpace: () => Promise<EngineResult<FreeSpace>>;
   /** True while the phone is on mobile data (any link that is not unmetered Wi-Fi or Ethernet). Refreshed when the app comes back. */
   onMeteredNetwork: boolean;
-  /** False only when the phone itself reports no connection (NATIVE_CONTRACT 44.15 D8). Unknown counts as online. */
+  /** False only when the phone itself reports no connection. Unknown counts as online. */
   networkOnline: boolean;
-  /** True once the torrent and link lists came from the engine this session, not from the saved cache (44.15 F2). */
+  /** True once the torrent and link lists came from the engine this session, not from the saved cache. */
   listsLive: boolean;
   openLiveUpdateSettings: () => Promise<void>;
-  /** 256 cells, contract values: 0 missing, 1 have, 2 partial. */
+  /** 256 cells: 0 missing, 1 have, 2 partial. */
   getPieceBitfield: (id: string) => Promise<Uint8Array>;
   /** Cached detail. An uncached id triggers a one-off fetch; use `watchDetail` for live updates. */
   getTorrentDetail: (id: string) => TorrentDetailData | null;
@@ -149,11 +149,11 @@ interface EngineContextType {
   /** The "Start engine" button: restarts the native engine. Resolves true when it runs. */
   restartEngine: () => Promise<boolean>;
   lastCompleted: TorrentCompletedEvent | null;
-  /** Downloads from http(s) links (NATIVE_CONTRACT 17), oldest first. */
+  /** Downloads from http(s) links, oldest first. */
   downloads: DownloadSnapshot[];
   /** Never throws: returns the Result envelope. Nothing is stored. */
   probeUrl: (url: string, options?: DownloadOptions) => Promise<EngineResult<UrlProbe>>;
-  /** Qualities, audio tracks and size estimates of an HLS or DASH link (NATIVE_CONTRACT 24.8). Nothing is stored. */
+  /** Qualities, audio tracks and size estimates of an HLS or DASH link. Nothing is stored. */
   probeStream: (url: string, options?: DownloadOptions) => Promise<EngineResult<StreamProbe>>;
   startDownload: (url: string, options?: DownloadOptions) => Promise<EngineResult<{ id: string }>>;
   pauseDownload: (id: string) => Promise<boolean>;
@@ -559,7 +559,7 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     });
     const offCompleted = maglevEngine.onTorrentCompleted((e) => setLastCompleted(e));
     const offAction = maglevEngine.onNotificationAction(async (e) => {
-      // Sent once on app open after Android killed Maglev (NATIVE_CONTRACT 19). Not in the TS union yet.
+      // Sent once on app open after Android killed Maglev. Not in the TS union yet.
       const ev = e as { action: string; message?: string };
       if (ev.action === 'stopped_by_android') {
         if (ev.message) showNotice({ message: ev.message }, 6000);
@@ -709,7 +709,7 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const res = await maglevEngine.resume(id);
       endTap(group, res.ok);
       if (!res.ok) {
-        // NATIVE_CONTRACT 47.4: a file-health hold says why, and Open goes to the Recheck banner.
+        // A file-health hold says why, and Open goes to the Recheck banner.
         const held = liveRef.current.torrents.find((t) => t.id === id);
         const failure = resumeFailureNotice(res, held, label);
         showNotice(
@@ -731,7 +731,7 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     endTap(group, res.ok, notices.engine.pauseAllFailed);
   }, [beginTap, endTap]);
   const resumeAll = useCallback(async () => {
-    // NATIVE_CONTRACT 47.4: torrents held by a file health tag are skipped (the engine skips them too).
+    // Torrents held by a file health tag are skipped (the engine skips them too).
     const ids = resumableIds(liveRef.current.torrents, (id) => !!pendingRef.current[id]);
     const group = beginTap(ids, 'resume');
     const res = await maglevEngine.resumeAll();
@@ -999,7 +999,7 @@ export const EngineProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     [refreshDetail]
   );
 
-  // ---- URL downloads (NATIVE_CONTRACT 17). The engine pushes its list on the next telemetry event. ----
+  // ---- URL downloads. The engine pushes its list on the next telemetry event. ----
   const probeUrl = useCallback((url: string, options: DownloadOptions = {}) => maglevEngine.probeUrl(url, options, 15_000), []);
   const probeStream = useCallback((url: string, options: DownloadOptions = {}) => maglevEngine.probeStream(url, options, 15_000), []);
   const startDownload = useCallback((url: string, options: DownloadOptions = {}) => maglevEngine.addDownload(url, options), []);

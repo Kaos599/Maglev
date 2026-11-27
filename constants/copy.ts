@@ -13,7 +13,7 @@ import { formatBytes } from './format.ts';
  * Notices (toasts)
  *   - Say what happened in the past tense, or what is true now. At most 12 words. Ends with a period.
  *   - An error names the cause in plain words. When the user can do something, the notice carries an
- *     action (Undo, Retry, Open settings), matching AGENTS.md section 4.7 and components/detail/errorActions.ts.
+ *     action (Undo, Retry, Open settings), matching AGENTS.md rule 8 (errors) and components/detail/errorActions.ts.
  *     Do not repeat that mapping here.
  *
  * Banners
@@ -219,7 +219,7 @@ export const banners = {
 // ---------------------------------------------------------------------------------------------
 // Empty states: a title (what is empty) and a body (how to fill it)
 // ---------------------------------------------------------------------------------------------
-/** NATIVE_CONTRACT 45.5 */
+/** Prompt shown when switched-off sources could have answered. */
 export const SEARCH_TURN_ON_MORE = 'Turn on more sources';
 export const offSourcesSentence = (k: number): string => (k === 1 ? '1 more source is off.' : `${k} more sources are off.`);
 
@@ -242,7 +242,7 @@ export const empty = {
       body: 'Tap the box to see your recent searches.',
     }),
     noAnswer: { title: 'No source answered', body: 'Check your connection or try other sources.' },
-    /** `off`: NATIVE_CONTRACT 45.5, the sources that are switched off and could have answered. */
+    /** `off`: the sources that are switched off and could have answered. */
     noResults: (query: string | number, off = 0) => ({
       title: 'No results',
       body: `Nothing matches "${toName(query)}". Try fewer words or another category.${off > 0 ? ` ${offSourcesSentence(off)}` : ''}`,
@@ -298,7 +298,7 @@ export const empty = {
   },
 } as const;
 
-/** Labels for browser history (NATIVE_CONTRACT 24.9): the screen, the suggestions, the clear sheet and its settings. */
+/** Labels for browser history: the screen, the suggestions, the clear sheet and its settings. */
 /** The full-screen address surface while the address bar is being edited. */
 export const addressCopy = {
   back: 'Back',
@@ -332,10 +332,10 @@ export const historyCopy = {
   retry: 'Retry',
   suggestionsLabel: 'Suggestions from history',
   bookmarkHint: 'Bookmark',
-  /** The ⋮ sheet title: with a page open, and on a blank tab (24.11). */
+  /** The ⋮ sheet title: with a page open, and on a blank tab. */
   menuTitlePage: 'This page',
   menuTitleBlank: 'Browser',
-  /** "Recent" on the new-tab page (24.11). */
+  /** "Recent" on the new-tab page. */
   recent: { title: 'Recent', label: 'Recent pages', seeAll: 'See all', seeAllLabel: 'See all history' },
   settings: {
     section: 'History',
@@ -367,7 +367,7 @@ export const historyCopy = {
   },
 } as const;
 
-/** Labels for browser tabs, the link menu and pop-ups (NATIVE_CONTRACT 24.10). */
+/** Labels for browser tabs, the link menu and pop-ups. */
 export const browserTabs = {
   tabButtonLabel: (count: number | string) => `Tabs, ${count} open`,
   /** Shown in the tab button above 99. */
@@ -587,7 +587,7 @@ export const errorScreenCopy = {
 } as const;
 
 // ---------------------------------------------------------------------------------------------
-// play (0.19: Play while downloading; docs/contracts-0.19/play-and-storage.md section 1)
+// play (0.19: Play while downloading)
 // ---------------------------------------------------------------------------------------------
 export const playCopy = {
   label: 'Play',
@@ -600,7 +600,7 @@ export const playCopy = {
 } as const;
 
 // ---------------------------------------------------------------------------------------------
-// storage (0.19: low-storage protection and the Free up space screen; same contract, sections 2 and 3)
+// storage (0.19: low-storage protection and the Free up space screen)
 // ---------------------------------------------------------------------------------------------
 export const storageCopy = {
   /** Same words as the notification: StorageGuard.PAUSED_TITLE / PAUSED_TEXT. */
@@ -668,7 +668,7 @@ export const backupCopy = {
 } as const;
 
 // region quick share
-/** The card that floats over the app you shared from (docs/contracts-0.19/quick-share.md). Mirrored in share/QuickShareText.kt; scripts/test-quick-share.js keeps them equal. */
+/** The card that floats over the app you shared from. Mirrored in share/QuickShareText.kt; scripts/test-quick-share.js keeps them equal. */
 export const quickShareCopy = {
   setting: {
     title: 'Add without asking',
@@ -703,7 +703,7 @@ export const quickShareCopy = {
 // endregion quick share
 
 // region watch
-/** Watch for a title (docs/contracts-0.19/watch.md). Screens: Settings > Watches, the Watch button on Search. */
+/** Watch for a title. Screens: Settings > Watches, the Watch button on Search. */
 export const watchCopy = {
   title: 'Watches',
   rowTitle: 'Watches',
@@ -732,7 +732,7 @@ export const watchCopy = {
 // endregion watch
 
 // region updates
-/** In-app updates and Report a bug (docs/NATIVE_CONTRACT.md section 27). Screens: Settings > About. */
+/** In-app updates and Report a bug. Screens: Settings > About. */
 export const updateCopy = {
   versionBadge: 'Update available',
   check: { title: 'Check for updates', checking: 'Checking…', upToDate: "You're up to date", failed: "Couldn't check. Try again." },
@@ -784,7 +784,7 @@ export const updateCopy = {
 } as const;
 // endregion updates
 
-// region self-updating lists (docs/NATIVE_CONTRACT.md section 31)
+// region self-updating lists
 export const listsCopy = {
   autoUpdate: 'Update lists automatically',
   checkNow: 'Check now',
@@ -822,7 +822,7 @@ export const listsCopy = {
 } as const;
 // endregion self-updating lists
 
-// region browser find and text size (docs/NATIVE_CONTRACT.md section 28)
+// region browser find and text size
 export const findCopy = {
   menuRow: 'Find in page',
   placeholder: 'Find in page',
@@ -852,7 +852,7 @@ export const longNameCopy = {
 } as const;
 // endregion long names
 
-// region star prompt (docs/NATIVE_CONTRACT.md section 33)
+// region star prompt
 export const starCopy = {
   title: 'Enjoying Maglev?',
   body: 'A star on GitHub helps other people find it.',
@@ -862,7 +862,7 @@ export const starCopy = {
 } as const;
 // endregion star prompt
 
-// region subtitle settings (docs/NATIVE_CONTRACT.md section 36.10). Strings shared with the sheet live in utils/subtitles/copy.ts.
+// region subtitle settings. Strings shared with the sheet live in utils/subtitles/copy.ts.
 export const subtitleSettingsCopy = {
   languages: {
     title: 'Languages',
@@ -903,7 +903,7 @@ export const subtitleSettingsCopy = {
 } as const;
 // endregion subtitle settings
 
-// region new-feature highlight (docs/NATIVE_CONTRACT.md section 37)
+// region new-feature highlight
 export const highlightCopy = {
   notNow: 'Not now',
   allNotes: 'All release notes',

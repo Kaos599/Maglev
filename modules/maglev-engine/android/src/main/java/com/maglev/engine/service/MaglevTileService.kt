@@ -12,7 +12,7 @@ import com.maglev.engine.EngineHost
 import com.maglev.engine.share.ShareHandoff
 
 /**
- * Quick Settings tile: shows transfer state, taps to Pause all / Resume all (contract 13.3).
+ * Quick Settings tile: shows transfer state, taps to Pause all / Resume all.
  * An active tile (ACTIVE_TILE meta-data): the system binds it on a click, and [EngineHost] asks for an
  * update with [TileService.requestListeningState] when the summary changes.
  */

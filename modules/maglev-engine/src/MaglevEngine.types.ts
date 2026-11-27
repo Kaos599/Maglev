@@ -14,7 +14,7 @@ import type { DownloadFolder } from './MaglevSettings.types.ts';
 export * from './MaglevSettings.types.ts';
 
 /**
- * NATIVE_CONTRACT 18.2 and 20. Why a torrent is stopped by its own condition. While set the engine keeps
+ * Why a torrent is stopped by its own condition. While set the engine keeps
  * the torrent paused; `paused_by` carries the same tag unless the user paused it first.
  */
 export type HealthTag = 'files_missing' | 'files_changed' | 'storage_full' | 'storage_unavailable' | 'no_peers';
@@ -27,7 +27,7 @@ export const HEALTH_TAGS: readonly HealthTag[] = [
   'no_peers',
 ];
 
-/** Reserved: user, seed_limit. Any other value is a governance tag from Kotlin or a health tag (18.2). */
+/** Reserved: user, seed_limit. Any other value is a governance tag from Kotlin or a health tag. */
 export type PausedBy =
   | 'user'
   | 'wifi_only'
@@ -36,11 +36,11 @@ export type PausedBy =
   | 'seed_limit'
   | 'fgs_timeout'
   | 'schedule'
-  /** NATIVE_CONTRACT 21: connected but not validated (captive portal). */
+  /** Connected but not validated (captive portal). */
   | 'network_unvalidated'
-  /** NATIVE_CONTRACT 21: `network.vpnOnly` is on and no VPN is connected. */
+  /** `network.vpnOnly` is on and no VPN is connected. */
   | 'vpn_required'
-  /** NATIVE_CONTRACT 25.2: finished torrent on a metered link while `network.seedOnMobileData` is off. */
+  /** Finished torrent on a metered link while `network.seedOnMobileData` is off. */
   | 'seed_metered'
   | HealthTag;
 
@@ -63,7 +63,7 @@ export interface TorrentTelemetry {
   sequential?: boolean;
   seedDurationSeconds?: number;
   pausedBy?: PausedBy | null;
-  /** NATIVE_CONTRACT 25.1: "Resume anyway" is active, so the Wi-Fi, battery, charging, schedule and seeding rules do not pause it. */
+  /** "Resume anyway" is active, so the Wi-Fi, battery, charging, schedule and seeding rules do not pause it. */
   allowedAnyway?: boolean;
   error?: { code: string; message: string } | null;
   outputFolder?: string;
@@ -73,29 +73,29 @@ export interface TorrentTelemetry {
   upLimitBps?: number;
   /** 0 to 1 while MOVING, otherwise null or undefined. */
   moveProgress?: number | null;
-  /** NATIVE_CONTRACT 18.2. Null or undefined when the torrent is healthy. */
+  /** Null or undefined when the torrent is healthy. */
   health?: HealthTag | null;
-  /** NATIVE_CONTRACT 18.4. Sum of the included, non-padding file lengths. */
+  /** Sum of the included, non-padding file lengths. */
   includedBytes?: number;
-  /** NATIVE_CONTRACT 38. Name of the largest included file, null until the metadata is known. Picks the card's file icon. */
+  /** Name of the largest included file, null until the metadata is known. Picks the card's file icon. */
   mainFile?: string | null;
-  /** NATIVE_CONTRACT 18.4. Downloaded bytes of every file, skipped ones too. Absent from an older engine. */
+  /** Downloaded bytes of every file, skipped ones too. Absent from an older engine. */
   heldBytes?: number;
-  /** NATIVE_CONTRACT 16. Web seeds configured for the torrent. */
+  /** Web seeds configured for the torrent. */
   webSeeds?: number;
-  /** NATIVE_CONTRACT 20. Seconds a magnet has been looking for its metadata, null once it has it. */
+  /** Seconds a magnet has been looking for its metadata, null once it has it. */
   resolvingSecs?: number | null;
-  /** NATIVE_CONTRACT 34.1. Seconds spent downloading (not paused, queued, waiting, checking or seeding). 0 for items from before 0.26: show "—". */
+  /** Seconds spent downloading (not paused, queued, waiting, checking or seeding). 0 for items from before 0.26: show "—". */
   activeSecs?: number;
-  /** NATIVE_CONTRACT 34.1. Unix seconds when the item first finished. 0 until then. */
+  /** Unix seconds when the item first finished. 0 until then. */
   finishedAt?: number;
-  /** NATIVE_CONTRACT 34.1. Payload bytes this engine downloaded for the item (not bytes already on disk). Average speed = sessionBytes / activeSecs. */
+  /** Payload bytes this engine downloaded for the item (not bytes already on disk). Average speed = sessionBytes / activeSecs. */
   sessionBytes?: number;
-  /** NATIVE_CONTRACT 34.1. Of the bytes moved (downloaded, plus uploaded for a torrent): on an unmetered link. */
+  /** Of the bytes moved (downloaded, plus uploaded for a torrent): on an unmetered link. */
   bytesWifi?: number;
-  /** NATIVE_CONTRACT 34.1. The same on a metered link. */
+  /** The same on a metered link. */
   bytesMobile?: number;
-  /** NATIVE_CONTRACT 20.1. Seconds a torrent with metadata has waited with no peer and no byte, null otherwise. */
+  /** Seconds a torrent with metadata has waited with no peer and no byte, null otherwise. */
   stalledSecs?: number | null;
 }
 
@@ -138,11 +138,11 @@ export interface TorrentDetailData extends TorrentTelemetry {
 export type PieceMatrix = Uint8Array; // 256 bytes (16x16)
 
 // ---------------------------------------------------------------------------
-// Native contract types (docs/NATIVE_CONTRACT.md section 3 and 6), camelCase on the JS side.
+// Native engine types, camelCase on the JS side.
 // NativeConfig is the exception: it is passed to Rust as-is, so it keeps snake_case keys.
 // ---------------------------------------------------------------------------
 
-/** NATIVE_CONTRACT 36.6. `UNSUPPORTED` is added by the bridge when no engine can answer. */
+/** `UNSUPPORTED` is added by the bridge when no engine can answer. */
 export type SubtitleErrorCode =
   | 'FILE_TOO_SMALL'
   | 'NOT_FOUND'
@@ -198,7 +198,7 @@ export type EngineErrorCode =
   | 'INVALID_STATE'
   | 'NOT_READY'
   | 'INTERNAL'
-  /** NATIVE_CONTRACT 17 (URL downloads). */
+  /** URL downloads. */
   | 'HTTP_STATUS'
   | 'AUTH_REQUIRED'
   /** A 403 with no sign-in details: the site refused the link. Never retried by itself. */
@@ -212,7 +212,7 @@ export type EngineErrorCode =
   | 'NO_APP'
   /** The server stopped sending data and the retries ran out. */
   | 'STALLED'
-  /** NATIVE_CONTRACT 24.8 (saving HLS and DASH streams). */
+  /** Saving HLS and DASH streams. */
   | 'STREAM_PROTECTED'
   | 'STREAM_LIVE'
   | 'STREAM_UNSUPPORTED'
@@ -224,7 +224,7 @@ export type EngineErrorCode =
   | 'SITE_FAILED'
   | 'VIDEO_SITES_UNAVAILABLE';
 
-/** NATIVE_CONTRACT 12.1. */
+/** Progress of a magnet looking for its metadata. */
 export interface ResolveActivity {
   peersFound: number;
   dht: boolean;
@@ -260,13 +260,13 @@ export interface NativeConfig {
   upload_limit_bps: number;
   seed_ratio_limit: number;
   seed_time_limit_mins: number;
-  /** NATIVE_CONTRACT 20.1. Seconds to wait for peers before `no_peers`; 0 = never. */
+  /** Seconds to wait for peers before `no_peers`; 0 = never. */
   peer_timeout_secs: number;
   proxy_url: string | null;
   ip_filter_path: string | null;
 }
 
-/** NATIVE_CONTRACT 41 (B3). `unreadable`: the setting is on but the file is missing, empty or has no rule we can read. */
+/** `unreadable`: the setting is on but the file is missing, empty or has no rule we can read. */
 export type BlocklistState = 'off' | 'on' | 'unreadable';
 
 export interface BlocklistStatus {
@@ -276,7 +276,7 @@ export interface BlocklistStatus {
 }
 
 /**
- * NATIVE_CONTRACT 41. What `getEffectiveConfig` answers: the saved config (snake_case, as `NativeConfig`) plus two
+ * What `getEffectiveConfig` answers: the saved config (snake_case, as `NativeConfig`) plus two
  * camelCase fields. `restartPending` is true while the running session differs from the saved config in a
  * restart-required field (proxy, listening port, UPnP, DHT, local peer discovery, blocklist, connections per torrent).
  */
@@ -317,7 +317,7 @@ export interface Snapshot {
   upBps: number;
   peersLive: number;
   peersSeen: number;
-  /** NATIVE_CONTRACT 16. Web seeds configured for the torrent. 0 when none. */
+  /** Web seeds configured for the torrent. 0 when none. */
   webSeeds: number;
   etaSecs: number; // -1 = unknown
   ratio: number;
@@ -325,34 +325,34 @@ export interface Snapshot {
   addedAt: number;
   outputFolder: string;
   error: SnapshotError | null;
-  /** NATIVE_CONTRACT 11.2. 0 = no per-torrent limit. */
+  /** 0 = no per-torrent limit. */
   downLimitBps: number;
   upLimitBps: number;
-  /** NATIVE_CONTRACT 11.3. 0 to 1, non-null only while MOVING. */
+  /** 0 to 1, non-null only while MOVING. */
   moveProgress: number | null;
-  /** NATIVE_CONTRACT 18.2. */
+  /** Why the torrent is stopped by its own condition. Null when healthy. */
   health: HealthTag | null;
-  /** NATIVE_CONTRACT 18.4. SM-35: `pendingNeed = sum(max(0, includedBytes - progressBytes))` over unfinished torrents. */
+  /** `pendingNeed = sum(max(0, includedBytes - progressBytes))` over unfinished torrents. */
   includedBytes: number;
-  /** NATIVE_CONTRACT 38. Name of the largest included file, null until the metadata is known. Absent from an older engine. */
+  /** Name of the largest included file, null until the metadata is known. Absent from an older engine. */
   mainFile?: string | null;
-  /** NATIVE_CONTRACT 18.4. What deleting the files frees: downloaded bytes of every file, skipped ones too. */
+  /** What deleting the files frees: downloaded bytes of every file, skipped ones too. */
   heldBytes?: number;
-  /** NATIVE_CONTRACT 20. Seconds a magnet has been looking for its metadata; null once it has it. */
+  /** Seconds a magnet has been looking for its metadata; null once it has it. */
   resolvingSecs: number | null;
-  /** NATIVE_CONTRACT 20.1. Seconds a torrent with metadata has waited with no peer and no byte; null otherwise. */
+  /** Seconds a torrent with metadata has waited with no peer and no byte; null otherwise. */
   stalledSecs?: number | null;
-  /** NATIVE_CONTRACT 25.1. Absent from an older engine. */
+  /** Absent from an older engine. */
   allowedAnyway?: boolean;
-  /** NATIVE_CONTRACT 34.1. Seconds spent downloading (not paused, queued, waiting, checking or seeding). 0 for items from before 0.26: show "—". */
+  /** Seconds spent downloading (not paused, queued, waiting, checking or seeding). 0 for items from before 0.26: show "—". */
   activeSecs?: number;
-  /** NATIVE_CONTRACT 34.1. Unix seconds when the item first finished. 0 until then. */
+  /** Unix seconds when the item first finished. 0 until then. */
   finishedAt?: number;
-  /** NATIVE_CONTRACT 34.1. Payload bytes this engine downloaded for the item (not bytes already on disk). Average speed = sessionBytes / activeSecs. */
+  /** Payload bytes this engine downloaded for the item (not bytes already on disk). Average speed = sessionBytes / activeSecs. */
   sessionBytes?: number;
-  /** NATIVE_CONTRACT 34.1. Of the bytes moved (downloaded, plus uploaded for a torrent): on an unmetered link. */
+  /** Of the bytes moved (downloaded, plus uploaded for a torrent): on an unmetered link. */
   bytesWifi?: number;
-  /** NATIVE_CONTRACT 34.1. The same on a metered link. */
+  /** The same on a metered link. */
   bytesMobile?: number;
 }
 
@@ -371,9 +371,9 @@ export interface DetailFile {
   /** Size on disk of a skipped file (preallocated or partial data Remove can delete). 0 for included files and absent ones. */
   onDiskBytes?: number;
   included: boolean;
-  /** NATIVE_CONTRACT 10.1. `included` is derived from it (`skip` means not included). */
+  /** `included` is derived from it (`skip` means not included). */
   priority: FilePriority;
-  /** NATIVE_CONTRACT 11.4. Contiguous downloaded bytes from the start of the file. */
+  /** Contiguous downloaded bytes from the start of the file. */
   streamReadyBytes: number;
   /** True when the last piece of the file is present (players read the MP4 index there). */
   tailReady: boolean;
@@ -404,7 +404,7 @@ export interface TorrentExport {
   bytes: number;
 }
 
-/** NATIVE_CONTRACT 18.3. */
+/** Whether a file is as expected, gone, or changed outside Maglev. */
 export type FileHealthState = 'ok' | 'missing' | 'changed';
 
 export interface FileHealthEntry {
@@ -412,7 +412,7 @@ export interface FileHealthEntry {
   state: FileHealthState;
 }
 
-/** NATIVE_CONTRACT 18.3. `stop` and `again` take the file indices, `folder` takes a folder path, `recheck` takes neither. */
+/** `stop` and `again` take the file indices, `folder` takes a folder path, `recheck` takes neither. */
 export type ResolveFilesAction = 'stop' | 'again' | 'folder' | 'recheck';
 
 export interface DetailTracker {
@@ -437,7 +437,7 @@ export interface AddTorrentOptions {
   sequential?: boolean;
   /** When present, overrides `onlyFiles`. Covers every file. */
   filePriorities?: FilePriorityEntry[] | null;
-  /** NATIVE_CONTRACT 11.2. 0 or absent = no limit. */
+  /** 0 or absent = no limit. */
   downLimitBps?: number;
   upLimitBps?: number;
 }
@@ -469,13 +469,13 @@ export interface GovernanceConfig {
   chargingOnly: boolean;
   batteryCutoffPct: number;
   autoExitOnComplete: boolean;
-  /** NATIVE_CONTRACT 19: restart unfinished transfers after a reboot or app update. */
+  /** Restart unfinished transfers after a reboot or app update. */
   resumeAfterRestart: boolean;
-  /** NATIVE_CONTRACT 21: pause while the active network is not a VPN. */
+  /** Pause while the active network is not a VPN. */
   vpnOnly: boolean;
-  /** NATIVE_CONTRACT 25.2: keep seeding on mobile data. Default false. */
+  /** Keep seeding on mobile data. Default false. */
   seedOnMobileData: boolean;
-  /** Quick share: add a shared magnet, .torrent or file link without the card. Saved for Kotlin (contracts-0.19/quick-share.md). */
+  /** Quick share: add a shared magnet, .torrent or file link without the card. Saved for Kotlin. */
   quickAdd?: boolean;
   /** Quick share card theme: the saved Appearance mode. */
   appearanceMode?: 'oled' | 'dim' | 'light' | 'system';
@@ -485,12 +485,12 @@ export type NotificationActionName = 'pause_all' | 'resume_all' | 'shutdown';
 
 export interface TelemetryEvent {
   torrents: Snapshot[];
-  /** NATIVE_CONTRACT 17. Downloads from http(s) links. Missing from an older engine. */
+  /** Downloads from http(s) links. Missing from an older engine. */
   downloads?: DownloadSnapshot[];
 }
 
 // ---------------------------------------------------------------------------
-// NATIVE_CONTRACT 17 and STATE_MACHINES_AND_SCREENS SM-30: downloads from any link.
+// Downloads from any link.
 // ---------------------------------------------------------------------------
 
 export type DownloadState =
@@ -520,7 +520,7 @@ export interface DownloadSnapshot {
   state: DownloadState;
   /** Why a `paused` download is stopped: `user`, `storage_full`, or a governance tag. */
   pausedBy: string | null;
-  /** NATIVE_CONTRACT 25.1. "Resume anyway" is active for this download. Absent means false. */
+  /** "Resume anyway" is active for this download. Absent means false. */
   allowedAnyway?: boolean;
   /** The page a browser download was found on, or null. Without its query when that looked like a secret. */
   pageUrl?: string | null;
@@ -541,23 +541,23 @@ export interface DownloadSnapshot {
   notice?: string | null;
   /** True while downloading but no bytes arrived for 30 s. Absent means false. */
   stalled?: boolean;
-  /** NATIVE_CONTRACT 24.8: set for a saved HLS or DASH stream. `size` is an estimate until it finishes. */
+  /** Set for a saved HLS or DASH stream. `size` is an estimate until it finishes. */
   stream?: DownloadStream | null;
   /** True while the video and audio parts of a stream are being joined (state `verifying`). */
   muxNeeded?: boolean;
   /** Seconds spent downloading and then joining separate video and audio parts (not paused, queued or waiting). 0 for items from before 0.26: show "—". */
   activeSecs?: number;
-  /** NATIVE_CONTRACT 34.1. Unix seconds when the item first finished. 0 until then. */
+  /** Unix seconds when the item first finished. 0 until then. */
   finishedAt?: number;
-  /** NATIVE_CONTRACT 34.1. Payload bytes this engine downloaded for the item (not bytes already on disk). Average speed = sessionBytes / activeSecs. */
+  /** Payload bytes this engine downloaded for the item (not bytes already on disk). Average speed = sessionBytes / activeSecs. */
   sessionBytes?: number;
-  /** NATIVE_CONTRACT 34.1. Of the bytes moved (downloaded, plus uploaded for a torrent): on an unmetered link. */
+  /** Of the bytes moved (downloaded, plus uploaded for a torrent): on an unmetered link. */
   bytesWifi?: number;
-  /** NATIVE_CONTRACT 34.1. The same on a metered link. */
+  /** The same on a metered link. */
   bytesMobile?: number;
 }
 
-/** NATIVE_CONTRACT 24.8. */
+/** The adaptive stream format of a saved link. */
 export type StreamKind = 'hls' | 'dash';
 
 export interface DownloadStream {
@@ -592,7 +592,7 @@ export interface StreamAudioTrack {
   bandwidth: number | null;
 }
 
-/** NATIVE_CONTRACT 24.8. Variants are sorted by height, tallest first. */
+/** Variants are sorted by height, tallest first. */
 export interface StreamProbe {
   kind: StreamKind;
   title: string | null;
@@ -613,7 +613,7 @@ export interface DownloadOptions {
     'User-Agent'?: string;
     /** The page's origin ("https://host"). Streams send it on every request. */
     Origin?: string;
-    /** WebView jar cookies per host. Streams send each host its own (NATIVE_CONTRACT 24.8). */
+    /** WebView jar cookies per host. Streams send each host its own. */
     Cookies?: { host: string; cookie: string }[];
   };
   /** Refused with UNSUPPORTED until the engine can check it. */
@@ -622,12 +622,12 @@ export interface DownloadOptions {
   /** The user allowed the typed host even though it is on their own network. The module sends it as `allow_lan`. */
   allowLan?: boolean;
   /**
-   * The page the link was found on (in-app browser). NATIVE_CONTRACT "Auto-refresh (2026-11-20)": the engine keeps it as
+   * The page the link was found on (in-app browser). The engine keeps it as
    * `pageUrl` on the download so the app can load the page again when the link expires or is refused. Saved without
    * its query when the query looks like a secret. Also accepted by `refreshDownloadUrl`, to update it.
    */
   pageUrl?: string;
-  /** Save an HLS or DASH stream (NATIVE_CONTRACT 24.8). The link is the playlist. */
+  /** Save an HLS or DASH stream. The link is the playlist. */
   stream?: StreamSelection;
   /**
    * A video file and an audio file from a video site, joined at the end. The link passed to
@@ -672,7 +672,7 @@ export interface NativePermissionStatus {
 }
 
 // ---------------------------------------------------------------------------
-// Wave 4 (NATIVE_CONTRACT section 11)
+// Scheduler and feeds
 // ---------------------------------------------------------------------------
 
 /** 11.2. Bytes per second; 0 = no limit. */
@@ -747,22 +747,22 @@ export type EngineStatus =
 
 export type Unsubscribe = () => void;
 
-/** Exact docs/NATIVE_CONTRACT.md section 6 API. Every method resolves a Result envelope. */
+/** The native engine API. Every method resolves a Result envelope. */
 export interface MaglevEngineApi {
   // Engine
   init(config: NativeConfig): Promise<EngineResult>;
   shutdown(): Promise<EngineResult>;
   resolveMetadata(source: string, timeoutMs: number): Promise<EngineResult<Metadata>>;
-  /** NATIVE_CONTRACT 12.1. Peers seen while a magnet resolves; NOT_FOUND when no resolve is running. */
+  /** Peers seen while a magnet resolves; NOT_FOUND when no resolve is running. */
   getResolveActivity(infoHash: string): Promise<EngineResult<ResolveActivity>>;
-  /** NATIVE_CONTRACT 12.1. The pending `resolveMetadata` then returns CANCELLED. */
+  /** The pending `resolveMetadata` then returns CANCELLED. */
   cancelResolve(infoHash: string): Promise<EngineResult>;
   addTorrent(source: string, options: AddTorrentOptions): Promise<EngineResult<{ id: string; infoHash: string }>>;
   listTorrents(): Promise<EngineResult<{ torrents: Snapshot[]; downloads?: DownloadSnapshot[] }>>;
   getDetail(id: string): Promise<EngineResult<Detail>>;
   pause(id: string): Promise<EngineResult>;
   resume(id: string): Promise<EngineResult>;
-  /** NATIVE_CONTRACT 25.1: resume and exempt this torrent from the rule pauses until it finishes, is removed or is paused. */
+  /** Resume and exempt this torrent from the rule pauses until it finishes, is removed or is paused. */
   resumeAnyway(id: string): Promise<EngineResult>;
   recheck(id: string): Promise<EngineResult>;
   pauseAll(): Promise<EngineResult>;
@@ -772,23 +772,23 @@ export interface MaglevEngineApi {
   /** Covers every file. Unknown index or all `skip` returns INVALID_SOURCE. */
   setFilePriorities(id: string, priorities: FilePriorityEntry[]): Promise<EngineResult>;
   /**
-   * NATIVE_CONTRACT 14. Stops downloading those files, deletes their data and frees the space; pieces shared with a
+   * Stops downloading those files, deletes their data and frees the space; pieces shared with a
    * kept file are downloaded again. INVALID_SOURCE for an unknown index or when no included file would remain,
    * UNSUPPORTED while the torrent is moving or checking.
    */
   removeFiles(id: string, indices: number[]): Promise<EngineResult<{ freedBytes: number }>>;
   /**
-   * NATIVE_CONTRACT 18.2. `tag` is a health tag, or "" to clear it. Clearing `files_missing` or `storage_unavailable`
+   * `tag` is a health tag, or "" to clear it. Clearing `files_missing` or `storage_unavailable`
    * runs the files check first: if files are still gone the torrent stays stopped under `files_missing`.
    * INVALID_ARGUMENT for an unknown tag, NOT_FOUND for an unknown torrent.
    */
   setHealth(id: string, tag: HealthTag | ''): Promise<EngineResult>;
-  /** NATIVE_CONTRACT 18.3. One file scan now (the engine also scans every 30 s). `changed` counts torrents whose tag changed. */
+  /** One file scan now (the engine also scans every 30 s). `changed` counts torrents whose tag changed. */
   scanFileHealth(): Promise<EngineResult<{ changed: number }>>;
-  /** NATIVE_CONTRACT 18.3. The included files only. A torrent that can't be judged right now reports every file `ok`. */
+  /** The included files only. A torrent that can't be judged right now reports every file `ok`. */
   fileHealth(id: string): Promise<EngineResult<{ files: FileHealthEntry[] }>>;
   /**
-   * NATIVE_CONTRACT 18.3. What to do about missing or changed files. `folder` answers FILES_MISSING with
+   * What to do about missing or changed files. `folder` answers FILES_MISSING with
    * "Those files aren't in that folder." when they are not there. NOT_FOUND, INVALID_ARGUMENT, INVALID_STATE
    * (moving or checking).
    */
@@ -796,13 +796,13 @@ export interface MaglevEngineApi {
   /** Only while DOWNLOADING or SEEDING. Rate limited to once per 60 s per torrent. */
   reannounce(id: string): Promise<EngineResult<{ retryAfterSecs?: number }>>;
   /**
-   * NATIVE_CONTRACT 15. One announce URL per entry (http, https or udp). Nothing is added unless every one is valid
+   * One announce URL per entry (http, https or udp). Nothing is added unless every one is valid
    * (INVALID_ARGUMENT). Private torrents refuse (UNSUPPORTED). `announced` is true when a running torrent asked the new trackers at once.
    */
   addTrackers(id: string, urls: string[]): Promise<EngineResult<TrackersAdded>>;
-  /** NATIVE_CONTRACT 15. Removing the last tracker is allowed. NOT_FOUND when the torrent or the tracker is not there. */
+  /** Removing the last tracker is allowed. NOT_FOUND when the torrent or the tracker is not there. */
   removeTracker(id: string, url: string): Promise<EngineResult<{ announced: boolean }>>;
-  /** NATIVE_CONTRACT 15. Writes `<name>.torrent` to the download folder. NOT_READY while a magnet still has no metadata. */
+  /** Writes `<name>.torrent` to the download folder. NOT_READY while a magnet still has no metadata. */
   exportTorrent(id: string): Promise<EngineResult<TorrentExport>>;
   /** Opens the share sheet for a file `exportTorrent` returned. */
   shareExportedTorrent(path: string): Promise<EngineResult>;
@@ -814,14 +814,14 @@ export interface MaglevEngineApi {
   applyConfig(config: NativeConfig): Promise<EngineResult<{ restartRequired: boolean }>>;
   getEffectiveConfig(): Promise<EngineResult<EffectiveConfig>>;
   /**
-   * NATIVE_CONTRACT 41 (Debug log). Writes a text file to the app cache (version, phone, settings without secrets,
+   * Debug log. Writes a text file to the app cache (version, phone, settings without secrets,
    * the last 2,000 log lines, URL queries removed) and resolves with its content:// uri. Share it with `shareDebugLog`.
    */
   exportDebugLog(): Promise<EngineResult<{ uri: string }>>;
   /** Opens the system share sheet for a uri `exportDebugLog` returned. */
   shareDebugLog(uri: string): Promise<EngineResult>;
   /**
-   * NATIVE_CONTRACT 41 (B4). Applies the restart-required settings now: stops the session (resume data saved, link
+   * Applies the restart-required settings now: stops the session (resume data saved, link
    * downloads checkpointed), starts it again from the saved config, and puts transfers back as they were (a paused one
    * stays paused). Resolves when the session is up again. INVALID_STATE while another restart runs; ENGINE_UNAVAILABLE
    * when the session can't start (call it again to retry). Telemetry refreshes the UI; `restartPending` is false after.
@@ -842,7 +842,7 @@ export interface MaglevEngineApi {
   openFolder(id: string): Promise<EngineResult>;
   /** Opens a link download's folder in any state (downloading, paused, finished). Same result as `openFolder`. NOT_FOUND when the id or folder is unknown or no file manager can open it. */
   openDownloadFolder(id: string): Promise<EngineResult>;
-  // Wave 4 (NATIVE_CONTRACT section 11)
+  // Scheduler and feeds
   /** 0 means no limit. Only error: NOT_FOUND. */
   setTorrentLimits(id: string, limits: TorrentLimits): Promise<EngineResult>;
   /** Returns at once; the move runs in the engine and shows as state MOVING. */
@@ -858,12 +858,12 @@ export interface MaglevEngineApi {
   getPermissionStatus(): Promise<NativePermissionStatus>;
   requestNotifications(): Promise<EngineResult>;
   openBatterySettings(): Promise<void>;
-  /** Launcher icon id now chosen (NATIVE_CONTRACT 26). 'teal' when it cannot be read. */
+  /** Launcher icon id now chosen. 'teal' when it cannot be read. */
   getAppIcon(): Promise<string>;
   /** Choose a launcher icon. Native applies it when the app leaves the foreground. Unknown id: INVALID_ARGUMENT. */
   setAppIcon(id: string): Promise<EngineResult>;
   requestLegacyStorage(): Promise<EngineResult>;
-  // Subtitles (NATIVE_CONTRACT 36.6). These reject with an Error whose `code` is a SubtitleErrorCode.
+  // Subtitles. These reject with an Error whose `code` is a SubtitleErrorCode.
   /** OpenSubtitles 64-bit hash of a finished video (POSIX path or SAF document URI). Errors: FILE_TOO_SMALL, NOT_FOUND, IO. */
   subtitleHash(pathOrUri: string): Promise<SubtitleHashResult>;
   /**
@@ -873,7 +873,7 @@ export interface MaglevEngineApi {
   saveSubtitle(videoPathOrUri: string, fileName: string, base64: string, replace: boolean): Promise<SubtitleSaveResult>;
   /** Subtitle members (.srt/.ass/.ssa/.vtt, base name) of a zip, in memory. Error: ARCHIVE_UNSAFE. */
   unzipSubtitles(base64: string): Promise<SubtitleZipEntry[]>;
-  // In-app updates (NATIVE_CONTRACT 27)
+  // In-app updates
   /** Who installed Maglev. `managedBy` is non-null when F-Droid, Obtainium, Google Play, Accrescent or another app store owns updates. */
   getInstallSource(): Promise<InstallSource>;
   /** Downloads and verifies the APK. Errors: NETWORK, HTTP_STATUS, STORAGE_FULL, BLOCKED (VPN only and no VPN), UPDATE_INVALID, MANAGED, CANCELLED. */
@@ -891,18 +891,18 @@ export interface MaglevEngineApi {
   /** kind: "available" or "ready". For "ready", `path` and `sha256` make the notice's Install action start the install. */
   postUpdateNotice(kind: 'available' | 'ready', version: string, path?: string | null, sha256?: string | null): Promise<EngineResult>;
   clearUpdateNotice(kind: 'available' | 'ready'): Promise<EngineResult>;
-  // Lists that update themselves (NATIVE_CONTRACT 31)
+  // Lists that update themselves
   /** True only when `sigB64` is a valid ECDSA P-256 signature of `body` under the key embedded in the app. Never throws. */
   verifyListSignature(body: string, sigB64: string): Promise<boolean>;
   // Governance
   setGovernance(config: GovernanceConfig): Promise<EngineResult>;
-  /** NATIVE_CONTRACT 35: every rule holding transfers right now. Empty when nothing blocks. Never throws. */
+  /** Every rule holding transfers right now. Empty when nothing blocks. Never throws. */
   getActiveBlocks(): Promise<ActiveBlock[]>;
-  /** NATIVE_CONTRACT 35: fires with the full list whenever it changes. Returns an unsubscribe function. */
+  /** Fires with the full list whenever it changes. Returns an unsubscribe function. */
   addBlocksListener(listener: (blocks: ActiveBlock[]) => void): () => void;
-  // URL downloads (NATIVE_CONTRACT 17)
+  // URL downloads
   probeUrl(url: string, options: DownloadOptions, timeoutMs: number): Promise<EngineResult<UrlProbe>>;
-  /** NATIVE_CONTRACT 24.8. Errors: STREAM_PROTECTED, STREAM_LIVE, STREAM_UNSUPPORTED, plus the probeUrl ones. */
+  /** Errors: STREAM_PROTECTED, STREAM_LIVE, STREAM_UNSUPPORTED, plus the probeUrl ones. */
   probeStream(url: string, options: DownloadOptions, timeoutMs: number): Promise<EngineResult<StreamProbe>>;
   addDownload(url: string, options: DownloadOptions): Promise<EngineResult<{ id: string }>>;
   /** (Prototype.) The page's files as trimmed yt-dlp JSON text. Never throws. */
@@ -917,7 +917,7 @@ export interface MaglevEngineApi {
   videoSitesUpdate(): Promise<EngineResult<{ status: 'updated' | 'current' | 'failed'; version: string | null }>>;
   pauseDownload(id: string): Promise<EngineResult>;
   resumeDownload(id: string): Promise<EngineResult>;
-  /** NATIVE_CONTRACT 25.1: the same for a link download. */
+  /** The same for a link download. */
   resumeDownloadAnyway(id: string): Promise<EngineResult>;
   /** After FILE_CHANGED this restarts from zero. */
   retryDownload(id: string): Promise<EngineResult>;
@@ -987,7 +987,7 @@ export interface PlaybackSupport {
 }
 
 /**
- * NATIVE_CONTRACT 35. One rule that is holding transfers right now, as Kotlin governance last judged it.
+ * One rule that is holding transfers right now, as Kotlin governance last judged it.
  * `tag` is the same string that lands in `pausedBy` (except `offline`, which torrents never carry).
  */
 export type ActiveBlockTag =

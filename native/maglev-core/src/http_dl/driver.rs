@@ -137,7 +137,7 @@ pub struct DownloadOptions {
     pub down_limit_bps: Option<u64>,
     /// Allow the typed host to resolve onto the local network (after `LAN_ADDRESS`).
     pub allow_lan: bool,
-    /// The page the link was found on (in-app browser). Kept as `page_url` on the record (contract "Auto-refresh").
+    /// The page the link was found on (in-app browser). Kept as `page_url` on the record.
     pub page_url: Option<String>,
     /// Save an HLS or DASH stream: which variant and audio track.
     pub stream: Option<StreamSpec>,
