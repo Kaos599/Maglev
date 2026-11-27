@@ -1398,42 +1398,58 @@ async function probeInstagram(
     }
   }
 
-  // Source 2: Instagram `/p/<shortcode>/embed/captioned/` endpoint (bypasses main login wall for public posts)
-  const embedUrl = `https://www.instagram.com/p/${shortcode}/embed/captioned/`;
-  const embedRes = await fetchWithResilience(embedUrl, {
-    signal,
-    userAgent: USER_AGENTS.desktopChrome,
-    referer: 'https://www.instagram.com/',
-  });
-
-  if (embedRes.ok && embedRes.text) {
-    // Check embedded `contextJSON` or `shortcode_media`
-    const vUrlMatch = embedRes.text.match(/"video_url"\s*:\s*"([^"]+)"/);
-    const dUrlMatch = embedRes.text.match(/"display_url"\s*:\s*"([^"]+)"/);
-    const userMatch = embedRes.text.match(/"username"\s*:\s*"([^"]+)"/);
-    if (vUrlMatch || dUrlMatch) {
-      const vUrl = vUrlMatch ? decodeHtmlEntities(JSON.parse(`"${vUrlMatch[1]}"`)) : '';
-      const dUrl = dUrlMatch ? decodeHtmlEntities(JSON.parse(`"${dUrlMatch[1]}"`)) : '';
-      const author = userMatch ? userMatch[1] : 'Instagram';
-      const title = `instagram_${shortcode}`;
-      const built = tryBuildFromIgNode({
-        id: shortcode,
-        owner: { username: author },
-        ...(vUrl ? { video_url: vUrl } : {}),
-        ...(dUrl ? { display_url: dUrl } : {}),
-      });
-      if (built) return built;
+  // Source 2: Instagram `/p/<shortcode>/embed/captioned/` & `/reel/<shortcode>/embed/captioned/` (cookie-less)
+  for (const embedPath of [
+    `https://www.instagram.com/p/${shortcode}/embed/captioned/`,
+    `https://www.instagram.com/reel/${shortcode}/embed/captioned/`,
+  ]) {
+    const embedRes = await fetchWithResilience(embedPath, {
+      signal,
+      userAgent: USER_AGENTS.desktopChrome,
+      referer: 'https://www.instagram.com/',
+      maxRetries: 1,
+    });
+    if (embedRes.ok && embedRes.text) {
+      // Check embedded `contextJSON` / `shortcode_media` / `EmbeddedMediaImage`
+      const vUrlMatch = embedRes.text.match(/"video_url"\s*:\s*"([^"]+)"/);
+      const dUrlMatch = embedRes.text.match(/"display_url"\s*:\s*"([^"]+)"/);
+      const imgTagMatch = embedRes.text.match(
+        /<img[^>]+class=["'][^"']*EmbeddedMediaImage[^"']*["'][^>]+src=["']([^"']+)["']/i,
+      );
+      const userMatch = embedRes.text.match(/"username"\s*:\s*"([^"]+)"/);
+      if (vUrlMatch || dUrlMatch || imgTagMatch) {
+        const vUrl = vUrlMatch ? unescapeJsonString(vUrlMatch[1]) : '';
+        const dUrl = dUrlMatch
+          ? unescapeJsonString(dUrlMatch[1])
+          : imgTagMatch
+            ? decodeHtmlEntities(imgTagMatch[1])
+            : '';
+        const author = userMatch ? userMatch[1] : 'Instagram';
+        const title = `instagram_${shortcode}`;
+        const built = tryBuildFromIgNode({
+          id: shortcode,
+          owner: { username: author },
+          ...(vUrl ? { video_url: vUrl } : {}),
+          ...(dUrl ? { display_url: dUrl } : {}),
+        });
+        if (built) return built;
+      }
     }
   }
 
-  // Source 3: Multi-source fallback via ddinstagram / vxinstagram OpenGraph mirror
-  for (const mirrorHost of ['ddinstagram.com', 'vxinstagram.com']) {
-    const mirrorUrl = `https://www.${mirrorHost}/p/${shortcode}`;
-    const mirrorRes = await fetchWithResilience(mirrorUrl, {
+  // Source 3: Multi-source cookie-less fallback via OpenGraph preview mirrors & bot User-Agent
+  const igFallbacks: { url: string; ua: string }[] = [
+    { url: `https://www.instagram.com/p/${shortcode}/`, ua: 'WhatsApp/2.23.20.0' },
+    { url: `https://www.ddinstagram.com/p/${shortcode}`, ua: 'TelegramBot (like TwitterBot)' },
+    { url: `https://www.vxinstagram.com/p/${shortcode}`, ua: 'TelegramBot (like TwitterBot)' },
+    { url: `https://www.eeinstagram.com/p/${shortcode}`, ua: 'TelegramBot (like TwitterBot)' },
+  ];
+  for (const fb of igFallbacks) {
+    const mirrorRes = await fetchWithResilience(fb.url, {
       signal,
-      userAgent: 'TelegramBot (like TwitterBot)',
-      maxRetries: 1,
-      timeoutMs: 10_000,
+      userAgent: fb.ua,
+      maxRetries: 0,
+      timeoutMs: 8_000,
     });
     if (mirrorRes.ok && mirrorRes.text) {
       const ogVideo =
@@ -1472,9 +1488,9 @@ async function probeInstagram(
     ok: false,
     platform: 'instagram',
     category: 'auth_blocked',
-    title: 'Blocked or login required (update cookies)',
+    title: 'Post unavailable',
     message:
-      'Instagram requires an authenticated session for this post or Story. Import your cookies.txt file to download it.',
+      'Could not extract media from this Instagram link. It may be private or temporarily rate-limited.',
   };
 }
 
@@ -1611,6 +1627,84 @@ async function probeReddit(
   }
 
   if (!postData) {
+    // Cookie-less fallback via rxddit / vxreddit when Reddit blocks `.json` with 403
+    try {
+      const u = new URL(targetUrl);
+      const cleanPath = u.pathname.replace(/\/+$/, '');
+      for (const mirrorHost of ['www.rxddit.com', 'vxreddit.com']) {
+        const mRes = await fetchWithResilience(`https://${mirrorHost}${cleanPath}`, {
+          signal,
+          userAgent: 'TelegramBot (like TwitterBot)',
+          maxRetries: 0,
+          timeoutMs: 8_000,
+        });
+        if (mRes.ok && mRes.text) {
+          const ogVid = mRes.text.match(
+            /<meta[^>]+property=["']og:video(?::secure_url)?["'][^>]+content=["']([^"']+)["']/i,
+          )?.[1];
+          const ogImg = mRes.text.match(
+            /<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i,
+          )?.[1];
+          const ogTitle = mRes.text.match(
+            /<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i,
+          )?.[1];
+          const rTitle = ogTitle ? decodeHtmlEntities(ogTitle).slice(0, 100) : 'reddit_media';
+          if (ogVid) {
+            const cleanV = decodeHtmlEntities(ogVid);
+            const vMatch = cleanV.match(/v\.redd\.it\/([^/]+)/i);
+            if (vMatch) {
+              return buildVRedditDirectProbe(vMatch[1], rTitle, 'Reddit', 0, ua);
+            }
+            const opt = buildDirectVideoQualityOption({
+              id: 'reddit-mirror-vid',
+              height: 720,
+              videoUrl: cleanV,
+              badge: 'No watermark',
+              userAgent: ua,
+            });
+            const aOpt = buildSoundOnlyOption({ sourceUrl: cleanV, userAgent: ua });
+            return {
+              ok: true,
+              platform: 'reddit',
+              platformLabel: PLATFORM_LABELS.reddit,
+              postId: 'reddit',
+              title: rTitle,
+              author: 'Reddit',
+              durationSecs: 0,
+              mediaKind: 'video',
+              noWatermark: true,
+              streamableFastStart: true,
+              subtitles: [],
+              qualities: [opt, aOpt],
+              items: [{ id: 'reddit', index: 0, kind: 'video', title: rTitle, ext: '.mp4', url: cleanV, qualities: [opt, aOpt] }],
+              headers: buildPlatformHeaders('reddit', targetUrl, ua, [cleanV]),
+            };
+          }
+          if (ogImg) {
+            const cleanI = decodeHtmlEntities(ogImg);
+            const opt = buildOriginalImageOption({ id: 'reddit-mirror-img', imageUrl: cleanI, userAgent: ua });
+            return {
+              ok: true,
+              platform: 'reddit',
+              platformLabel: PLATFORM_LABELS.reddit,
+              postId: 'reddit',
+              title: rTitle,
+              author: 'Reddit',
+              durationSecs: 0,
+              mediaKind: 'image',
+              noWatermark: true,
+              streamableFastStart: true,
+              subtitles: [],
+              qualities: [opt],
+              items: [{ id: 'reddit', index: 0, kind: 'image', title: rTitle, ext: opt.ext, url: cleanI, qualities: [opt] }],
+              headers: buildPlatformHeaders('reddit', targetUrl, ua, [cleanI]),
+            };
+          }
+        }
+      }
+    } catch {
+      // fall through
+    }
     const err = classifyErrorFromStatus(
       lastFail?.status ?? 403,
       lastFail?.text ?? '',
@@ -1881,19 +1975,38 @@ async function probeFacebook(
   signal?: AbortSignal,
 ): Promise<SocialProbeResult | SocialProbeError> {
   const ua = USER_AGENTS.desktopSafari;
-  const res = await fetchWithResilience(rawUrl, {
-    signal,
-    userAgent: ua,
-    referer: 'https://www.facebook.com/',
-    headers: {
-      Accept:
-        'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      'Sec-Fetch-Mode': 'navigate',
-      'Sec-Fetch-Site': 'none',
-    },
-  });
+  // Query both Facebook's public embed plugin (works cookie-less for public Watch/Reels/Videos)
+  // and the direct page (with bot/Safari headers) in parallel.
+  const pluginUrl = `https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(rawUrl)}&show_text=0`;
+  const [res, pluginRes, botRes] = await Promise.all([
+    fetchWithResilience(rawUrl, {
+      signal,
+      userAgent: ua,
+      referer: 'https://www.facebook.com/',
+      headers: {
+        Accept:
+          'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+      },
+      maxRetries: 1,
+    }),
+    fetchWithResilience(pluginUrl, {
+      signal,
+      userAgent: USER_AGENTS.desktopChrome,
+      referer: 'https://www.facebook.com/',
+      maxRetries: 1,
+    }),
+    fetchWithResilience(rawUrl, {
+      signal,
+      userAgent: 'facebookexternalhit/1.1',
+      maxRetries: 0,
+      timeoutMs: 10_000,
+    }),
+  ]);
 
-  if (!res.ok && !res.text) {
+  const html = `${pluginRes.text || ''}\n${res.text || ''}\n${botRes.text || ''}`;
+  if (!html.trim()) {
     const err = classifyErrorFromStatus(res.status, res.text);
     return {
       ok: false,
@@ -1903,8 +2016,6 @@ async function probeFacebook(
       message: res.errorReason || err.message,
     };
   }
-
-  const html = res.text;
   const postIdMatch =
     res.url.match(/(?:\/videos\/|\/reel\/|\/posts\/|v=)(\d+|[A-Za-z0-9_-]+)/i) ||
     rawUrl.match(/\/([A-Za-z0-9_-]+)\/?$/);
@@ -2059,25 +2170,36 @@ async function probeThreads(
   const codeMatch = rawUrl.match(/\/(?:post|t)\/([A-Za-z0-9_-]+)/i);
   const shortcode = codeMatch?.[1] || String(Date.now());
 
-  // Fetch `/post/<code>/embed` first (clean server-rendered HTML with full video/image URLs)
+  // Fetch `/t/<code>/embed` + WhatsApp/Telegram preview bot UA in parallel (works cookie-less)
   const embedUrl = `https://www.threads.net/t/${shortcode}/embed`;
-  const res = await fetchWithResilience(embedUrl, {
-    signal,
-    userAgent: ua,
-    referer: 'https://www.threads.net/',
-  });
+  const [res, botRes] = await Promise.all([
+    fetchWithResilience(embedUrl, {
+      signal,
+      userAgent: ua,
+      referer: 'https://www.threads.net/',
+      maxRetries: 1,
+    }),
+    fetchWithResilience(rawUrl, {
+      signal,
+      userAgent: 'WhatsApp/2.23.20.0',
+      maxRetries: 0,
+      timeoutMs: 10_000,
+    }),
+  ]);
 
   const html = res.ok && res.text ? res.text : '';
+  const botHtml = botRes.ok && botRes.text ? botRes.text : '';
   const mainRes =
-    !html || (!html.includes('.mp4') && !html.includes('cdninstagram'))
+    !html.includes('.mp4') && !botHtml.includes('og:video') && !botHtml.includes('og:image')
       ? await fetchWithResilience(rawUrl, {
           signal,
           userAgent: ua,
           referer: 'https://www.threads.net/',
+          maxRetries: 1,
         })
       : res;
 
-  const combined = `${html}\n${mainRes.text || ''}`;
+  const combined = `${html}\n${botHtml}\n${mainRes.text || ''}`;
 
   const userMatch =
     combined.match(/"username"\s*:\s*"([^"]+)"/) ||

@@ -775,9 +775,6 @@ export default function AddDownloadScreen() {
   if (phase === 'error') {
     const errTitle = socialError ? socialError.title : empty.addDownload.badLink.title;
     const errBody = socialError ? socialError.message : errorView?.body;
-    const needsCookies =
-      socialError?.category === 'auth_blocked' ||
-      socialError?.category === 'deleted_private';
     return (
       <Screen title="Add a link" onBack={close} scroll contentStyle={styles.content}>
         <EmptyBlock
@@ -786,29 +783,18 @@ export default function AddDownloadScreen() {
           title={errTitle}
           body={errBody}
           primary={
-            needsCookies
-              ? {
-                  label: 'Import cookies.txt',
-                  onPress: () => {
-                    setShowCookieBox(true);
-                    void handleImportCookieFile();
-                  },
-                }
-              : notAFile
-                ? { label: 'Open in browser', onPress: () => openBrowser(router, { url: urlRef.current }, 'replace') }
-                : errorView?.primary === 'pasteAnother'
-                  ? { label: 'Paste another link', onPress: () => { setText(''); void handlePaste(); } }
-                  : { label: 'Try again', onPress: () => void submit(urlRef.current) }
+            notAFile
+              ? { label: 'Open in browser', onPress: () => openBrowser(router, { url: urlRef.current }, 'replace') }
+              : errorView?.primary === 'pasteAnother'
+                ? { label: 'Paste another link', onPress: () => { setText(''); void handlePaste(); } }
+                : { label: 'Try again', onPress: () => void submit(urlRef.current) }
           }
           secondary={
-            needsCookies
-              ? { label: 'Try again', onPress: () => void submit(urlRef.current) }
-              : notAFile
-                ? { label: 'Paste another link', onPress: () => { setText(''); void handlePaste(); } }
-                : { label: 'Back', onPress: () => setPhase('input') }
+            notAFile
+              ? { label: 'Paste another link', onPress: () => { setText(''); void handlePaste(); } }
+              : { label: 'Back', onPress: () => setPhase('input') }
           }
         />
-        {renderCookiePanel()}
       </Screen>
     );
   }
@@ -1074,7 +1060,6 @@ export default function AddDownloadScreen() {
       <View style={styles.actions}>
         <Button label="Paste" icon="clipboard" variant="secondary" onPress={() => void handlePaste()} />
       </View>
-      {renderCookiePanel()}
       <View style={styles.gap}>
         <Button label="Get info" size="lg" fullWidth disabled={!canSubmit} onPress={() => void submit(text)} />
       </View>
