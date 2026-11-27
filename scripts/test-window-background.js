@@ -37,21 +37,21 @@ async function main() {
   check('app.json registers the plugin', (app.plugins || []).includes('./plugins/withWindowBackground.js'));
   check('plugin file does not write a hex literal', !/#[0-9A-Fa-f]{6}\b/.test(fs.readFileSync(path.join(root, 'plugins/withWindowBackground.js'), 'utf8').replace(/^\/\/.*$/gm, '')));
 
-  // colors.xml: template shape ({resources:{color:[{$:{name},_:value}]}}) with the template's white splash colour.
-  let colors = { resources: { color: [{ $: { name: 'splashscreen_background' }, _: '#FFFFFF' }] } };
+  // colors.xml: shape after expo-splash-screen has written its own splashscreen_background (Void).
+  let colors = { resources: { color: [{ $: { name: 'splashscreen_background' }, _: voidHex }] } };
   colors = plugin.applyColors(colors, voidHex, AndroidConfig.Colors.assignColorValue);
   const colorObj = AndroidConfig.Colors.getColorsAsObject(colors);
-  check('splashscreen_background (pre-12 splash base) is Void', colorObj.splashscreen_background === voidHex, colorObj.splashscreen_background);
+  check('splashscreen_background is left to expo-splash-screen', colorObj.splashscreen_background === voidHex);
   check('maglev_window_background is Void', colorObj[plugin.COLOR_NAME] === voidHex);
   const again = plugin.applyColors(colors, voidHex, AndroidConfig.Colors.assignColorValue);
   check('colors transform is idempotent', JSON.stringify(again) === JSON.stringify(colors));
 
-  // styles.xml: the two themes the expo template ships.
+  // styles.xml: the shape prebuild produces with expo-splash-screen (launch theme parent Theme.SplashScreen).
   let styles = {
     resources: {
       style: [
         { $: { name: 'AppTheme', parent: 'Theme.AppCompat.DayNight.NoActionBar' }, item: [{ $: { name: 'android:editTextBackground' }, _: '@drawable/rn_edit_text_material' }] },
-        { $: { name: 'Theme.App.SplashScreen', parent: 'AppTheme' }, item: [{ $: { name: 'android:windowBackground' }, _: '@drawable/splashscreen_logo' }] },
+        { $: { name: 'Theme.App.SplashScreen', parent: 'Theme.SplashScreen' }, item: [{ $: { name: 'windowSplashScreenAnimatedIcon' }, _: '@drawable/splashscreen_logo' }] },
       ],
     },
   };
@@ -67,8 +67,9 @@ async function main() {
   };
   const ref = '@color/' + plugin.COLOR_NAME;
   check('AppTheme windowBackground is Void (after setTheme in MainActivity.onCreate)', item('AppTheme', 'android:windowBackground') === ref);
-  check('launch theme sets windowSplashScreenBackground to Void (Android 12+)', item('Theme.App.SplashScreen', 'android:windowSplashScreenBackground') === ref);
-  check('launch theme keeps the template windowBackground drawable', item('Theme.App.SplashScreen', 'android:windowBackground') === '@drawable/splashscreen_logo');
+  check('launch theme is left alone (one style, items untouched)', styles.resources.style.filter((x) => x.$.name === 'Theme.App.SplashScreen').length === 1 && item('Theme.App.SplashScreen', 'windowSplashScreenAnimatedIcon') === '@drawable/splashscreen_logo');
+  check('plugin never adds a second Theme.App.SplashScreen', plugin.STYLE_ITEMS.every(([g]) => g.name !== 'Theme.App.SplashScreen'));
+  check('app.json registers expo-splash-screen with Void', (app.plugins || []).some((p) => Array.isArray(p) && p[0] === 'expo-splash-screen' && String(p[1].backgroundColor).toUpperCase() === voidHex && String(p[1].dark && p[1].dark.backgroundColor).toUpperCase() === voidHex));
   check('existing AppTheme items survive', item('AppTheme', 'android:editTextBackground') === '@drawable/rn_edit_text_material');
   check('styles transform is idempotent (no duplicate items)', styles.resources.style.every((s) => new Set(s.item.map((i) => i.$.name)).size === s.item.length));
 
