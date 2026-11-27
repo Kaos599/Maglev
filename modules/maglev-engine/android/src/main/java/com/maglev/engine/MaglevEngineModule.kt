@@ -27,6 +27,9 @@ import com.maglev.engine.subtitles.SubtitleFiles
 import com.maglev.engine.subtitles.SubtitleZip
 import com.maglev.engine.update.AppUpdater
 import com.maglev.engine.update.InstallSource
+import com.maglev.engine.update.ReleaseFeed
+import com.maglev.engine.update.ReleaseSigner
+import com.maglev.engine.update.UpdateSchedule
 import com.maglev.engine.update.UpdateNotices
 import com.maglev.engine.videosites.VideoSites
 import com.maglev.engine.videosites.VideoSitesUpdater
@@ -799,7 +802,8 @@ class MaglevEngineModule : Module() {
             } else {
                 EngineHost.ioScope.launch {
                     val installer = InstallSource.installer(c)
-                    promise.resolve(mapOf("ok" to true, "installer" to installer, "managedBy" to InstallSource.managedBy(installer), "versionCode" to AppUpdater.installedVersionCode(c)?.toDouble()))
+                    // signer: "release", "foreign" (signed with another key, so it can't update itself) or "unknown".
+                    promise.resolve(mapOf("ok" to true, "installer" to installer, "managedBy" to InstallSource.managedBy(installer), "versionCode" to AppUpdater.installedVersionCode(c)?.toDouble(), "signer" to ReleaseSigner.check(c)))
                 }
             }
         }
@@ -844,11 +848,52 @@ class MaglevEngineModule : Module() {
                 }
             }
         }
-        // kind: "available" | "ready". The "updated" notice comes from UpdateReplacedReceiver.
+        // kind: "available" | "ready". The "updated" notice comes from UpdateReplacedReceiver. A notice the background
+        // check already posted for this version is not posted again.
         AsyncFunction("postUpdateNotice") { kind: String, version: String, path: String?, sha256: String?, promise: Promise ->
             val c = context
-            val shown = c != null && (kind == "available" || kind == "ready") && UpdateNotices.show(c, kind, version, path, sha256)
-            promise.resolve(if (shown) mapOf("ok" to true) else Json.failure("INVALID_ARGUMENT", "Unknown notice"))
+            val known = kind == "available" || kind == "ready"
+            if (c != null && known && UpdateSchedule.claimNotice(c, kind, version)) UpdateNotices.show(c, kind, version, path, sha256)
+            promise.resolve(if (c != null && known) mapOf("ok" to true) else Json.failure("INVALID_ARGUMENT", "Unknown notice"))
+        }
+        // The settings the background check follows: `{ autoCheck, mode, skippedVersion, wifiOnly, vpnOnly }`, and
+        // `waitForWifi` while the app waits for Wi-Fi to download. Schedules or cancels the daily check.
+        AsyncFunction("configureUpdates") { config: Map<String, Any?>, waitForWifi: Boolean, promise: Promise ->
+            val c = context
+            if (c == null) {
+                promise.resolve(Json.failure("ENGINE_UNAVAILABLE", "Module is not attached"))
+            } else {
+                EngineHost.ioScope.launch {
+                    UpdateSchedule.apply(c, UpdateSchedule.Config.from(config), waitForWifi)
+                    promise.resolve(mapOf("ok" to true))
+                }
+            }
+        }
+        // The release list from GitHub as text: `{ ok: true, body }`. Shares the ETag and the rate-limit wait with the
+        // background check. Errors: NETWORK, HTTP_STATUS, RATE_LIMITED (with retryAt, epoch ms).
+        AsyncFunction("fetchReleases") { appVersion: String, promise: Promise ->
+            val c = context
+            if (c == null) {
+                promise.resolve(Json.failure("ENGINE_UNAVAILABLE", "Module is not attached"))
+            } else {
+                EngineHost.ioScope.launch {
+                    when (val r = ReleaseFeed.fetch(c, appVersion)) {
+                        is ReleaseFeed.Result.Ok -> promise.resolve(mapOf("ok" to true, "body" to r.body))
+                        is ReleaseFeed.Result.Failed -> promise.resolve(
+                            linkedMapOf("ok" to false, "code" to r.code, "message" to "Couldn't check for updates.", "retryAt" to r.retryAt?.toDouble()),
+                        )
+                    }
+                }
+            }
+        }
+        // What the background check found since the last call, then forgotten: `{ ok: true, info, path }`.
+        AsyncFunction("takeBackgroundUpdate") { promise: Promise ->
+            val c = context
+            if (c == null) {
+                promise.resolve(Json.failure("ENGINE_UNAVAILABLE", "Module is not attached"))
+            } else {
+                EngineHost.ioScope.launch { promise.resolve(UpdateSchedule.takeFound(c)) }
+            }
         }
         AsyncFunction("clearUpdateNotice") { kind: String, promise: Promise ->
             context?.let { UpdateNotices.clear(it, kind) }

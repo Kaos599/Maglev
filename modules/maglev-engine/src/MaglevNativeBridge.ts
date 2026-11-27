@@ -48,6 +48,8 @@ import type {
   UpdateProgressEvent,
   UpdateNetwork,
   UpdateResultEvent,
+  UpdateScheduleConfig,
+  BackgroundRelease,
 } from './MaglevEngine.types.ts';
 import { subtitleError } from './MaglevEngine.types.ts';
 import type { MaglevSettings } from './MaglevSettings.types.ts';
@@ -834,7 +836,7 @@ export class MaglevEngineBridge implements MaglevEngineApi {
   public async getInstallSource(): Promise<InstallSource> {
     const res = await this.updateCall<Partial<InstallSource> & { ok?: boolean }>('getInstallSource');
     if (res && res.ok !== false) {
-      return { installer: res.installer ?? null, managedBy: res.managedBy ?? null, versionCode: res.versionCode ?? null };
+      return { installer: res.installer ?? null, managedBy: res.managedBy ?? null, versionCode: res.versionCode ?? null, signer: res.signer ?? 'unknown' };
     }
     return { installer: null, managedBy: null, versionCode: null };
   }
@@ -870,6 +872,15 @@ export class MaglevEngineBridge implements MaglevEngineApi {
   }
   public clearUpdateNotice(kind: 'available' | 'ready'): Promise<EngineResult> {
     return this.updateCall('clearUpdateNotice', kind);
+  }
+  public configureUpdates(config: UpdateScheduleConfig, waitForWifi: boolean): Promise<EngineResult> {
+    return this.updateCall('configureUpdates', config, waitForWifi);
+  }
+  public fetchReleases(appVersion: string): Promise<EngineResult<{ body: string }>> {
+    return this.updateCall('fetchReleases', appVersion);
+  }
+  public takeBackgroundUpdate(): Promise<EngineResult<{ info: BackgroundRelease | null; path: string | null }>> {
+    return this.updateCall('takeBackgroundUpdate');
   }
   public onUpdateProgress(listener: (e: UpdateProgressEvent) => void): Unsubscribe {
     if (!NativeModule) return () => {};

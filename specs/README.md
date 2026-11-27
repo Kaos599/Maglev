@@ -45,5 +45,6 @@ Start from [`_template/`](_template/). It is a working model, so `npm run models
 
 | Folder | Feature |
 |---|---|
+| [`app-updater/`](app-updater/) | The in-app updater and its daily background check: one download at a time, none on mobile data unasked, none for a copy signed with another key, and every install checked. |
 | [`share-handoff/`](share-handoff/) | How a shared link, a magnet or a notification tap reaches the right screen when Android closes, rebuilds or updates Maglev in between. |
 | [`_template/`](_template/) | Pausable downloads. The example to copy, with one design that passes and one that was rejected. |

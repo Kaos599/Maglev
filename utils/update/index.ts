@@ -1,7 +1,11 @@
 /**
  * In-app updates, wiring. The pure parts live in check.ts, machine.ts and
  * rules.ts. This file owns the one store the About screen reads, and the triggers: the app becoming active,
- * telemetry (safe-to-install), and the native download and install events.
+ * telemetry (safe-to-install), network changes, and the native download and install events.
+ *
+ * A background job (UpdateCheckWorker.kt) checks once a day while Maglev is closed. This file tells it the settings
+ * (`configureUpdates`) and picks up what it found when Maglev opens (`takeBackgroundUpdate`). Both download through
+ * the same native call, which lets only one of them write the file.
  */
 import { useSyncExternalStore } from 'react';
 import { AppState } from 'react-native';
@@ -23,13 +27,17 @@ let installer: string | null = null;
 let started = false;
 let lastUploadAt: number | null = null;
 let telemetry: { torrents: { state: string; upBps?: number }[]; downloads: { state: string }[] } = { torrents: [], downloads: [] };
-let wifiTimer: ReturnType<typeof setInterval> | null = null;
+let signer: 'release' | 'foreign' | 'unknown' = 'unknown';
+let wifiSub: (() => void) | null = null;
 let playerOpen = false;
 
 /** The in-app player screen is open: an automatic install waits. */
 export function setPlayerOpen(open: boolean): void {
   playerOpen = open;
 }
+
+/** Where a copy that can't update itself gets the release build. */
+export const RELEASES_PAGE_URL = 'https://github.com/Kaos599/Maglev/releases/latest';
 
 /** A manual check while another app owns updates can still say a newer version exists. */
 export type ManagedCheck = { status: 'idle' | 'checking' | 'upToDate' | 'failed' } | { status: 'newer'; info: UpdateInfo };
@@ -65,6 +73,10 @@ export function firstUpdateAsks(): boolean {
 }
 export function getManagedBy(): ManagedBy | null {
   return managedBy;
+}
+/** This copy is signed with another key than the releases, so it can't update itself. */
+export function isForeignBuild(): boolean {
+  return signer === 'foreign';
 }
 export function useUpdateState(): UpdateState {
   return useSyncExternalStore(subscribe, getUpdateState, getUpdateState);
@@ -103,7 +115,9 @@ async function loadSource(): Promise<void> {
     installer = src.installer;
     installedVersionCode = typeof src.versionCode === 'number' ? src.versionCode : null;
     managedBy = src.managedBy;
+    signer = src.signer ?? 'unknown';
     if (managedBy) dispatch({ type: 'managed', by: managedBy });
+    else if (signer === 'foreign') dispatch({ type: 'foreign' });
   } catch {
     // Unknown: treated as self-updatable, and the native calls refuse with MANAGED if not.
   }
@@ -141,12 +155,26 @@ export async function checkNow(opts: { manual: boolean }): Promise<boolean> {
   return true;
 }
 
+type FetchImpl = Parameters<typeof checkForUpdate>[0];
+
+/**
+ * GitHub's list through the native call, which keeps the ETag and GitHub's rate-limit wait for the app and the
+ * background job alike. Without the native module (dev, web), a plain fetch.
+ */
+const releasesFetch: FetchImpl = async (url, init) => {
+  const res = await maglevEngine.fetchReleases(installedVersion()).catch(() => null);
+  if (res && res.ok) {
+    return { ok: true, status: 200, json: async () => JSON.parse(res.body) as unknown };
+  }
+  if (res && res.code !== 'UNSUPPORTED' && res.code !== 'ENGINE_UNAVAILABLE') {
+    return { ok: false, status: res.code === ('RATE_LIMITED' as string) ? 429 : 0, json: async () => null };
+  }
+  return fetch(url, init) as unknown as ReturnType<FetchImpl>;
+};
+
 async function runCheck(): Promise<UpdateInfo | null> {
   if (installedVersionCode === null) await loadSource();
-  return checkForUpdate(
-    (url, init) => fetch(url, init) as unknown as ReturnType<Parameters<typeof checkForUpdate>[0]>,
-    { version: installedVersion(), versionCode: installedVersionCode ?? -1 },
-  );
+  return checkForUpdate(releasesFetch, { version: installedVersion(), versionCode: installedVersionCode ?? -1 });
 }
 
 /** After an automatic check found a version: route it by mode and network. */
@@ -161,13 +189,22 @@ async function routeFound(): Promise<void> {
   if (next.kind === 'waitingForWifi') startWifiWatch();
 }
 
+/**
+ * Waits for Wi-Fi on Android's network change event while Maglev runs, and asks the background job for one run on the
+ * next unmetered network in case Maglev is closed by then.
+ */
 function startWifiWatch() {
-  if (wifiTimer) return;
-  wifiTimer = setInterval(() => void pollWifi(), 60_000);
+  void syncUpdateSchedule();
+  if (wifiSub) return;
+  wifiSub = maglevEngine.onNetworkChanged((e) => {
+    if (e.connected && !e.metered) void pollWifi();
+  });
 }
 function stopWifiWatch() {
-  if (wifiTimer) clearInterval(wifiTimer);
-  wifiTimer = null;
+  if (!wifiSub) return;
+  wifiSub();
+  wifiSub = null;
+  void syncUpdateSchedule();
 }
 async function pollWifi(): Promise<void> {
   if (state.kind !== 'waitingForWifi') return stopWifiWatch();
@@ -188,6 +225,22 @@ export async function downloadNow(): Promise<void> {
     return;
   }
   await runDownload(next.info);
+}
+
+/**
+ * Tells the background job what to follow: the settings it can't read itself, and whether the app waits for Wi-Fi.
+ * Called at start, when the settings change, when Maglev leaves the screen, and on entering or leaving Waiting for Wi-Fi.
+ */
+export async function syncUpdateSchedule(): Promise<void> {
+  if (managedBy || signer === 'foreign') return;
+  const p = getUpdatePrefs();
+  const r = rules();
+  await maglevEngine
+    .configureUpdates(
+      { autoCheck: p.updateAutoCheck, mode: p.updateMode, skippedVersion: p.skippedVersion, wifiOnly: r.wifiOnly, vpnOnly: r.vpnOnly },
+      state.kind === 'waitingForWifi',
+    )
+    .catch(() => {});
 }
 
 async function runDownload(info: UpdateInfo): Promise<void> {
@@ -251,6 +304,8 @@ export function skipThisVersion(): void {
   if (!info) return;
   if (dispatch({ type: 'skip' }).kind === 'skipped') {
     updateUpdatePrefs({ skippedVersion: info.version, pending: null, available: null });
+    stopWifiWatch();
+    void syncUpdateSchedule();
     void maglevEngine.cleanupUpdates(null).catch(() => {});
     void maglevEngine.clearUpdateNotice('available').catch(() => {});
     void maglevEngine.clearUpdateNotice('ready').catch(() => {});
@@ -272,9 +327,28 @@ async function onActive(): Promise<void> {
   if (state.kind === 'waitingForWifi') await pollWifi();
   const p = getUpdatePrefs();
   const due = autoCheckDue({ now: Date.now(), lastCheckAt: p.lastCheckAt, autoCheck: p.updateAutoCheck, managedBy });
-  if (due && (state.kind === 'idle' || state.kind === 'upToDate' || state.kind === 'checkFailed' || state.kind === 'skipped')) {
+  // A failed download or install waits for the next daily check, not for Maglev to restart.
+  const settled = ['idle', 'upToDate', 'checkFailed', 'skipped', 'downloadFailed', 'installFailed'].includes(state.kind);
+  if (due && settled) {
     if (networkAllows(await readNet(), rules())) await checkNow({ manual: false });
   }
+}
+
+/**
+ * What the background job found while Maglev was closed. A downloaded file becomes `pending` (restored as Ready, and
+ * checked again before any install); a version alone becomes `available`. Only a version newer than what is already
+ * kept, and not skipped, is taken.
+ */
+async function adoptBackgroundUpdate(): Promise<void> {
+  const res = await maglevEngine.takeBackgroundUpdate().catch(() => null);
+  if (!res || !res.ok || !res.info) return;
+  const info: UpdateInfo = res.info;
+  const p = getUpdatePrefs();
+  if (!isNewer(info.tag, installedVersion()) || p.skippedVersion === info.version) return;
+  const kept = p.pending?.info ?? p.available;
+  if (kept && kept.version !== info.version && !isNewer(info.tag, kept.version)) return;
+  if (res.path) updateUpdatePrefs({ pending: { info, path: res.path }, available: null });
+  else if (!p.pending || p.pending.info.version !== info.version) updateUpdatePrefs({ available: info, pending: null });
 }
 
 /**
@@ -299,7 +373,14 @@ export function startUpdates(): () => void {
   subs.push(startListUpdates());
   void (async () => {
     await loadSource();
+    if (!managedBy && signer === 'foreign') {
+      // It can never install a release, so nothing found or downloaded before is kept.
+      updateUpdatePrefs({ pending: null, available: null });
+      await maglevEngine.cleanupUpdates(null).catch(() => {});
+      return;
+    }
     if (!managedBy) {
+      await adoptBackgroundUpdate();
       const pending = getUpdatePrefs().pending;
       if (pending && isNewer(pending.info.tag, installedVersion())) {
         dispatch({ type: 'restore', info: pending.info, path: pending.path });
@@ -311,6 +392,7 @@ export function startUpdates(): () => void {
       const keep = getUpdatePrefs();
       await maglevEngine.cleanupUpdates(keep.pending?.path ?? null, (keep.pending?.info ?? keep.available)?.sha256 ?? null).catch(() => {});
       await restoreAvailable();
+      await syncUpdateSchedule();
       if (AppState.currentState === 'active') await onActive();
     }
   })();
@@ -336,6 +418,8 @@ export function startUpdates(): () => void {
   );
   const app = AppState.addEventListener('change', (next) => {
     if (next === 'active') void onActive();
+    // Settings changed on screen reach the background job when Maglev leaves it.
+    else if (next === 'background') void syncUpdateSchedule();
   });
   subs.push(() => app.remove());
   return () => {
