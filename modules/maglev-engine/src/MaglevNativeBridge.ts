@@ -57,7 +57,7 @@ import { camelizeKeys, snakeizeKeys } from './snapshotMapping.ts';
 import { restartReasons, toGovernance, toNativeConfig } from './toNativeConfig.ts';
 
 /**
- * Thin typed wrapper over the Expo native module `MaglevEngine` (docs/NATIVE_CONTRACT.md section 6).
+ * Thin typed wrapper over the Expo native module `MaglevEngine`.
  *
  * Engine selection:
  * - Android with the native module present: native engine.
@@ -92,7 +92,7 @@ const unavailable = (message: string, code: EngineErrorCode = 'ENGINE_UNAVAILABL
 });
 
 /**
- * NATIVE_CONTRACT 41. The module answers the saved config plus `restart_pending` and `blocklist`. The config keeps
+ * The module answers the saved config plus `restart_pending` and `blocklist`. The config keeps
  * snake_case; the two new fields are exposed as `restartPending` and `blocklist: { state, rules }`. A missing or odd
  * `blocklist` reads as off; a missing `restart_pending` as false.
  */
@@ -128,7 +128,7 @@ function cleanBlocks(raw: unknown): ActiveBlock[] {
 }
 
 /**
- * NATIVE_CONTRACT 39.3 E1. Every bridge method that reaches the native module is in exactly one group.
+ * Every bridge method that reaches the native module is in exactly one group.
  *
  * USER_ACTION_METHODS change engine state because the user asked. Only these restart a stopped engine: when one
  * answers NOT_INITIALIZED the bridge starts the engine once with the last config and retries once. This is what
@@ -427,17 +427,17 @@ export class MaglevEngineBridge implements MaglevEngineApi {
   }
 
   /**
-   * NATIVE_CONTRACT 39.3 E1: A native call. Only methods in RESTART_ON_NOT_INITIALIZED (user-initiated changes) restart the engine once, and
+   * A native call. Only methods in RESTART_ON_NOT_INITIALIZED (user-initiated changes) restart the engine once, and
    * retry once, when it answers NOT_INITIALIZED. Reads and polling return the failure as it is.
    */
   private async callNativeRecovering<T>(method: string, ...args: unknown[]): Promise<T> {
     const first = await this.callNative<T>(method, ...args);
     const r = first as unknown as { ok?: boolean; code?: string };
-    // NATIVE_CONTRACT 39.3 E1: reads and polling (anything not in USER_ACTION_METHODS) return the failure as it is.
+    // Reads and polling (anything not in USER_ACTION_METHODS) return the failure as it is.
     if (r?.ok !== false || r.code !== 'NOT_INITIALIZED' || !RESTART_ON_NOT_INITIALIZED.has(method) || !this.lastConfig) {
       return first;
     }
-    // NATIVE_CONTRACT 39.3 E1: one shared restart (single flight), then one retry below.
+    // One shared restart (single flight), then one retry below.
     const restarted = await this.restartNative(this.lastConfig);
     // `engineStopped` tells the UI to offer "Start engine" with the real reason in `message`.
     if (!restarted.ok) return { ...restarted, engineStopped: true } as unknown as T;
@@ -485,7 +485,7 @@ export class MaglevEngineBridge implements MaglevEngineApi {
     return this.route('cancelResolve', infoHash);
   }
   public addTorrent(source: string, options: AddTorrentOptions = {}) {
-    // The module forwards options to Rust as JSON, so they keep the contract's snake_case keys.
+    // The module forwards options to Rust as JSON, so they keep their snake_case keys.
     const wire = this.usingNative ? snakeizeKeys(options) : options;
     return this.route<EngineResult<{ id: string; infoHash: string }>>('addTorrent', source, wire);
   }
@@ -570,7 +570,7 @@ export class MaglevEngineBridge implements MaglevEngineApi {
   }
   public async getEffectiveConfig(): Promise<EngineResult<EffectiveConfig>> {
     const res = await this.route<EngineResult<EffectiveConfig>>('getEffectiveConfig');
-    // The contract defines NativeConfig in snake_case; accept either casing from the module.
+    // NativeConfig is snake_case; accept either casing from the module.
     return res.ok ? toEffectiveConfig(snakeizeKeys<Record<string, unknown>>(res)) : res;
   }
   public exportDebugLog(): Promise<EngineResult<{ uri: string }>> {
@@ -631,7 +631,7 @@ export class MaglevEngineBridge implements MaglevEngineApi {
   public openDownloadFolder(id: string): Promise<EngineResult> {
     return this.route('openDownloadFolder', id);
   }
-  // URL downloads (NATIVE_CONTRACT 17). The module snake_cases option keys for Rust itself.
+  // URL downloads. The module snake_cases option keys for Rust itself.
   public probeUrl(url: string, options: DownloadOptions = {}, timeoutMs = 15_000): Promise<EngineResult<UrlProbe>> {
     return this.route('probeUrl', url, options, timeoutMs);
   }
@@ -711,7 +711,7 @@ export class MaglevEngineBridge implements MaglevEngineApi {
   public shareDownload(id: string): Promise<EngineResult> {
     return this.route('shareDownload', id);
   }
-  /** NATIVE_CONTRACT 35. Never throws: any failure is an empty list. Unknown tags are dropped. */
+  /** Never throws: any failure is an empty list. Unknown tags are dropped. */
   public async getActiveBlocks(): Promise<ActiveBlock[]> {
     try {
       const raw = await this.route<unknown>('getActiveBlocks');
@@ -793,7 +793,7 @@ export class MaglevEngineBridge implements MaglevEngineApi {
     return this.permissionCall('requestLegacyStorage');
   }
 
-  // ---- in-app updates (NATIVE_CONTRACT 27) ---------------------------------------
+  // ---- in-app updates ---------------------------------------
   // These talk to the native module directly (no engine start needed). Without it, only the dev simulator
   // answers, and it refuses to download or install.
 
@@ -803,7 +803,7 @@ export class MaglevEngineBridge implements MaglevEngineApi {
     if (!sim) return Promise.resolve(unavailable("The downloader isn't installed in this build.") as T);
     return (sim as unknown as Record<string, (...a: unknown[]) => Promise<T>>)[method](...args);
   }
-  // ---- subtitles (NATIVE_CONTRACT 36.6) -------------------------------------------
+  // ---- subtitles -------------------------------------------
   // Unlike the calls above these reject with an Error whose `code` is a SubtitleErrorCode.
 
   private async subtitleCall<T>(method: 'subtitleHash' | 'saveSubtitle' | 'unzipSubtitles', ...args: unknown[]): Promise<T> {
@@ -844,7 +844,7 @@ export class MaglevEngineBridge implements MaglevEngineApi {
   public getUpdateNetwork(): Promise<EngineResult<UpdateNetwork>> {
     return this.updateCall('getUpdateNetwork');
   }
-  /** NATIVE_CONTRACT 31.1. False when the native module is missing: an unverified list is never applied. */
+  /** False when the native module is missing: an unverified list is never applied. */
   public async verifyListSignature(body: string, sigB64: string): Promise<boolean> {
     if (!NativeModule) return false;
     try {

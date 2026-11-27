@@ -1,5 +1,5 @@
 /**
- * Update check (docs/NATIVE_CONTRACT.md section 27.2 and 27.6). Pure: no React Native imports, so Node tests run it.
+ * Update check. Pure: no React Native imports, so Node tests run it.
  * The request carries no token and nothing but the app version in its User-Agent.
  */
 
@@ -162,7 +162,7 @@ export async function checkForUpdate(
       res = await fetchImpl(RELEASES_URL, {
         headers: { Accept: 'application/vnd.github+json', 'User-Agent': `Maglev/${installed.version}` },
         signal: controller?.signal,
-        // Never send the browser's github.com cookies (docs/NATIVE_CONTRACT.md section 30).
+        // Never send the browser's github.com cookies.
         credentials: 'omit',
       });
     } catch {
@@ -205,7 +205,7 @@ export function deviceLabel(manufacturer: string | undefined, model: string | un
   return [make, name].filter(Boolean).join(' ');
 }
 
-/** The bug form with version and phone filled in (27.6). Every value is URL-encoded. */
+/** The bug form with version and phone filled in. Every value is URL-encoded. */
 export function buildIssueUrl(v: { version: string; android: string; device: string }): string {
   const q = [
     ['template', 'bug.yml'],
