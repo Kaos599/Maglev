@@ -171,11 +171,11 @@ function sizeOf(f: RawFormat): number | null {
   return num(f.filesize) ?? num(f.filesize_approx);
 }
 
-/** The listed size, else the bitrate times the length. Null when neither is known. */
+/** The listed size (`filesize` then `filesize_approx`), else `tbr * duration`. Null when none is known. */
 function sizeOrRate(f: RawFormat, durationSec: number | null): number | null {
   const listed = sizeOf(f);
   if (listed) return listed;
-  const kbps = num(f.tbr);
+  const kbps = num(f.tbr) ?? num(f.abr);
   return kbps && durationSec ? Math.round((kbps * 1000 * durationSec) / 8) : null;
 }
 
@@ -217,14 +217,16 @@ export function buildVideoSiteInfo(raw: unknown): VideoSiteInfo {
   if (audio) for (const c of videos) heights.add(shortEdge(c.fmt));
   const ordered = [...heights].sort((a, b) => (b ?? -1) - (a ?? -1)).slice(0, MAX_QUALITIES);
 
+  const duration = num(r.duration);
   const options: VideoSiteOption[] = [];
+  const exactSize: boolean[] = [];
   for (const h of ordered) {
     const single = best(singles.filter((c) => shortEdge(c.fmt) === h));
     const video = single ? null : best(videos.filter((c) => shortEdge(c.fmt) === h));
     const prefix = h ? `${h}p` : 'Video';
     if (single) {
-      const duration = num(r.duration);
-      const est = (isX ? xSizeOf(single.fmt, rawFormats, duration) : sizeOf(single.fmt)) ?? sizeOrRate(single.fmt, duration);
+      const est = isX ? xSizeOf(single.fmt, rawFormats, duration) : sizeOrRate(single.fmt, duration);
+      exactSize.push(num(single.fmt.filesize) !== null);
       options.push({
         id: String(single.fmt.format_id ?? `single-${single.index}`),
         label: labelFor(prefix, est),
@@ -236,9 +238,10 @@ export function buildVideoSiteInfo(raw: unknown): VideoSiteInfo {
         audio: null,
       });
     } else if (video && audio) {
-      const v = sizeOf(video.fmt);
-      const a = sizeOf(audio.fmt);
+      const v = sizeOrRate(video.fmt, duration);
+      const a = sizeOrRate(audio.fmt, duration);
       const est = v !== null && a !== null ? v + a : null;
+      exactSize.push(num(video.fmt.filesize) !== null && num(audio.fmt.filesize) !== null);
       options.push({
         id: `${video.fmt.format_id ?? video.index}+${audio.fmt.format_id ?? audio.index}`,
         label: labelFor(prefix, est),
@@ -251,8 +254,35 @@ export function buildVideoSiteInfo(raw: unknown): VideoSiteInfo {
       });
     }
   }
+
+  // Video sizes must not increase as quality drops: clear untrusted estimates that conflict with neighbours.
+  for (let i = 0; i < options.length; i++) {
+    const cur = options[i];
+    if (cur.estBytes === null || exactSize[i]) continue;
+    const lowerExactBigger = options.some((other, j) => j > i && exactSize[j] && other.estBytes !== null && other.estBytes > cur.estBytes!);
+    if (lowerExactBigger) {
+      const prefix = cur.height ? `${cur.height}p` : 'Video';
+      cur.estBytes = null;
+      cur.label = labelFor(prefix, null);
+    }
+  }
+  let minSeen: number | null = null;
+  for (let i = 0; i < options.length; i++) {
+    const cur = options[i];
+    if (cur.estBytes === null) continue;
+    if (minSeen !== null && cur.estBytes > minSeen) {
+      if (!exactSize[i]) {
+        const prefix = cur.height ? `${cur.height}p` : 'Video';
+        cur.estBytes = null;
+        cur.label = labelFor(prefix, null);
+      }
+    } else {
+      minSeen = cur.estBytes;
+    }
+  }
+
   if (audio) {
-    const est = sizeOf(audio.fmt);
+    const est = sizeOrRate(audio.fmt, duration);
     options.push({
       id: `audio-${audio.fmt.format_id ?? audio.index}`,
       label: labelFor('Audio only', est),
