@@ -16,11 +16,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * Keeps yt-dlp current in the background. A resolve never waits on
- * an update. One unique periodic work, daily, on an unmetered network unless "Update on mobile data" is on. It exists
- * only while "Keep video sites working" is on. While the yt-dlp that runs is not a verified download (a fresh install
- * runs the library's built-in copy, which the sites already refuse), one extra update is asked for right away, under
- * the same network rule, instead of waiting up to a day.
+ * Keeps yt-dlp current in the background, with the app open or closed. A read of a video page never waits on
+ * this. One unique periodic work, daily, on an unmetered network unless "Update on mobile data" is on. It exists
+ * only while "Keep video sites working" is on. While the yt-dlp that runs is not one this app checked and saw run (a
+ * fresh install runs the library's built-in copy, which the sites already refuse), one extra update is asked for
+ * right away, under the same network rule, instead of waiting up to a day. On mobile data with "Update on mobile
+ * data" off, that one waits for Wi-Fi; the add screen says so and offers Update now.
  *
  * WorkManager API: https://developer.android.com/reference/androidx/work/PeriodicWorkRequest.Builder,
  * https://developer.android.com/reference/androidx/work/ExistingPeriodicWorkPolicy,
@@ -69,10 +70,15 @@ object VideoSitesUpdater {
     }
 }
 
-/** Runs [VideoSites.update] off the main thread. A failed try (no network) is retried twice, then left to tomorrow. */
+/**
+ * Runs [VideoSites.update] off the main thread. A try that failed on the way (no network, GitHub down) is retried
+ * twice, then left to tomorrow. A release that failed its test run, or a network rule that forbids the download, is
+ * not retried: trying again an hour later would give the same answer.
+ */
 class VideoSitesUpdateWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         val r = VideoSites.update(applicationContext, false)
-        if (r.status == VideoSites.UPDATE_FAILED && runAttemptCount < 2) Result.retry() else Result.success()
+        val result = YtDlpInstall.readStatus(applicationContext).optString("result", "")
+        if (r.status == VideoSites.UPDATE_FAILED && result == VideoSites.RESULT_FAILED && runAttemptCount < 2) Result.retry() else Result.success()
     }
 }

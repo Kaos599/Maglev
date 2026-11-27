@@ -504,6 +504,7 @@ class MaglevEngineModule : Module() {
 
         // region Video sites (prototype)
         videoSitesFunctions()
+        selfUpdatingFunctions { context }
 
         // endregion
 

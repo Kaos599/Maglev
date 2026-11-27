@@ -46,7 +46,7 @@ maglevEngine.pause(id)
 
 `maglevEngine` (from `maglev-engine`) implements `MaglevEngineApi`. Every method resolves an `EngineResult<T>` unless the table says otherwise. The JNI column names the Rust export a call reaches; "Kotlin" means Kotlin answers it without Rust.
 
-These methods resolve plain values, not an `EngineResult`: `getStorageStatus`, `pickFolder` and `pickDownloadFolder`, `getAppIcon`, `openBatterySettings`, `openNotificationSettings` and `openLiveUpdateSettings`, `getPlaybackSupport`, `getScheduleStatus`, `getFeedAutomationStatus`, `getInstallSource`, `getPermissionStatus`, `verifyListSignature`, `videoSitesVersion`, `videoSitesStatus` and `videoSitesConfigure`, and `getActiveBlocks`. `getPieceBitfield` and `version` are plain too (see their rows).
+These methods resolve plain values, not an `EngineResult`: `getStorageStatus`, `pickFolder` and `pickDownloadFolder`, `getAppIcon`, `openBatterySettings`, `openNotificationSettings` and `openLiveUpdateSettings`, `getPlaybackSupport`, `getScheduleStatus`, `getFeedAutomationStatus`, `getInstallSource`, `getPermissionStatus`, `verifyListSignature`, `videoSitesVersion`, `videoSitesStatus`, `videoSitesConfigure` and `videoSitesReport`, `listsConfigure`, and `getActiveBlocks`. `getPieceBitfield` and `version` are plain too (see their rows).
 
 ### Engine and torrents
 
@@ -97,7 +97,9 @@ These methods resolve plain values, not an `EngineResult`: `getStorageStatus`, `
 | `openDownload`, `shareDownload` | Kotlin | `NO_APP` when nothing can open the file. |
 | `getNetworkState()` | Kotlin | `{connected, metered}`. |
 | `videoSitesResolve(url)` | Kotlin (yt-dlp) | `{json}`: the page's formats as trimmed yt-dlp JSON. Maglev's own downloader fetches the files. |
-| `videoSitesUpdate`, `videoSitesVersion`, `videoSitesStatus`, `videoSitesConfigure` | Kotlin | yt-dlp self-update. `videoSitesUpdate` answers `updated`, `current` or `failed`; `failed` is a normal answer. |
+| `videoSitesUpdate`, `videoSitesVersion`, `videoSitesStatus`, `videoSitesConfigure` | Kotlin | yt-dlp self-update from yt-dlp's release files, checked against `SHA2-256SUMS`, swapped under a read/write lock and test-run, rolled back on failure ([model](../specs/self-updating-parts/)). `videoSitesUpdate` answers `updated`, `current` or `failed`; `failed` is a normal answer. |
+| `videoSitesReport()` | Kotlin | `{version, lastCheckAt, result, error, builtIn}` for Settings: `result` is `updated`, `current`, `failed`, `blocked` or `rolledBack`; `builtIn` is true while the copy that came with the app runs. Called from `utils/videoSitesStatus.ts`; null without the native module. |
+| `listsConfigure(enabled, urls)` | Kotlin | Turns the daily background ad list job (WorkManager, unmetered) on with these addresses, or off. Called from `utils/lists/native.ts`. |
 
 ### Storage, files, permissions
 
@@ -284,7 +286,7 @@ Rust picks the code and writes a plain-English `message`. The app shows that mes
 | `STORAGE_UNAVAILABLE`, `FILE_TOO_LARGE` | Rust (`http_dl`) | Folder gone (SD card out); file over the 4 GB FAT32 limit. |
 | `STREAM_PROTECTED`, `STREAM_LIVE`, `STREAM_UNSUPPORTED`, `MUX_FAILED` | Rust | HLS/DASH: DRM or unknown encryption; a live stream; an unreadable stream; joining video and audio failed. |
 | `NO_APP` | Kotlin | No app on the phone opens the file. |
-| `SITE_NOT_SUPPORTED`, `SITE_NEEDS_LOGIN`, `SITE_NO_VIDEO`, `SITE_FAILED`, `VIDEO_SITES_UNAVAILABLE` | Kotlin (yt-dlp) | Video-site reads. TS adds `SITE_NO_FORMAT` itself when a page has video but none Maglev can save. |
+| `SITE_NOT_SUPPORTED`, `SITE_NEEDS_LOGIN`, `SITE_NO_VIDEO`, `SITE_FAILED`, `VIDEO_SITES_UNAVAILABLE`, `VIDEO_SITES_OUTDATED` | Kotlin (yt-dlp) | Video-site reads. `VIDEO_SITES_OUTDATED` replaces `SITE_FAILED` while the copy that came with the app still runs; the add screen offers Update now. TS adds `SITE_NO_FORMAT` itself when a page has video but none Maglev can save. |
 
 `TRACKER`, `LOCAL_REDIRECT`, `BLOCKED`, `STORAGE_UNAVAILABLE` and `FILE_TOO_LARGE` reach TS but are missing from the `EngineErrorCode` union; the copy code matches them as strings. `TRACKER` is typed on `SnapshotError.code`, and `DownloadError.code` lists `LOCAL_REDIRECT` and `BLOCKED` in an `Extract` over the union, which drops them. `STORAGE_UNAVAILABLE` and `FILE_TOO_LARGE` are typed nowhere. Add them to the union when you next touch it.
 

@@ -1,18 +1,21 @@
 /**
  * Lists that update themselves: wiring. The pure parts live in schema.ts,
  * machine.ts, check.ts and store.ts. This file owns the one store the About screen reads and the triggers: the
- * app becoming active (at most once every 24 h) and the "Check now" buttons.
+ * app becoming active (at most once every 24 h) and the "Check now" buttons. The ad block list also updates once a
+ * day with Maglev closed (a WorkManager job, ListsUpdateWorker.kt); this file keeps that job's switch and addresses
+ * in step with the settings.
  */
 import { useSyncExternalStore } from 'react';
 import { AppState } from 'react-native';
 import { maglevEngine, settingsStore, updateBlocklist } from 'maglev-engine';
 import { PROVIDERS } from '../search/aggregate.ts';
 import { SUBTITLE_PROVIDERS } from '../subtitles/providers/index.ts';
-import { getBrowserPrefs, updateBrowserPrefs } from '../prefs/browser.ts';
+import { getBrowserPrefs, subscribeBrowserPrefs, updateBrowserPrefs } from '../prefs/browser.ts';
 import { getListPrefs, updateListPrefs } from '../prefs/lists.ts';
 import { autoCheckDue, busy, initialState, reduce, type ListsEvent, type ListsNet, type ListsState } from './machine.ts';
 import { countChangedSources, nextBlocklistUrls, runListCheck, adResultOf, type AdUpdateOutcome, type ListDeps, type TextFetch } from './check.ts';
 import { setAppliedFile } from './store.ts';
+import { configureListWork } from './native.ts';
 import type { SourcesFile } from './schema.ts';
 
 export { getAppliedFile, getListsVersion, subscribeLists, listTrackers, listSubtitleDisabled, listSubtitleMirrors, listSubtitleEntries } from './store.ts';
@@ -125,6 +128,24 @@ async function onActive(): Promise<void> {
   await runListCheck(deps(), { manual: false });
 }
 
+let sentWork: string | null = null;
+
+/** Sends "Update lists automatically" and the ad list addresses to the background job when either changed. */
+export function syncListWork(): void {
+  const enabled = getListPrefs().listsAutoCheck;
+  const urls = getBrowserPrefs().blocklistUrls;
+  const key = JSON.stringify([enabled, urls]);
+  if (key === sentWork) return;
+  sentWork = key;
+  void configureListWork(enabled, urls);
+}
+
+/** The "Update lists automatically" switch: saves it and turns the background job on or off with it. */
+export function setListsAutoCheck(on: boolean): void {
+  updateListPrefs({ listsAutoCheck: on });
+  syncListWork();
+}
+
 /**
  * Called by `startUpdates` (utils/update/index.ts), so it shares that foreground hook but keeps its own gate and
  * prefs. Loads the stored file first, so search sees it before any check. Safe to call again.
@@ -133,12 +154,16 @@ export function startListUpdates(): () => void {
   if (started) return () => {};
   started = true;
   setAppliedFile(getListPrefs().sourcesFile);
+  syncListWork();
+  // A new file can move the default list address, and Settings > Browser edits it: the job follows either way.
+  const unsubPrefs = subscribeBrowserPrefs(syncListWork);
   if (AppState.currentState === 'active') void onActive();
   const sub = AppState.addEventListener('change', (next) => {
     if (next === 'active') void onActive();
   });
   return () => {
     sub.remove();
+    unsubPrefs();
     started = false;
   };
 }
