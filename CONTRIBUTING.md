@@ -4,6 +4,7 @@ Bug reports, fixes and ideas are welcome. This page covers what you need to send
 
 The [handbook](handbook/) goes further:
 
+- [How we build and verify a change](handbook/verifying.md): the whole process, from spec sheet and model to a test on your phone and the evidence in the PR.
 - [Contributing well](handbook/contributing-well.md): what makes a pull request easy to merge, what gets one closed, and how to write one a reviewer can check.
 - [State machines](handbook/state-machines.md): the small TLA+ models we ask for when a change moves something between states.
 - [Testing](handbook/testing.md): every check, what it proves and when to run it.

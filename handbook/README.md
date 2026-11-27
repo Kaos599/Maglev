@@ -4,6 +4,7 @@ How Maglev works and how to change it. Start with the page that matches what you
 
 | You want to | Read |
 |---|---|
+| Build and verify a change, step by step | [verifying.md](verifying.md) |
 | Send a first pull request | [CONTRIBUTING.md](../CONTRIBUTING.md), then [contributing-well.md](contributing-well.md) |
 | Understand the app's layers and how a download flows | [architecture.md](architecture.md) |
 | Change anything that crosses TS ⇄ Kotlin ⇄ Rust | [engine-boundary.md](engine-boundary.md) (change it first) |

@@ -17,6 +17,8 @@
 
 ## How to make a pull request verifiable
 
+The full process, step by step, is in [verifying.md](verifying.md). This section is the short version, with examples.
+
 The [pull request template](../.github/pull_request_template.md) has a section for each of these.
 
 1. **Name the rules it keeps.** Write the things that must stay true after your change, one per line: "A paused download never starts again on its own." A reviewer checks the code against these, not against your intentions. For a state change, link the model and name its invariants instead. The invariants are the rules.

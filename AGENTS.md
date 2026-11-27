@@ -134,4 +134,4 @@ npm run models       # TLA+ models, if you touched a feature's states (needs Jav
 npm run check:refs   # no new references to private notes
 ```
 
-CI runs these plus the Rust tests and an APK build. [handbook/testing.md](handbook/testing.md) explains each one and how to read a failure.
+The whole process, from spec sheet to device test and evidence, is [handbook/verifying.md](handbook/verifying.md). CI runs these plus the Rust tests and an APK build. [handbook/testing.md](handbook/testing.md) explains each one and how to read a failure.
