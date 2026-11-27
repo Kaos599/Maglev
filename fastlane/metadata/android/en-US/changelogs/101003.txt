@@ -1,0 +1,4 @@
+- Read long transfer names in full: a transfer's page shows the whole name with Show more, and Settings > Appearance > Transfer name lines offers 1, 2, 3 or Full name.
+- Opening Maglev from its icon no longer brings back an old shared link.
+- Shared links to unfamiliar file types are checked with the server first.
+- Fixes for the start screen, the Wi-Fi note, large text sizes and the speed limit field.

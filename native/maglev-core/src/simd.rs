@@ -1,6 +1,6 @@
 //! Piece bitfield downsampling for the 16x16 piece grid.
 //!
-//! Output values (contract `nativeGetPieceBitfield`): 0 = missing, 1 = have, 2 = partial.
+//! Output values (`nativeGetPieceBitfield`): 0 = missing, 1 = have, 2 = partial.
 //! Input is the BEP 3 bitfield (most significant bit first), which is what librqbit's `BitBox<u8, Msb0>`
 //! exposes through `as_raw_slice()`.
 

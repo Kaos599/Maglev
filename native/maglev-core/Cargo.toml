@@ -62,6 +62,6 @@ jni-bridge = []
 opt-level = "s"
 lto = true
 codegen-units = 1
-# No panic = "abort": the contract maps panics to {"ok":false,"code":"INTERNAL"} through
+# No panic = "abort": the JNI boundary maps panics to {"ok":false,"code":"INTERNAL"} through
 # catch_unwind, and a panic inside a tokio task must not take the whole app down.
 strip = true
