@@ -43,7 +43,7 @@ export const torrentscsv: SearchProvider = {
   mirrors: ['https://torrents-csv.com'],
   categories: ['other'],
   nsfw: false,
-  enabledByDefault: true,
+  enabledByDefault: false,
   method: 'json',
   canPage: true,
   async search(q, category, page, ctx) {

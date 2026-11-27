@@ -7,6 +7,8 @@ import { ProviderError } from './http.ts';
 import { pausedFor, recordFailure, recordSuccess } from './health.ts';
 import { CATEGORY_ORDER } from './types.ts';
 import { decodeEntities } from './text.ts';
+import { looksAdult } from './adultName.ts';
+import { missingTokens, titleTokens } from './match.ts';
 import { applyListOverrides, listDisabled } from '../lists/store.ts';
 import type { Category, MergedResult, SearchProvider, SearchResult, SearchUpdate, SortKey, SourceStatus } from './types.ts';
 
@@ -20,6 +22,8 @@ export interface ProviderPrefs {
   /** Per-provider category restriction; missing = all of the provider's categories. */
   useFor?: Record<string, Category[]>;
   adult?: boolean;
+  /** With adult on, also search adult sources and keep adult rows in an All search. Off: they show only under the Adult chip. */
+  adultInAll?: boolean;
   /** Drop results from untrusted uploaders on sources that report an uploader status (TPB). */
   trustedUploadersOnly?: boolean;
   /** User-added providers (for example from createTorznabProvider). */
@@ -85,6 +89,7 @@ export function eligibleProviders(category: Category, prefs: ProviderPrefs): Sea
     // Turned off by the source list: skipped until a later file turns it back on.
     if (listDisabled(p.id)) continue;
     if (p.nsfw && !prefs.adult) continue;
+    if (p.nsfw && category === 'all' && !prefs.adultInAll) continue;
     if (category === 'adult' && !prefs.adult) continue;
     const eff = effectiveCategories(p, prefs);
     if (category === 'all' ? eff.length > 0 : eff.includes(category)) out.push(p);
@@ -168,9 +173,23 @@ export function mergeInto(existing: MergedResult[], rows: SearchResult[], priori
   return Array.from(byHash.values());
 }
 
-export function sortResults(list: MergedResult[], sort: SortKey = 'seeders'): MergedResult[] {
+/** How well a name covers the query words: 0 has every word, 1 lacks one word of a 3+ word query, 2 is the rest. */
+function matchTier(want: readonly string[], name: string): number {
+  if (want.length === 0) return 0;
+  const missing = missingTokens(want, titleTokens(name)).length;
+  if (missing === 0) return 0;
+  return missing === 1 && want.length >= 3 ? 1 : 2;
+}
+
+/** Sorts a copy of the list. "best" puts rows that show every query word first; it demotes rows and never drops them. */
+export function sortResults(list: MergedResult[], sort: SortKey = 'best', query = ''): MergedResult[] {
   const bySeeders = (a: MergedResult, b: MergedResult) => rank(b.seeders) - rank(a.seeders);
-  const cmp: Record<SortKey, (a: MergedResult, b: MergedResult) => number> = {
+  if (sort === 'best') {
+    const want = titleTokens(query);
+    const tiers = new Map<MergedResult, number>(list.map((r) => [r, matchTier(want, r.name)]));
+    return list.slice().sort((a, b) => tiers.get(a)! - tiers.get(b)! || bySeeders(a, b));
+  }
+  const cmp: Record<Exclude<SortKey, 'best'>, (a: MergedResult, b: MergedResult) => number> = {
     seeders: bySeeders,
     newest: (a, b) => rank(b.publishedAt) - rank(a.publishedAt) || bySeeders(a, b),
     size: (a, b) => rank(b.sizeBytes) - rank(a.sizeBytes) || bySeeders(a, b),
@@ -263,7 +282,8 @@ async function runProvider(a: RunArgs): Promise<RunOutcome> {
 
   try {
     let rows = await Promise.race([work, gate]);
-    if (a.hideAdult) rows = rows.filter((r) => r.category !== 'adult');
+    // A source's own movies or tv label wins over the name check, so a film called "xXx" stays.
+    if (a.hideAdult) rows = rows.filter((r) => r.category === 'movies' || r.category === 'tv' || (r.category !== 'adult' && !looksAdult(r.name)));
     if (a.hideDead) rows = rows.filter((r) => r.seeders !== 0);
     recordSuccess(p.id);
     return finish(rows.length ? 'done' : 'empty', rows);
@@ -298,7 +318,8 @@ export async function searchAll(q: string, category: Category, opts: SearchOptio
   const providers = eligibleProviders(category, opts);
   const limit = opts.limit ?? 50;
   const waitMs = (opts.waitSeconds ?? 8) * 1000;
-  const hideAdult = !opts.adult;
+  // Adult rows show in All only when asked for; the Adult chip always shows them while adult is on.
+  const hideAdult = !opts.adult || (category === 'all' && !opts.adultInAll);
   const hideDead = opts.hideDead ?? true;
   const page = opts.page ?? 1;
 
@@ -307,7 +328,7 @@ export async function searchAll(q: string, category: Category, opts: SearchOptio
   for (const p of providers) statuses.set(p.id, { providerId: p.id, state: 'searching', count: 0, ms: 0 });
 
   const snapshot = (done: boolean): SearchUpdate => ({
-    results: sortResults(mergeResults(providers.flatMap((p) => rows.get(p.id) ?? []), opts.enabled), opts.sort),
+    results: sortResults(mergeResults(providers.flatMap((p) => rows.get(p.id) ?? []), opts.enabled), opts.sort, q),
     sources: providers.map((p) => ({ ...statuses.get(p.id)! })),
     done,
   });
@@ -379,7 +400,7 @@ export async function rerunProvider(
     category,
     page: opts.page ?? 1,
     limit: opts.limit ?? 50,
-    hideAdult: !opts.adult,
+    hideAdult: !opts.adult || (category === 'all' && !opts.adultInAll),
     hideDead: opts.hideDead ?? true,
     trustedOnly: opts.trustedUploadersOnly,
     waitMs: (opts.waitSeconds ?? 8) * 1000,

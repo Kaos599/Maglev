@@ -20,6 +20,8 @@ export interface SearchPrefs {
   useFor: Record<string, Category[]>;
   mirrorOverride: Record<string, string>;
   adult: boolean;
+  /** With adult on, adult sources and rows also show in an All search. Off, they show only under the Adult chip. */
+  adultInAll: boolean;
   /** Hide results from uploaders without a trusted status (TPB). */
   trustedUploadersOnly: boolean;
   /** Mark results whose every source is known for fake or harmful uploads. */
@@ -29,7 +31,7 @@ export interface SearchPrefs {
   hideDead: boolean;
   /** Lines of a result name before the ellipsis. 0 shows the full name. UI only; never reaches the engine. */
   resultNameLines: 0 | 1 | 2 | 3;
-  sort: 'seeders' | 'newest' | 'size' | 'name';
+  sort: 'best' | 'seeders' | 'newest' | 'size' | 'name';
   lastCategory: Category;
   recents: string[];
   torznab: TorznabConfig[];
@@ -41,6 +43,10 @@ export interface SearchPrefs {
   fixHintDismissedAt: number;
   /** Sources from LATER_DEFAULTS already switched on once for this install; turning one off afterwards sticks. */
   defaultsAdded: string[];
+  /** Sources from REMOVED_DEFAULTS already switched off once for this install; turning one back on afterwards sticks. */
+  defaultsRemoved: string[];
+  /** Set once an install that still had the old "Most shared" default has moved to Best match. After that the choice sticks. */
+  sortMigrated: boolean;
 }
 
 /**
@@ -49,12 +55,18 @@ export interface SearchPrefs {
  */
 export const LATER_DEFAULTS: readonly string[] = ['gutenberg', 'librivox'];
 
+/**
+ * Sources that stopped being defaults. Existing installs have them in a saved list, so each is switched off once;
+ * turning it back on afterwards sticks.
+ */
+export const REMOVED_DEFAULTS: readonly string[] = ['torrentscsv'];
+
 const KEY = 'maglev.search.prefs.v2';
 const LEGACY_RECENTS_KEY = 'maglev.search.recents.v1';
 const MAX_RECENTS = 8;
 
 const CATEGORIES: readonly Category[] = ['all', 'movies', 'tv', 'anime', 'music', 'apps', 'games', 'books', 'other', 'adult'];
-const SORTS = ['seeders', 'newest', 'size', 'name'] as const;
+const SORTS = ['best', 'seeders', 'newest', 'size', 'name'] as const;
 
 function defaultEnabled(): string[] {
   return PROVIDERS.filter((p) => p.enabledByDefault).map((p) => p.id);
@@ -66,13 +78,14 @@ function defaults(): SearchPrefs {
     useFor: {},
     mirrorOverride: {},
     adult: false,
+    adultInAll: false,
     trustedUploadersOnly: true,
     warnUnsafe: true,
     waitSeconds: 8,
     limit: 50,
     hideDead: true,
     resultNameLines: 2,
-    sort: 'seeders',
+    sort: 'best',
     lastCategory: 'all',
     recents: [],
     torznab: [],
@@ -80,6 +93,8 @@ function defaults(): SearchPrefs {
     needsCheck: [],
     fixHintDismissedAt: 0,
     defaultsAdded: [...LATER_DEFAULTS],
+    defaultsRemoved: [...REMOVED_DEFAULTS],
+    sortMigrated: true,
   };
 }
 
@@ -129,19 +144,35 @@ export function normalizeSearchPrefs(raw: unknown, legacyRecents: string[]): Sea
     if (hadList && !savedAdded.includes(id) && !enabled.includes(id)) enabled.push(id);
   }
   const defaultsAdded = [...new Set([...savedAdded, ...LATER_DEFAULTS])];
+  // Switch off each removed default once for installs that saved a source list while it was on.
+  const savedRemoved = strings(o.defaultsRemoved);
+  for (const id of REMOVED_DEFAULTS) {
+    if (hadList && !savedRemoved.includes(id)) {
+      const at = enabled.indexOf(id);
+      if (at >= 0) enabled.splice(at, 1);
+    }
+  }
+  const defaultsRemoved = [...new Set([...savedRemoved, ...REMOVED_DEFAULTS])];
+  // An install that was never saved already has the new default; a saved one on "Most shared" moves once.
+  const sortSaved = (SORTS as readonly unknown[]).includes(o.sort) ? (o.sort as SearchPrefs['sort']) : d.sort;
+  const migrated = o.sortMigrated === true || Object.keys(o).length === 0;
+  const sort = !migrated && sortSaved === 'seeders' ? 'best' : sortSaved;
   return {
     enabled,
     defaultsAdded,
+    defaultsRemoved,
+    sortMigrated: true,
     useFor: recordOf(o.useFor, (x) => (Array.isArray(x) ? categories(x) : null)),
     mirrorOverride: recordOf(o.mirrorOverride, (x) => (typeof x === 'string' && x ? x : null)),
     adult: o.adult === true,
+    adultInAll: o.adultInAll === true,
     trustedUploadersOnly: o.trustedUploadersOnly !== false,
     warnUnsafe: o.warnUnsafe !== false,
     waitSeconds: o.waitSeconds === 5 || o.waitSeconds === 15 ? o.waitSeconds : 8,
     limit: o.limit === 25 || o.limit === 100 ? o.limit : 50,
     hideDead: o.hideDead !== false,
     resultNameLines: o.resultNameLines === 0 || o.resultNameLines === 1 || o.resultNameLines === 3 ? o.resultNameLines : 2,
-    sort: (SORTS as readonly unknown[]).includes(o.sort) ? (o.sort as SearchPrefs['sort']) : d.sort,
+    sort,
     lastCategory: (CATEGORIES as readonly unknown[]).includes(o.lastCategory) ? (o.lastCategory as Category) : 'all',
     recents,
     torznab,
@@ -178,7 +209,9 @@ function load(): SearchPrefs {
     // Storage unavailable: use defaults for this session.
   }
   cache = normalizeSearchPrefs(parsed, found ? [] : readLegacyRecents());
-  if (!found) persist(cache);
+  // Write the migration flags back at once so a later choice of "Most shared" is not migrated again.
+  const flagged = found && !!parsed && typeof parsed === 'object' && (parsed as Record<string, unknown>).sortMigrated === true;
+  if (!found || !flagged) persist(cache);
   hydrateClearances(cache.clearances);
   return cache;
 }

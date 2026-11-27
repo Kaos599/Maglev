@@ -155,7 +155,7 @@ async function main() {
   check('adult reaches nothing when adult is off', ids('adult', { enabled: all, adult: false }).length === 0);
   check('adult reaches sukebei and knaben when adult is on', ['sukebei', 'knaben'].every((i) => ids('adult', { enabled: all, adult: true }).includes(i)));
   check('all skips nsfw providers when adult is off', !ids('all', { enabled: all, adult: false }).includes('sukebei'));
-  check('torrentscsv only for all/other', ids('all', { enabled: defaults }).includes('torrentscsv') && ids('other', { enabled: defaults }).includes('torrentscsv') && !ids('movies', { enabled: defaults }).includes('torrentscsv'));
+  check('torrentscsv only for all/other', ids('all', { enabled: [...defaults, 'torrentscsv'] }).includes('torrentscsv') && ids('other', { enabled: [...defaults, 'torrentscsv'] }).includes('torrentscsv') && !ids('movies', { enabled: [...defaults, 'torrentscsv'] }).includes('torrentscsv'));
   check('useFor restricts a provider', !ids('music', { enabled: defaults, useFor: { archive: ['books'] } }).includes('archive'));
   check('tpb has no anime', !ids('anime', { enabled: all, adult: true }).includes('tpb'));
   check('eligible order follows priority', ids('all', { enabled: ['yts', 'knaben'] }).join() === 'yts,knaben');

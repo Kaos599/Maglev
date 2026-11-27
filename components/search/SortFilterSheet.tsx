@@ -5,11 +5,12 @@ import { ThemeColors, spacing, type } from '../../constants/theme';
 import { Button, Chip, ListRow, RangeSlider, SectionHeader, Sheet, Toggle } from '../ui';
 import { SIZE_STOPS, rangeLabel, stopLabel } from './sizeRange';
 
-export type SortKey = 'seeders' | 'newest' | 'size' | 'name';
+export type SortKey = 'best' | 'seeders' | 'newest' | 'size' | 'name';
 
-export const SORT_LABEL: Record<SortKey, string> = { seeders: 'Most shared', newest: 'Newest', size: 'Largest', name: 'Name' };
-export const SORT_ORDER: SortKey[] = ['seeders', 'newest', 'size', 'name'];
+export const SORT_LABEL: Record<SortKey, string> = { best: 'Best match', seeders: 'Most shared', newest: 'Newest', size: 'Largest', name: 'Name' };
+export const SORT_ORDER: SortKey[] = ['best', 'seeders', 'newest', 'size', 'name'];
 const SORT_CAPTION: Record<SortKey, string> = {
+  best: 'Names with all your words first, then the most shared.',
   seeders: 'Most people sharing first. Usually the fastest.',
   newest: 'Most recently added first.',
   size: 'Biggest files first.',

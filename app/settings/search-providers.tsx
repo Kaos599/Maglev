@@ -217,6 +217,13 @@ export default function SearchProvidersSettings() {
             subtitle={prefs.adult ? 'Adult sources are listed under Off' : 'Hidden until you turn this on'}
             accessory={<Toggle value={prefs.adult} onValueChange={(adult) => update({ adult })} accessibilityLabel="Show adult sources" />}
           />
+          {prefs.adult ? (
+            <ListRow
+              title="Include adult results in All"
+              subtitle="Off keeps adult results under the Adult chip only."
+              accessory={<Toggle value={prefs.adultInAll} onValueChange={(adultInAll) => update({ adultInAll })} accessibilityLabel="Include adult results in All" />}
+            />
+          ) : null}
           <ListRow
             title="Warn about risky sources"
             subtitle="Mark results from sources known for fake or harmful uploads."
