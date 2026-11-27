@@ -220,6 +220,9 @@ globalThis.__fake = { Platform: { OS: 'android' }, native };
   ok('shutdownEngineLocked raises the epoch first', /private fun shutdownEngineLocked\(\)[^{]*\{\s*shutdownEpoch\.incrementAndGet\(\)/.test(host));
   ok('callers of headlessStart stay non-user paths (service restart, scheduleResume)',
     fs.readFileSync(path.join(dir, 'service/MaglevTorrentService.kt'), 'utf8').includes('EngineHost.headlessStart(') && /fun scheduleResume\(\)[\s\S]*?headlessStart\(countKill = false\)/.test(host));
+  const drive = fnBody(host, 'private fun driveService(');
+  ok('driveService does not treat holdForPaused as wanted (keeps user_paused_all intact)',
+    /val realWork\s*=/.test(drive) && /setWanted\(c,\s*realWork\s*\|\|\s*s\.pausedBySchedule\s*>\s*0\)/.test(drive));
 
   // Notification actions follow the service (contract 8.2).
   const notif = fs.readFileSync(path.join(dir, 'service/Notifications.kt'), 'utf8');

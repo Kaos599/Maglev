@@ -995,7 +995,9 @@ object EngineHost {
         val timedOut = c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_FGS_TIMEOUT, false)
         if (s.active == 0 && s.pausedByUser == 0) holdForPaused = false
         val svc = MaglevTorrentService.instance
-        val others = s.busy > 0 || s.pausedByRules > 0 || (holdForPaused && s.pausedByUser > 0)
+        val realWork = s.busy > 0 || s.pausedByRules > 0
+        val holdingPaused = holdForPaused && s.pausedByUser > 0
+        val others = realWork || holdingPaused
         // Schedule pause: keep the service ~10 s, then stop it and persist scheduleHeld.
         var scheduleGrace = false
         if (!others && s.pausedBySchedule > 0) {
@@ -1011,7 +1013,8 @@ object EngineHost {
             if (s.busy > 0 && svc != null) ScheduleManager.setHeld(c, false)
         }
         // Wanted = real work exists. A rules- or schedule-paused torrent counts: it must resume by itself later.
-        if (initialized) setWanted(c, others || s.pausedBySchedule > 0)
+        // Holding the notification for a user "Pause all" is not real work and must not clear user_paused_all.
+        if (initialized) setWanted(c, realWork || s.pausedBySchedule > 0)
         val shouldRun = !timedOut && (others || scheduleGrace)
         if (shouldRun) {
             if (svc != null) {
