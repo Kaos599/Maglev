@@ -340,29 +340,99 @@ export function linkNameKind(name: string): 'video' | 'not-video' | 'unknown' {
 
 // ---------------------------------------------------------------- abort registry
 
-/** One map of running searches, shared by this module and the runner: request key and file to the controller. */
-const aborters = new Map<string, AbortController>();
+/**
+ * One map of running searches, shared by this module and the runner: request key and file to the controller, and
+ * the video it works on (so the sheet can stop the run for one video of a pack).
+ */
+const aborters = new Map<string, { ctl: AbortController; videoPath?: string }>();
 const runKeyOf = (key: string, fileKey: string | null): string => `${key}\n${fileKey ?? ''}`;
-export function registerRun(key: string, fileKey: string | null, ctl: AbortController): void {
-  aborters.set(runKeyOf(key, fileKey), ctl);
+export function registerRun(key: string, fileKey: string | null, ctl: AbortController, videoPath?: string): void {
+  aborters.set(runKeyOf(key, fileKey), { ctl, videoPath });
 }
 export function unregisterRun(key: string, fileKey: string | null, ctl?: AbortController): void {
   const rk = runKeyOf(key, fileKey);
-  if (!ctl || aborters.get(rk) === ctl) aborters.delete(rk);
+  if (!ctl || aborters.get(rk)?.ctl === ctl) aborters.delete(rk);
 }
 export const isRunning = (key: string, fileKey: string | null): boolean => aborters.has(runKeyOf(key, fileKey));
 export const runningCount = (): number => aborters.size;
 /** Aborts every running search or save of this request. */
 export function abortKey(key: string): void {
-  for (const [rk, c] of aborters) if (rk.startsWith(`${key}\n`)) c.abort();
+  for (const [rk, r] of aborters) if (rk.startsWith(`${key}\n`)) r.ctl.abort();
 }
 /** Aborts every running search whose request key matches. */
 export function abortWhere(pred: (key: string) => boolean): void {
-  for (const [rk, c] of aborters) if (pred(rk.slice(0, rk.indexOf('\n')))) c.abort();
+  for (const [rk, r] of aborters) if (pred(rk.slice(0, rk.indexOf('\n')))) r.ctl.abort();
 }
 function resetAbortersForTests(): void {
-  aborters.forEach((c) => c.abort());
+  aborters.forEach((r) => r.ctl.abort());
   aborters.clear();
+  holds.clear();
+  writers.clear();
+}
+
+// ---------------------------------------------------------------- the sheet takes a video over
+
+/**
+ * While the one-video sheet is open, it owns the video: the runner starts no search and no save for it, so the two
+ * never write a subtitle for the same video. Writing is tracked apart from holding because the phone's write can't
+ * be stopped: a write still under way when the sheet opens (the runner's) or closes (the sheet's) finishes, and the
+ * next writer waits for it.
+ */
+const holds = new Map<string, number>();
+const writers = new Map<string, number>();
+const writeWaiters = new Map<string, (() => void)[]>();
+const videoKeyOf = (key: string, videoPath: string): string => `${key.startsWith('t:') ? key.toLowerCase() : key}\n${videoPath}`;
+
+/** Nudges whoever reads the requests (the runner) without changing them, so a released video is looked at again. */
+function nudge(): void {
+  version++;
+  listeners.forEach((l) => l());
+}
+
+/** The sheet opens for this video: any automatic search for it is cancelled. Returns the release, safe to call twice. */
+export function holdVideo(key: string, videoPath: string): () => void {
+  const vk = videoKeyOf(key, videoPath);
+  holds.set(vk, (holds.get(vk) ?? 0) + 1);
+  for (const [rk, r] of aborters) if (videoKeyOf(rk.slice(0, rk.indexOf('\n')), r.videoPath ?? '') === vk) r.ctl.abort();
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    const n = (holds.get(vk) ?? 1) - 1;
+    if (n > 0) holds.set(vk, n);
+    else holds.delete(vk);
+    nudge();
+  };
+}
+export const isHeld = (key: string, videoPath: string): boolean => holds.has(videoKeyOf(key, videoPath));
+
+/** A subtitle write for this video starts. Returns its end, safe to call twice. */
+export function beginWrite(key: string, videoPath: string): () => void {
+  const vk = videoKeyOf(key, videoPath);
+  writers.set(vk, (writers.get(vk) ?? 0) + 1);
+  let ended = false;
+  return () => {
+    if (ended) return;
+    ended = true;
+    const n = (writers.get(vk) ?? 1) - 1;
+    if (n > 0) {
+      writers.set(vk, n);
+      return;
+    }
+    writers.delete(vk);
+    const waiting = writeWaiters.get(vk) ?? [];
+    writeWaiters.delete(vk);
+    waiting.forEach((w) => w());
+    nudge();
+  };
+}
+export const isWriting = (key: string, videoPath: string): boolean => writers.has(videoKeyOf(key, videoPath));
+
+/** Resolves once no write for this video is under way. */
+export function writesDone(key: string, videoPath: string): Promise<void> {
+  const vk = videoKeyOf(key, videoPath);
+  if (!writers.has(vk)) return Promise.resolve();
+  return new Promise((resolve) => writeWaiters.set(vk, [...(writeWaiters.get(vk) ?? []), resolve]));
 }
 
 // ---------------------------------------------------------------- epoch and state writes
@@ -657,6 +727,39 @@ export function retryRequest(key: string): void {
   void _f;
   void _r;
   commit({ ...cur, [key]: { ...rest, phase: 'queued', tries: 0, updatedAt: Date.now() } });
+}
+
+/** What the sheet hands back when it closes without a save: what its own search found. */
+export interface HandBack {
+  phase: 'needs-pick' | 'none' | 'queued';
+  otherLang?: string;
+  /** The sheet searched a finished file with its fingerprint, so the runner has nothing more to try. */
+  fingerprinted: boolean;
+}
+
+/**
+ * The sheet that took this video over closed without a save. A run it took over (queued or searching) becomes what
+ * the sheet found, so the row never stays on "Getting subtitles…" with nothing running. Rows found: waiting for
+ * a pick. Every source answered with nothing: none. Closed before anything came: queued, and the runner tries again.
+ * Returns the phase written, or null when the run had already moved on (saved, skipped, or never asked).
+ */
+export function handBack(key: string, videoPath: string, fileKey: string | null, result: HandBack): RequestPhase | null {
+  const cur = load();
+  const k = key.startsWith('t:') ? key.toLowerCase() : key;
+  const prev = cur[k];
+  if (!prev) return null;
+  let fk: string | null = null;
+  if (prev.files && Object.keys(prev.files).length > 0) {
+    const paths = Object.keys(prev.files);
+    fk = fileKey && prev.files[fileKey] ? fileKey : (paths.find((p) => prev.files![p].vp === videoPath) ?? (paths.length === 1 ? paths[0] : null));
+    if (!fk) return null;
+  }
+  const run = fk ? prev.files![fk] : ownRun(prev);
+  if (run.phase !== 'queued' && run.phase !== 'searching') return null;
+  const tries = result.phase === 'queued' ? run.tries : result.fingerprinted ? MAX_TRIES : Math.max(run.tries, 1);
+  const next: FileRun = { phase: result.phase, tries, vp: videoPath, ...(run.saved ? { saved: true } : {}), ...(run.bytes ? { bytes: run.bytes } : {}) };
+  setRun(k, fk, next, { otherLang: result.phase === 'needs-pick' ? (result.otherLang ?? null) : null, epoch: prev.epoch ?? 0 });
+  return result.phase;
 }
 
 /** Back after a removal within the grace. */

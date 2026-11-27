@@ -31,6 +31,8 @@ export const SEARCH_BUTTON = 'Search';
 // Notes under the results. An unfinished file has no fingerprint, so it is matched by name only.
 export const NOTE_MATCHED_BY_NAME = 'Matched by name. Exact matching works once the file finishes.';
 export const NOTE_MATCHED_BY_TYPED = 'Matched by the name you typed.';
+// Progress while sources are still being asked. Shown under the rows too, which can be picked meanwhile.
+export const askedSources = (asked: number, total: number): string => `Asked ${asked} of ${total} sources`;
 export const OTHER_LANGUAGE_TAB = 'Other…';
 export const HEARING_IMPAIRED_TAG = 'Hearing impaired';
 
@@ -206,6 +208,8 @@ export const ROW_BUTTONS = {
   cancel: 'Cancel',
   change: 'Change',
   pick: 'Pick one',
+  // While the automatic search is still going: open the sheet and choose from what has come in.
+  pickNow: 'Pick now',
   editName: 'Edit name',
   findMore: 'Find more',
   seeAll: 'See all',

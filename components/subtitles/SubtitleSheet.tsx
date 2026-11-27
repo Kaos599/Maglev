@@ -34,6 +34,7 @@ import {
   OTHER_LANGUAGE_TAB,
   SHEET_TITLE,
   alreadyHasCopy,
+  askedSources,
   TURN_ON_MORE_SOURCES,
   errorCopy,
   offSourcesLine,
@@ -53,9 +54,9 @@ import {
   toFlowError,
   type SubtitleTarget,
 } from './flow';
-import { CLOSED, canDownload, cardStateFor, draftTitleOk, nothingFits, rowKey, rowsOf, searchNote, searchText, selectedRow, sheetReducer, tabStatus, tabsOf } from './sheetMachine';
+import { CLOSED, canDownload, cardStateFor, draftTitleOk, handBackOf, nothingFits, rowKey, rowsOf, searchNote, searchText, selectedRow, sheetReducer, showsList, tabStatus, tabsOf, type SheetState } from './sheetMachine';
 import { forgetState, recordState } from './stateStore';
-import { markSaved } from '../../utils/subtitles/requests';
+import { beginWrite, handBack, holdVideo, markSaved, writesDone } from '../../utils/subtitles/requests';
 import { hasExistingSubtitle } from '../../utils/subtitles/existing';
 import { parsedText, parseTyped } from '../../utils/subtitles/parseName';
 
@@ -99,6 +100,10 @@ export function SubtitleSheet({ target, onClose, initial = 'results' }: Props) {
   const queryRef = useRef<ReturnType<typeof buildQuery> | null>(null);
   const targetRef = useRef(target);
   targetRef.current = target;
+  // The video the last OPEN was for, and the sheet's state while open for it: what a close hands back.
+  const openFor = useRef<string | null>(null);
+  const lastOpen = useRef<{ videoPath: string; state: SheetState } | null>(null);
+  if (state.phase !== 'closed' && openFor.current) lastOpen.current = { videoPath: openFor.current, state };
 
   const sub = settings.subtitles;
   const providers = useMemo(
@@ -116,6 +121,7 @@ export function SubtitleSheet({ target, onClose, initial = 'results' }: Props) {
   const targetKey = target?.videoPath ?? null;
   useEffect(() => {
     if (!targetKey) {
+      openFor.current = null;
       dispatch({ type: 'CLOSE' });
       return;
     }
@@ -124,12 +130,31 @@ export function SubtitleSheet({ target, onClose, initial = 'results' }: Props) {
       return;
     }
     prepared.current = null;
+    openFor.current = targetKey;
     setPicker(false);
     setShowSources(false);
     dispatch({ type: 'OPEN', languages, needsNotice: needsPrivacyNotice(sub), editName: initial === 'edit-name' ? searchText(targetRef.current?.fileName ?? '', null, true) : undefined });
     setRunKey((k) => k + 1);
     // Re-run only when the video changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetKey]);
+
+  // While open, the sheet owns the video: an automatic search for it stops and none starts. Closing without a save
+  // gives the automatic run what this sheet found, so its row never stays on "Getting subtitles…".
+  useEffect(() => {
+    const t = targetRef.current;
+    if (!t) return;
+    const release = holdVideo(t.ownerKey, t.videoPath);
+    return () => {
+      const last = lastOpen.current?.videoPath === t.videoPath ? lastOpen.current.state : null;
+      lastOpen.current = null;
+      const back = last ? handBackOf(last, t.complete) : null;
+      const written = back ? handBack(t.ownerKey, t.videoPath, t.existing?.videoPath ?? null, back) : null;
+      if (written === 'needs-pick' || written === 'none') {
+        recordState(t, { state: written === 'needs-pick' ? 'needs-look' : 'none', lang: back?.otherLang ?? last?.languages[0] ?? '', file: '', savedAt: Date.now() });
+      }
+      release();
+    };
   }, [targetKey]);
 
   // Search: runs on entering the searching phase.
@@ -188,6 +213,10 @@ export function SubtitleSheet({ target, onClose, initial = 'results' }: Props) {
     const ctl = new AbortController();
     const key = rowKey(row);
     void (async () => {
+      // One writer per video: a write still under way (an automatic save, or this sheet's from before) ends first.
+      await writesDone(t.ownerKey, t.videoPath);
+      if (ctl.signal.aborted) return;
+      const endWrite = beginWrite(t.ownerKey, t.videoPath);
       const q = queryRef.current ?? buildQuery({ fileName: t.fileName, videoBytes: t.videoBytes }, s.languages);
       const out = await downloadAndSave(
         {
@@ -201,7 +230,7 @@ export function SubtitleSheet({ target, onClose, initial = 'results' }: Props) {
           signal: ctl.signal,
         },
         { unzip: (b64) => maglevEngine.unzipSubtitles(b64), save: (v, n, b64, r) => maglevEngine.saveSubtitle(v, n, b64, r) },
-      );
+      ).finally(endWrite);
       if (ctl.signal.aborted) {
         // The sheet was closed while the native save was running. The file is on disk, so the
         // card still gets its saved state (and the toast) even though the sheet no longer listens.
@@ -243,6 +272,8 @@ export function SubtitleSheet({ target, onClose, initial = 'results' }: Props) {
     }
     if (state.phase === 'saved') {
       showNotice({ message: savedToast(state.savedLang ?? state.language) }, 4000);
+      // The sheet closes on a save: stop asking the sources still out, so they cost no more data.
+      setRunKey((k) => k + 1);
       onClose();
     }
     // The phase is what matters here.
@@ -339,6 +370,8 @@ export function SubtitleSheet({ target, onClose, initial = 'results' }: Props) {
   const asked = state.sources.filter((s) => s.state !== 'searching').length;
   const maxList = Math.round(height * 0.42);
   const busy = state.phase === 'downloading';
+  const listed = showsList(state.phase);
+  const progress = askedSources(asked, state.sources.length);
 
   // The "Searching for" row.
   const detectedTyping = target ? searchText(target.fileName, null, true) : '';
@@ -456,7 +489,7 @@ export function SubtitleSheet({ target, onClose, initial = 'results' }: Props) {
             {[0, 1, 2].map((i) => (
               <View key={i} style={styles.skeleton} />
             ))}
-            <Text style={styles.hint}>{`Asked ${asked} of ${state.sources.length} sources`}</Text>
+            <Text style={styles.hint}>{progress}</Text>
           </View>
         ) : null}
 
@@ -516,6 +549,12 @@ export function SubtitleSheet({ target, onClose, initial = 'results' }: Props) {
             })}
           </ScrollView>
         ) : null}
+        {/* Rows can be picked while the other sources are still being asked; this line says more may come. */}
+        {status === 'rows' && !state.searchDone ? (
+          <Text style={styles.hint} accessibilityLiveRegion="polite">
+            {progress}
+          </Text>
+        ) : null}
 
         {state.searchDone && problems.length > 0 ? (
           <View>
@@ -530,13 +569,13 @@ export function SubtitleSheet({ target, onClose, initial = 'results' }: Props) {
           </View>
         ) : null}
 
-        {state.error && state.phase === 'results' ? (
+        {state.error && listed ? (
           <Banner tone="danger" title={state.error.message} actionLabel={state.error.action} onAction={() => runAction(state.error!.actionKind)} />
         ) : null}
-        {state.noneLeft && state.phase === 'results' ? <Text style={styles.hint}>{NO_OTHER_ROWS}</Text> : null}
+        {state.noneLeft && listed ? <Text style={styles.hint}>{NO_OTHER_ROWS}</Text> : null}
         {state.keepBothNote && busy ? <Text style={styles.hint}>{KEEP_BOTH_NOTE}</Text> : null}
         {/* One muted line under the results. */}
-        {note && state.phase === 'results' ? <Text style={styles.hint}>{note}</Text> : null}
+        {note && listed ? <Text style={styles.hint}>{note}</Text> : null}
 
         <Button label={DOWNLOAD_BUTTON} fullWidth loading={busy} disabled={!canDownload(state) && !busy} onPress={() => send({ type: 'DOWNLOAD' })} />
       </View>

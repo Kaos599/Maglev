@@ -46,4 +46,5 @@ Start from [`_template/`](_template/). It is a working model, so `npm run models
 | Folder | Feature |
 |---|---|
 | [`share-handoff/`](share-handoff/) | How a shared link, a magnet or a notification tap reaches the right screen when Android closes, rebuilds or updates Maglev in between. |
+| [`subtitle-search/`](subtitle-search/) | Picking a subtitle while sources are still being asked, the sheet taking a video over from automatic subtitles, and Use best match for a season pack. |
 | [`_template/`](_template/) | Pausable downloads. The example to copy, with one design that passes and one that was rejected. |

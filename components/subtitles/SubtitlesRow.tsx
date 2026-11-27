@@ -67,6 +67,7 @@ function SubtitlesRowImpl({ requestKey, stateKey = requestKey, started, canOpenS
   });
   const extraAct = () => {
     if (m.extra?.action === 'see-all') onSeeAll();
+    else if (m.extra?.action === 'cancel') skipSubtitles(requestKey);
     else router.push('/settings/subtitle-sources' as never);
   };
 
@@ -119,7 +120,7 @@ function SubtitlesRowImpl({ requestKey, stateKey = requestKey, started, canOpenS
               {body}
             </View>
           )}
-          <PressableScale onPress={extraAct} accessibilityRole="button" accessibilityLabel={m.extra.label} style={styles.moreButton} testID={m.extra.action === 'see-all' ? 'subtitles-row-see-all' : 'subtitles-row-more-sources'}>
+          <PressableScale onPress={extraAct} accessibilityRole="button" accessibilityLabel={m.extra.label} style={styles.moreButton} testID={m.extra.action === 'see-all' ? 'subtitles-row-see-all' : m.extra.action === 'cancel' ? 'subtitles-row-cancel' : 'subtitles-row-more-sources'}>
             <Text style={styles.buttonText}>{m.extra.label}</Text>
           </PressableScale>
         </View>

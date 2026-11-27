@@ -198,10 +198,13 @@ export function episodeLabel(fileKey: string): string {
 
 const NEEDS_YOU: readonly RequestPhase[] = ['needs-pick', 'none', 'failed'];
 
-/** What opens, by phase. A run still waiting for its file has nothing to open. */
+/**
+ * What opens, by phase. A searching episode opens its sheet too, which takes it over from the automatic search. A
+ * queued one may not have its file yet, so it has nothing to open.
+ */
 export function episodeStart(phase: RequestPhase): EpisodeStart | null {
   if (phase === 'none') return 'edit-name';
-  if (phase === 'needs-pick' || phase === 'saved' || phase === 'has-already' || phase === 'skipped') return 'results';
+  if (phase === 'needs-pick' || phase === 'saved' || phase === 'has-already' || phase === 'skipped' || phase === 'searching') return 'results';
   return null;
 }
 

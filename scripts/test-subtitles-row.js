@@ -29,11 +29,13 @@ function check(name, cond) {
   m = row({});
   check('no request, bytes: "Not asked yet" + Find', m.line === 'Not asked yet' && btn(m) === 'Find/find');
   m = row({ phase: 'queued', fileListKnown: false });
-  check('queued, no file list: "Starts when the file list arrives" + Cancel', m.line === 'Starts when the file list arrives' && btn(m) === 'Cancel/cancel');
+  // While the automatic search runs, the sheet can take over and show rows as they come; Cancel moves to the second button.
+  const cancelExtra = (m) => m.extra?.label === 'Cancel' && m.extra?.action === 'cancel';
+  check('queued, no file list: "Starts when the file list arrives" + Pick now, Cancel beside it', m.line === 'Starts when the file list arrives' && btn(m) === 'Pick now/pick' && cancelExtra(m));
   m = row({ phase: 'queued' });
-  check('queued: "Waiting for the file" + Cancel', m.line === 'Waiting for the file' && btn(m) === 'Cancel/cancel' && m.glyph === 'getting');
+  check('queued: "Waiting for the file" + Pick now, Cancel beside it', m.line === 'Waiting for the file' && btn(m) === 'Pick now/pick' && cancelExtra(m) && m.glyph === 'getting' && m.start === 'results');
   m = row({ phase: 'searching' });
-  check('searching: "Getting subtitles…" + Cancel', m.line === 'Getting subtitles…' && btn(m) === 'Cancel/cancel');
+  check('searching: "Getting subtitles…" + Pick now, Cancel beside it', m.line === 'Getting subtitles…' && btn(m) === 'Pick now/pick' && cancelExtra(m));
   m = row({ phase: 'saved', language: 'en' });
   check('saved: "English · fits this release" + Change, saved badge', m.line === 'English · fits this release' && btn(m) === 'Change/find' && m.glyph === 'saved' && m.start === 'results');
   m = row({ phase: 'needs-pick' });
@@ -57,7 +59,7 @@ function check(name, cond) {
   m = row({ stored: { state: 'needs-look', lang: 'en' } });
   check('stored needs-look reads as needs-pick', btn(m) === 'Pick one/pick');
   m = row({ stored: { state: 'getting', lang: 'en' } });
-  check('stored getting has nothing to cancel', m.line === 'Getting subtitles…' && m.button === null);
+  check('stored getting has nothing to cancel, but the sheet can still open', m.line === 'Getting subtitles…' && btn(m) === 'Pick now/pick' && !m.extra);
   check('a request wins over the stored state', row({ phase: 'none', stored: { state: 'saved', lang: 'en' } }).line === 'No match yet');
 
   console.log('[sheet-opening buttons need a target]');

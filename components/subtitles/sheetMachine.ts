@@ -5,8 +5,12 @@
  *
  *   closed -> notice (first time only) -> searching -> results -> downloading -> saved
  *                                                         |            |-> name-taken -> downloading
- *                                                         |            '-> results (with an error line)
+ *                                                         |            '-> back to the list (with an error line)
  *                                                         '-> failed (search could not run at all)
+ *
+ * "The list" is searching or results: the rows are on screen and any of them can be picked, whether or not
+ * other sources are still being asked. A pick (downloading, name-taken) runs while the search goes on, and the
+ * answers that land meanwhile are kept, so the list is complete when the pick comes back to it.
  */
 import { defaultSelection, forLanguage, type RankedSubtitle } from '../../utils/subtitles/rank.ts';
 import type { SubtitleSourceStatus } from '../../utils/subtitles/search.ts';
@@ -14,6 +18,7 @@ import type { SaveChoice } from '../../utils/subtitles/naming.ts';
 import { parseName, parsedText, parseTyped } from '../../utils/subtitles/parseName.ts';
 import { NOTE_MATCHED_BY_NAME, NOTE_MATCHED_BY_TYPED } from '../../utils/subtitles/copy.ts';
 import { toFlowError, type FlowError } from './flow.ts';
+import { outcomeFromRanked, type HandBack } from '../../utils/subtitles/requests.ts';
 
 export type SheetPhase = 'closed' | 'notice' | 'searching' | 'results' | 'downloading' | 'name-taken' | 'saved' | 'failed';
 
@@ -83,6 +88,15 @@ export type SheetEvent =
 
 export const rowKey = (r: RankedSubtitle): string => `${r.candidate.providerId}:${r.candidate.id}`;
 
+/** The rows are on screen and answer to taps: still searching or done. */
+export const showsList = (phase: SheetPhase): boolean => phase === 'searching' || phase === 'results';
+
+/** A pick is running: its download, its save, or the question about a taken name. */
+const picking = (phase: SheetPhase): boolean => phase === 'downloading' || phase === 'name-taken';
+
+/** The list phase that matches the search: still searching until every source has answered. */
+const listPhase = (s: Pick<SheetState, 'searchDone'>): SheetPhase => (s.searchDone ? 'results' : 'searching');
+
 export const CLOSED: SheetState = {
   phase: 'closed',
   languages: [],
@@ -137,7 +151,7 @@ export function selectedRow(s: Pick<SheetState, 'ranked' | 'language' | 'selecte
 
 /** Download stays disabled until a row is chosen (and while a download runs). */
 export function canDownload(s: SheetState): boolean {
-  return (s.phase === 'results' || s.phase === 'searching') && selectedRow(s) !== null;
+  return showsList(s.phase) && selectedRow(s) !== null;
 }
 
 /** The rows of the active tab that did not fail in this sheet. */
@@ -205,24 +219,29 @@ export function sheetReducer(s: SheetState, e: SheetEvent): SheetState {
     case 'USE_FILE_NAME':
       return s.phase === 'results' || s.phase === 'searching' ? startSearch({ ...s, searchName: null, editing: false, draft: '' }) : s;
     case 'RETRY_SEARCH':
-      return startSearch(s);
+      // Never while a pick runs: its result belongs to the search it was picked from.
+      return showsList(s.phase) || s.phase === 'failed' ? startSearch(s) : s;
     case 'SEARCH_UPDATE': {
-      if (s.phase !== 'searching' && s.phase !== 'results') return s;
-      const next = withDefault({ ...s, ranked: e.ranked, sources: e.sources, searchDone: e.done, phase: e.done ? 'results' : 'searching' });
-      return next;
+      // The search goes on during a pick. Its answers are kept, but the pick and the selection stay as they are.
+      if (picking(s.phase)) return { ...s, ranked: e.ranked, sources: e.sources, searchDone: e.done };
+      if (!showsList(s.phase)) return s;
+      return withDefault({ ...s, ranked: e.ranked, sources: e.sources, searchDone: e.done, phase: e.done ? 'results' : 'searching' });
     }
     case 'SEARCH_FAILED':
       return s.phase === 'searching' || s.phase === 'results' ? { ...s, phase: 'failed', error: e.error, searchDone: true } : s;
     case 'PICK_TAB':
     case 'PICK_OTHER': {
+      // A tab change clears the selection, so it waits until a running pick is back on the list.
+      if (!showsList(s.phase)) return s;
       const next: SheetState = { ...s, language: e.language, extra: e.type === 'PICK_OTHER' ? e.language : s.extra, picked: false, selectedKey: null, error: null, noneLeft: false };
       return withDefault(next);
     }
     case 'SELECT':
-      return { ...s, selectedKey: e.key, picked: true, error: null, noneLeft: false };
+      // One pick at a time: a tap while a pick runs is not a second pick.
+      return showsList(s.phase) ? { ...s, selectedKey: e.key, picked: true, error: null, noneLeft: false } : s;
     case 'PICK_ANOTHER': {
       // The next row that has not failed; none left says so.
-      if (s.phase !== 'results' && s.phase !== 'searching') return s;
+      if (!showsList(s.phase)) return s;
       const open = untriedRows(s);
       return open.length > 0
         ? { ...s, selectedKey: rowKey(open[0]), picked: true, error: null, noneLeft: false }
@@ -233,7 +252,7 @@ export function sheetReducer(s: SheetState, e: SheetEvent): SheetState {
     case 'DOWNLOAD_FAILED': {
       if (s.phase !== 'downloading') return s;
       const failedKeys = s.selectedKey && !SAVE_STAGE_ERRORS.has(e.error.code) && !s.failedKeys.includes(s.selectedKey) ? [...s.failedKeys, s.selectedKey] : s.failedKeys;
-      return { ...s, phase: 'results', error: e.error, keepBothNote: false, failedKeys };
+      return { ...s, phase: listPhase(s), error: e.error, keepBothNote: false, failedKeys };
     }
     case 'NAME_TAKEN':
       return s.phase === 'downloading' ? { ...s, phase: 'name-taken', takenName: e.fileName, copiesFull: false } : s;
@@ -242,11 +261,11 @@ export function sheetReducer(s: SheetState, e: SheetEvent): SheetState {
       return s.phase === 'downloading' ? { ...s, phase: 'name-taken', takenName: e.fileName, copiesFull: true, keepBothNote: false } : s;
     case 'CHOOSE':
       // After "belongs to another app", Keep both saves the second copy from the results.
-      if (s.phase === 'results' && s.error?.code === 'REPLACE_DENIED' && e.choice === 'keep-both') {
+      if (showsList(s.phase) && s.error?.code === 'REPLACE_DENIED' && e.choice === 'keep-both') {
         return { ...s, phase: 'downloading', pendingChoice: 'keep-both', keepBothNote: true, takenName: null, error: null };
       }
       if (s.phase !== 'name-taken') return s;
-      if (e.choice === 'cancel') return { ...s, phase: 'results', takenName: null, error: null, copiesFull: false };
+      if (e.choice === 'cancel') return { ...s, phase: listPhase(s), takenName: null, error: null, copiesFull: false };
       // Nothing left to keep beside: Keep both is not an answer then.
       if (e.choice === 'keep-both' && s.copiesFull) return s;
       return { ...s, phase: 'downloading', pendingChoice: e.choice, keepBothNote: e.choice === 'keep-both', takenName: null, error: null, copiesFull: false };
@@ -255,6 +274,20 @@ export function sheetReducer(s: SheetState, e: SheetEvent): SheetState {
     default:
       return s;
   }
+}
+
+/**
+ * What the sheet hands back to an automatic run it took over, when it closes without a save. Rows found: they wait
+ * for a pick, even one that fits, because you saw them and chose none. Every source answered with nothing: none.
+ * Nothing yet, or a search that couldn't run: queued, so the runner tries again by its own rules. Null after a save.
+ */
+export function handBackOf(s: Pick<SheetState, 'phase' | 'ranked' | 'searchDone' | 'languages' | 'searchName'>, fileComplete: boolean): HandBack | null {
+  if (s.phase === 'saved' || s.phase === 'closed') return null;
+  // A finished file searched by its own name used the fingerprint, so the runner has nothing more to try.
+  const fingerprinted = fileComplete && !s.searchName;
+  if (s.ranked.length > 0) return { phase: 'needs-pick', otherLang: outcomeFromRanked(s.ranked, s.languages).otherLang, fingerprinted };
+  if (s.searchDone && s.phase !== 'failed') return { phase: 'none', fingerprinted };
+  return { phase: 'queued', fingerprinted: false };
 }
 
 export interface CardWrite {
@@ -272,8 +305,8 @@ export function cardStateFor(prev: SheetPhase, next: SheetState, now: number): C
   if (prev === next.phase) return null;
   if (next.phase === 'downloading' && prev !== 'name-taken') return { state: 'getting', lang: next.language, file: '', savedAt: now };
   if (next.phase === 'saved') return { state: 'saved', lang: next.savedLang ?? next.language, file: next.savedName ?? '', savedAt: now };
-  if (next.phase === 'results' && prev === 'downloading' && next.error) return { state: 'needs-look', lang: next.language, file: '', savedAt: now };
-  if ((prev === 'downloading' || prev === 'name-taken') && (next.phase === 'closed' || (next.phase === 'results' && !next.error))) return 'clear';
+  if (showsList(next.phase) && prev === 'downloading' && next.error) return { state: 'needs-look', lang: next.language, file: '', savedAt: now };
+  if (picking(prev) && (next.phase === 'closed' || (showsList(next.phase) && !next.error))) return 'clear';
   return null;
 }
 

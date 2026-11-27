@@ -10,9 +10,12 @@ import { buildQuery, searchSubtitles } from '../../utils/subtitles/search';
 import { bulkResult } from '../../utils/subtitles/copy';
 import type { SubtitleCandidate, SubtitleProvider } from '../../utils/subtitles/types';
 import {
+  beginWrite,
   epochOk,
   getRequests,
   getRequestsVersion,
+  isHeld,
+  isWriting,
   markSaved,
   outcomeFromSources,
   packCardState,
@@ -121,7 +124,7 @@ async function bulkOnce(keys: readonly string[], env: BulkEnv): Promise<string |
 
   const guarded = async <T>(r: BestRun, fallback: T, work: (signal: AbortSignal) => Promise<T>): Promise<T> => {
     const ctl = new AbortController();
-    registerRun(r.askKey, r.fileKey, ctl);
+    registerRun(r.askKey, r.fileKey, ctl, targetOf(r)?.videoPath);
     try {
       return await work(ctl.signal);
     } catch {
@@ -134,7 +137,10 @@ async function bulkOnce(keys: readonly string[], env: BulkEnv): Promise<string |
   const outcome = await runBulk(runs, {
     valid: (r) => {
       const e = getRequests()[r.askKey];
-      return epochOk(e, epochs.get(r.askKey) ?? 0) && e.phase !== 'skipped' && e.files?.[r.fileKey]?.phase === 'needs-pick';
+      const vp = targetOf(r)?.videoPath;
+      // An episode whose sheet is open, or whose subtitle is being written, belongs to that writer.
+      const free = !vp || (!isHeld(r.askKey, vp) && !isWriting(r.askKey, vp));
+      return free && epochOk(e, epochs.get(r.askKey) ?? 0) && e.phase !== 'skipped' && e.files?.[r.fileKey]?.phase === 'needs-pick';
     },
     save: (r, cand: StoredCandidate): Promise<SaveResult> =>
       guarded<SaveResult>(r, 'failed', async (signal) => {
@@ -144,10 +150,17 @@ async function bulkOnce(keys: readonly string[], env: BulkEnv): Promise<string |
         if (!provider) return 'failed';
         const candidate: SubtitleCandidate = { providerId: cand.p, id: cand.id, language: cand.l, releaseName: cand.rel, matchedBy: 'title' };
         const query = buildQuery({ fileName: target.fileName, videoBytes: target.videoBytes }, env.languages);
-        const res = await downloadAndSave(
-          { candidate, provider, sourceName: provider.name, target, query, choice: 'normal', signal },
-          { unzip: (b) => maglevEngine.unzipSubtitles(b), save: (v, n, b, rep) => maglevEngine.saveSubtitle(v, n, b, rep) },
-        );
+        if (isHeld(r.askKey, target.videoPath) || isWriting(r.askKey, target.videoPath)) return 'stay';
+        const endWrite = beginWrite(r.askKey, target.videoPath);
+        let res: Awaited<ReturnType<typeof downloadAndSave>>;
+        try {
+          res = await downloadAndSave(
+            { candidate, provider, sourceName: provider.name, target, query, choice: 'normal', signal },
+            { unzip: (b) => maglevEngine.unzipSubtitles(b), save: (v, n, b, rep) => maglevEngine.saveSubtitle(v, n, b, rep) },
+          );
+        } finally {
+          endWrite();
+        }
         if (res.status === 'saved') {
           savedAs.set(`${r.askKey}\n${r.fileKey}`, { lang: res.language, file: res.fileName });
           return 'saved';
