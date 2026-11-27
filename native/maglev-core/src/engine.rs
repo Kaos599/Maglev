@@ -836,14 +836,15 @@ impl MaglevEngine {
             has_error: error.is_some(),
             resolving: false,
         });
-        let (down_bps, up_bps, peers_live, peers_seen) = match &stats.live {
+        let (down_bps, up_bps, peers_live, peers_seen, seeds_live) = match &stats.live {
             Some(l) => (
                 l.download_speed.as_bytes(),
                 l.upload_speed.as_bytes(),
                 l.snapshot.peer_stats.live,
                 l.snapshot.peer_stats.seen,
+                Some(l.snapshot.peer_stats.live_seeders),
             ),
-            None => (0, 0, 0, 0),
+            None => (0, 0, 0, 0, None),
         };
         // Byte totals from the per-file counts (exact), not librqbit's piece-sized totals, which read
         // "128 KB of 1.6 KB" for a small file kept out of a torrent with big pieces. While librqbit has
@@ -904,7 +905,8 @@ impl MaglevEngine {
             down_bps,
             up_bps,
             peers_live,
-            peers_seen,
+            peers_seen: Some(peers_seen),
+            seeds_live,
             web_seeds: u32::try_from(h.web_seeds().len()).unwrap_or(u32::MAX),
             eta_secs,
             ratio,
@@ -953,7 +955,8 @@ impl MaglevEngine {
             down_bps: 0,
             up_bps: 0,
             peers_live: 0,
-            peers_seen: 0,
+            peers_seen: Some(0),
+            seeds_live: None,
             web_seeds: 0,
             eta_secs: -1,
             ratio: if e.progress_bytes == 0 {
@@ -1008,7 +1011,9 @@ impl MaglevEngine {
             down_bps: 0,
             up_bps: 0,
             peers_live: 0,
-            peers_seen: 0,
+            // Counted by the lookup `run_pending` registers for a magnet. No lookup, no number.
+            peers_seen: self.resolves.snapshot(id).map(|a| a.peers_found),
+            seeds_live: None,
             web_seeds: 0,
             eta_secs: -1,
             ratio: 0.0,
@@ -1639,6 +1644,13 @@ impl MaglevEngine {
     async fn run_pending(self: Arc<Self>, id: String, pending: PendingAdd) {
         let outcome: Result<(), EngineError> = async {
             let src = parse_source(&pending.source)?;
+            // Counts the peers the DHT returns, so the pending row can say how many it has found.
+            // Dropped when the lookup ends or the task is aborted. Keyed by the pending id (the normalised hex
+            // hash), which is what the pending row looks the count up by; a base32 magnet's own hash differs.
+            let _lookup = match &src {
+                Source::Magnet(_) => Some(self.begin_resolve(&id)?),
+                _ => None,
+            };
             // No time limit: DHT and trackers keep looking until the user deletes the entry.
             let resolved = self.resolve_source(&src, &pending.source, None).await?;
             let opts = AddOptions {

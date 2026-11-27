@@ -87,8 +87,8 @@ export function fromCached(c: CachedTorrent): TorrentTelemetry {
     totalSizeBytes: c.totalSizeBytes,
     etaSeconds: -1,
     peersConnected: 0,
-    peersTotal: 0,
-    seedsConnected: 0,
+    peersTotal: null,
+    seedsConnected: null,
     ratio: c.ratio,
     addedAt: c.addedAt ?? undefined,
   };

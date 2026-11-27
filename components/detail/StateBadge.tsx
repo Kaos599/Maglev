@@ -15,7 +15,7 @@ interface Props {
   /** Active blocks and queue size, so the label can say why a torrent is held. */
   blocks?: BlockContext;
   /** Set while a magnet looks for its metadata. */
-  resolving?: { peersSeen: number; secs: number } | null;
+  resolving?: { peersSeen: number | null; secs: number } | null;
 }
 
 export function StateBadge({ state, pausedBy, moveProgress, resumesAt, resolving, blocks }: Props) {

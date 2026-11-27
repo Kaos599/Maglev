@@ -43,7 +43,11 @@ pub struct Snapshot {
     pub down_bps: u64,
     pub up_bps: u64,
     pub peers_live: u32,
-    pub peers_seen: u32,
+    /// Peer addresses found so far. `None` when nothing measured it (a pending add that is not a magnet
+    /// lookup), so the app shows no count instead of a made-up 0.
+    pub peers_seen: Option<u32>,
+    /// Connected peers that have the whole torrent. `None` while there are no live stats.
+    pub seeds_live: Option<u32>,
     /// Web seeds (BEP 19) configured for the torrent, from `url-list`, `ws=` or added later. 0 when none.
     pub web_seeds: u32,
     pub eta_secs: i64,

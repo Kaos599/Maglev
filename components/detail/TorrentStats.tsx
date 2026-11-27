@@ -13,7 +13,7 @@ export interface TorrentStatsProps {
   etaSecs: number;
   ratio: number;
   peersLive: number;
-  peersSeen: number;
+  peersSeen: number | null;
   totalBytes: number;
   timing: TimingInput;
 }
@@ -32,7 +32,7 @@ export function TorrentStats(p: TorrentStatsProps) {
           { label: 'Upload', value: formatSpeed(p.upBps), tint: colors.upload },
           { label: 'ETA', value: p.etaSecs > 0 ? formatEta(p.etaSecs) : '—' },
           { label: 'Ratio', value: p.ratio >= 0 ? p.ratio.toFixed(2) : '—' },
-          { label: 'Peers', value: `${p.peersLive}/${p.peersSeen}` },
+          { label: 'Peers', value: p.peersSeen == null ? `${p.peersLive}` : `${p.peersLive}/${p.peersSeen}` },
           { label: 'Size', value: p.totalBytes > 0 ? formatBytes(p.totalBytes) : '—' },
         ]}
       />
