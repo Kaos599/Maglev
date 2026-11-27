@@ -49,7 +49,7 @@ export function snapshotToTelemetry(s: Snapshot): TorrentTelemetry {
     etaSeconds: s.etaSecs < 0 ? 0 : s.etaSecs,
     peersConnected: s.peersLive,
     peersTotal: s.peersSeen,
-    seedsConnected: 0,
+    seedsConnected: s.seedsLive ?? null,
     ratio: s.ratio,
     seedDurationSeconds: s.seedingSecs,
     pausedBy: s.pausedBy,

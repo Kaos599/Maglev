@@ -81,7 +81,6 @@ async function main() {
   check('not a file offers Remove, not Retry', kinds(err('NOT_A_FILE')) === 'remove');
   check('checksum offers Remove, not Retry', kinds(err('CHECKSUM_MISMATCH')) === 'remove');
   check('permission offers Pick folder again then Retry', kinds(err('PERMISSION')) === 'pickFolder,retry' && copy.downloadStatus(err('PERMISSION')).lead === "Maglev can't write to that folder.");
-  check('EACCES is permission', kinds(err('EACCES')) === 'pickFolder,retry');
   check('network offers Retry', kinds(err('NETWORK')) === 'retry');
   check('5xx offers Retry, 404 offers Remove', kinds(err('HTTP_STATUS', { httpStatus: 503 })) === 'retry' && kinds(err('HTTP_STATUS', { httpStatus: 404 })) === 'remove' && kinds(err('HTTP_STATUS', { httpStatus: 429 })) === 'retry');
   check('unknown code is a generic retry', kinds(err('WHATEVER')) === 'retry' && copy.downloadStatus(d({ state: 'error', error: null })).lead === 'Something went wrong');

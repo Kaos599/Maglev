@@ -102,15 +102,13 @@ function isFinal4xx(status: number | null | undefined): boolean {
 }
 
 /** Sorts an engine error code into what the card does about it. Unknown codes land in `other`. */
-function errorKind(code: string | undefined, httpStatus?: number | null): ErrorKind {
-  const c = (code ?? '').toUpperCase();
+function errorKind(c: NonNullable<DownloadSnapshot['error']>['code'] | undefined, httpStatus?: number | null): ErrorKind {
   if (c === 'FILE_CHANGED') return 'fileChanged';
   if (c === 'NOT_A_FILE') return 'notAFile';
   if (c === 'CHECKSUM_MISMATCH') return 'checksum';
-  if (c === 'PERMISSION' || c === 'EACCES') return 'permission';
+  if (c === 'PERMISSION') return 'permission';
   if (c === 'HTTP_STATUS') return isFinal4xx(httpStatus) ? 'httpGone' : 'network';
   if (c === 'NETWORK') return 'network';
-  // Exact codes from native/maglev-core (http_dl).
   if (c === 'FILE_TOO_LARGE') return 'tooBig';
   if (c === 'STORAGE_UNAVAILABLE') return 'folderGone';
   if (c === 'LOCAL_REDIRECT') return 'localBlocked';
@@ -583,9 +581,24 @@ export function peerLimitText(mins: number): string | null {
   return `${h} ${h === 1 ? 'hour' : 'hours'}`;
 }
 
+/** The "found" row, or nothing when no count was measured. */
+function foundRow(peersTotal: number | null): { label: string; value: string }[] {
+  return peersTotal == null ? [] : [{ label: whyCopy.labels.found, value: String(peersTotal) }];
+}
+
+/**
+ * The "Trackers replied" row, or nothing while every tracker's status is unknown. The engine cannot see
+ * per-tracker replies, so "0 of N" would claim trackers that never answered.
+ */
+function trackersRow(trackers: readonly { status: string }[]): { label: string; value: string }[] {
+  if (trackers.every((t) => t.status === 'unknown')) return [];
+  return [{ label: whyCopy.labels.trackers, value: `${trackers.filter((t) => t.status === 'working').length} of ${trackers.length}` }];
+}
+
 export interface TorrentWhyInput {
   situation: 'connecting' | 'waiting';
-  peersTotal: number;
+  /** Null when nothing measured it. */
+  peersTotal: number | null;
   peersConnected: number;
   trackers: readonly { status: string }[];
   peers: readonly { downBps: number }[];
@@ -601,10 +614,10 @@ export function torrentWhy(i: TorrentWhyInput): WhyModel {
   const L = whyCopy.labels;
   if (i.situation === 'connecting') {
     const stats: { label: string; value: string }[] = [
-      { label: L.found, value: String(i.peersTotal) },
+      ...foundRow(i.peersTotal),
       { label: L.connected, value: String(i.peersConnected) },
+      ...trackersRow(i.trackers),
     ];
-    if (i.trackers.length > 0) stats.push({ label: L.trackers, value: `${i.trackers.filter((t) => t.status === 'working').length} of ${i.trackers.length}` });
     stats.push({ label: L.trying, value: formatClock(i.quietMs) });
     return {
       kind: 'connecting',
@@ -621,7 +634,7 @@ export function torrentWhy(i: TorrentWhyInput): WhyModel {
     title: whyCopy.waitingTitle,
     sentence: whyCopy.torrentWaiting(formatSpan(i.quietMs)) + (limit ? whyCopy.stopsWaiting(limit) : ''),
     stats: [
-      { label: L.found, value: String(i.peersTotal) },
+      ...foundRow(i.peersTotal),
       { label: L.connected, value: `${i.peersConnected}${sending ? '' : whyCopy.none}` },
       { label: L.lastData, value: i.lastDataAgoMs == null ? '—' : `${formatSpan(i.lastDataAgoMs)} ago` },
     ],
@@ -630,7 +643,7 @@ export function torrentWhy(i: TorrentWhyInput): WhyModel {
 }
 
 export interface TorrentResolvingWhyInput {
-  peersTotal: number;
+  peersTotal: number | null;
   trackers: readonly { status: string }[];
   /** Whole seconds the engine has been looking for the file list. */
   resolvingSecs: number;
@@ -642,13 +655,12 @@ export interface TorrentResolvingWhyInput {
  */
 export function torrentResolvingWhy(i: TorrentResolvingWhyInput): WhyModel {
   const L = whyCopy.labels;
-  const stats: { label: string; value: string }[] = [{ label: L.found, value: String(i.peersTotal) }];
-  if (i.trackers.length > 0) stats.push({ label: L.trackers, value: `${i.trackers.filter((t) => t.status === 'working').length} of ${i.trackers.length}` });
+  const stats: { label: string; value: string }[] = [...foundRow(i.peersTotal), ...trackersRow(i.trackers)];
   stats.push({ label: L.trying, value: formatClock(i.resolvingSecs * 1000) });
   return {
     kind: 'resolving',
     title: whyCopy.connectingTitle,
-    sentence: whyCopy.resolvingSentence + (i.peersTotal > 0 ? whyCopy.resolvingAsking(i.peersTotal) : whyCopy.resolvingNoPeers),
+    sentence: whyCopy.resolvingSentence + (i.peersTotal == null ? '' : i.peersTotal > 0 ? whyCopy.resolvingAsking(i.peersTotal) : whyCopy.resolvingNoPeers),
     stats,
     askTrackers: false,
   };

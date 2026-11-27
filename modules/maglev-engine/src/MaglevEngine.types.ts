@@ -57,8 +57,10 @@ export interface TorrentTelemetry {
   totalSizeBytes: number;
   etaSeconds: number;
   peersConnected: number;
-  peersTotal: number;
-  seedsConnected: number;
+  /** Peer addresses found so far, or null when nothing measured it. Never a made-up 0. */
+  peersTotal: number | null;
+  /** Connected peers that have the whole torrent, or null when the engine did not say. */
+  seedsConnected: number | null;
   ratio: number;
   sequential?: boolean;
   seedDurationSeconds?: number;
@@ -212,6 +214,14 @@ export type EngineErrorCode =
   | 'NO_APP'
   /** The server stopped sending data and the retries ran out. */
   | 'STALLED'
+  /** The folder or drive a download writes to is gone. */
+  | 'STORAGE_UNAVAILABLE'
+  /** The file is bigger than the folder's file system allows. */
+  | 'FILE_TOO_LARGE'
+  /** A redirect pointed at a device on the local network. */
+  | 'LOCAL_REDIRECT'
+  /** The link is blocked by the user's own rules. */
+  | 'BLOCKED'
   /** NATIVE_CONTRACT 24.8 (saving HLS and DASH streams). */
   | 'STREAM_PROTECTED'
   | 'STREAM_LIVE'
@@ -316,7 +326,10 @@ export interface Snapshot {
   downBps: number;
   upBps: number;
   peersLive: number;
-  peersSeen: number;
+  /** Null when nothing measured it (a pending add that is not a magnet lookup). */
+  peersSeen: number | null;
+  /** Connected peers that have the whole torrent. Null or missing when the engine did not say. */
+  seedsLive?: number | null;
   /** NATIVE_CONTRACT 16. Web seeds configured for the torrent. 0 when none. */
   webSeeds: number;
   etaSecs: number; // -1 = unknown
@@ -506,7 +519,7 @@ export type DownloadState =
 export interface DownloadError {
   code: Extract<
     EngineErrorCode,
-    'HTTP_STATUS' | 'AUTH_REQUIRED' | 'LINK_REFUSED' | 'LINK_EXPIRED' | 'FILE_CHANGED' | 'NOT_A_FILE' | 'CHECKSUM_MISMATCH' | 'NETWORK' | 'PERMISSION' | 'STALLED' | 'LAN_ADDRESS' | 'LOCAL_REDIRECT' | 'BLOCKED' | 'STREAM_PROTECTED' | 'STREAM_LIVE' | 'STREAM_UNSUPPORTED' | 'MUX_FAILED'
+    'HTTP_STATUS' | 'AUTH_REQUIRED' | 'LINK_REFUSED' | 'LINK_EXPIRED' | 'FILE_CHANGED' | 'NOT_A_FILE' | 'CHECKSUM_MISMATCH' | 'NETWORK' | 'PERMISSION' | 'STALLED' | 'STORAGE_UNAVAILABLE' | 'FILE_TOO_LARGE' | 'LAN_ADDRESS' | 'LOCAL_REDIRECT' | 'BLOCKED' | 'STREAM_PROTECTED' | 'STREAM_LIVE' | 'STREAM_UNSUPPORTED' | 'MUX_FAILED'
   >;
   message: string;
   httpStatus?: number | null;

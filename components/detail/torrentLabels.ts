@@ -12,7 +12,7 @@ export { buildMagnet };
 export function stateLabel(
   state: TorrentState,
   pausedBy: PausedBy | null | undefined,
-  extra?: { moveProgress?: number | null; resumesAt?: string | null; resolving?: { peersSeen: number; secs: number } | null; blocks?: BlockContext },
+  extra?: { moveProgress?: number | null; resumesAt?: string | null; resolving?: { peersSeen: number | null; secs: number } | null; blocks?: BlockContext },
 ): string {
   switch (state) {
     case 'MOVING':

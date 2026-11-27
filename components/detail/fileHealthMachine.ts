@@ -241,6 +241,8 @@ export function formatElapsed(secs: number): string {
 }
 
 /** The line while a magnet looks for its metadata. */
-export function resolvingLine(peersSeen: number, secs: number): string {
-  return `Looking for peers · ${peersSeen} found · ${formatElapsed(secs)}`;
+export function resolvingLine(peersSeen: number | null, secs: number): string {
+  // No count when none was measured: "0 found" would claim a search that came up empty.
+  const found = peersSeen == null ? '' : ` · ${peersSeen} found`;
+  return `Looking for peers${found} · ${formatElapsed(secs)}`;
 }

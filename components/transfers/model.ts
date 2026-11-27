@@ -293,7 +293,7 @@ export function torrentStatus(t: StatusRow, etaLabel: string, ctx: BlockContext 
       const situation = torrentSituation(t, opts, ctx);
       const flowing = situation === 'flowing';
       if (situation === 'connecting') {
-        const lead = t.peersTotal > 0 ? `${CONNECTING_TEXT} · ${t.peersTotal} found` : CONNECTING_TEXT;
+        const lead = t.peersTotal != null && t.peersTotal > 0 ? `${CONNECTING_TEXT} · ${t.peersTotal} found` : CONNECTING_TEXT;
         return line(lead, 'muted', null, right.value, right.slot, right.full);
       }
       if (situation === 'waiting') return line(WAITING_TEXT, 'muted', startedPct(t), right.value, right.slot, right.full);

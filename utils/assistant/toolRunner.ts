@@ -1439,8 +1439,11 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
       finished: snap.finished,
       peers_connected: snap.peersLive, peers_seen: snap.peersSeen, web_seeds: snap.webSeeds,
       paused_by: snap.pausedBy, health: snap.health,
-      trackers_working: res.trackers.filter((t) => t.status === 'working').length,
-      trackers_failing: res.trackers.filter((t) => t.status === 'error').length,
+      // The engine cannot see per-tracker replies: report counts only when it said something.
+      ...(res.trackers.some((t) => t.status !== 'unknown') ? {
+        trackers_working: res.trackers.filter((t) => t.status === 'working').length,
+        trackers_failing: res.trackers.filter((t) => t.status === 'error').length,
+      } : {}),
       ratio: Math.round(snap.ratio * 100) / 100,
     };
     if (snap.downBps > 0) data.speed_text = formatSpeed(snap.downBps);
