@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// NATIVE_CONTRACT 34.1 download timing: the TS types carry active_secs, finished_at, session_bytes, bytes_wifi and
+// The TS types carry active_secs, finished_at, session_bytes, bytes_wifi and
 // bytes_mobile for torrents and link downloads, the bridge passes them through, and the dev simulator counts time and
 // bytes only while an item downloads, stamps finished_at once, and resets on FILE_CHANGED. The Rust accounting is
 // covered by `cargo test` (timing.rs, meta.rs, http_dl/driver.rs `timing_tests`); this also checks the wiring by source.

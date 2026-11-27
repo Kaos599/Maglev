@@ -35,7 +35,7 @@ class ShareClassifyTest {
         }
     }
 
-    // Contract section 8.1 (issue #89): Kiwi sends VIEW <url> with the file name in com.android.extra.filename.
+    // Issue #89: Kiwi sends VIEW <url> with the file name in com.android.extra.filename.
     private fun page(url: String) = ShareClassify.classify(url, null)
 
     @Test fun handOffNameTurnsAPageLinkIntoAFile() {

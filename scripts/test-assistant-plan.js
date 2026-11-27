@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// SM-39 Plan card machine (with review round 1 R1-2). One assertion per row of the transition table, on {state.kind, effects}.
+// Plan card machine. One assertion per row of the transition table, on {state.kind, effects}.
 // Each step is revalidate(i), then execute(i) only after STEP_REVALIDATED ok. RETRY rechecks before it re-runs.
 // Needs Node 22.18+ (runs the TypeScript sources directly via type stripping).
 process.removeAllListeners('warning');
@@ -34,7 +34,7 @@ async function main() {
   const at = (index, phase) => ({ kind: 'running', total: 3, index, phase });
   const halted1 = { kind: 'halted', total: 3, index: 1, reason: 'Storage full.' };
 
-  // Rows of the SM-39 table.
+  // Rows of the transition table.
   expectStep('proposed + CONFIRM (all steps valid) revalidates step 0 and does not execute it', proposed3, { type: 'CONFIRM', checks: [ok3, ok3, ok3] }, 'running', [
     { type: 'revalidate', step: 0 },
   ]);

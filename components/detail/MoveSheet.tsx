@@ -15,7 +15,7 @@ interface Props {
   onPick: () => void;
 }
 
-/** Destination chooser for "Move to…" (NATIVE_CONTRACT 11.3). */
+/** Destination chooser for "Move to…". */
 export function MoveSheet({ visible, onClose, currentFolder, busy, error, pickAgain, onDefault, onPick }: Props) {
   return (
     <Sheet visible={visible} onClose={onClose} title="Move to…" subtitle={`Now in ${currentFolder}`}>

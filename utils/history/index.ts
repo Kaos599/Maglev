@@ -1,5 +1,5 @@
 /**
- * Browser history, public API (docs/NATIVE_CONTRACT.md section 24.9).
+ * Browser history, public API.
  * If the database can't open, history is unavailable for the session: recording does nothing, suggestions are empty
  * and listing or editing throws so the screen can show Retry. The browser keeps working.
  */
@@ -115,7 +115,7 @@ export function useHistoryVersion(): number {
   return useSyncExternalStore(subscribeHistory, snapshot, snapshot);
 }
 
-// ---- tabs (24.10) ----
+// ---- tabs ----
 
 const TABS_DELAY_MS = 500;
 let pendingTabs: { rows: TabRow[]; activeId: string | null } | null = null;

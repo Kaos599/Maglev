@@ -3,7 +3,7 @@
  * Contact sheet for the pixel glyphs: every glyph at 1x (20px) and 4x (80px),
  * plus a mock of the bottom tab bar. Writes glyphs.html to the output dir.
  * Usage: node scripts/render-glyphs.js [outDir]
- * Then screenshot with headless Chrome (see docs/ or the task notes).
+ * Then screenshot with headless Chrome (for example `chrome --headless --screenshot`).
  */
 const fs = require('fs');
 const path = require('path');

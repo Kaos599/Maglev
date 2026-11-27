@@ -1,7 +1,7 @@
 /**
- * Subtitles for a season (docs/NATIVE_CONTRACT.md section 46). Pure: the candidates a run keeps when it ends in
- * needs-pick (46.4), the rule that says a stored candidate may be saved without asking (46.3), the episode rows of the
- * status sheet (46.1) and the bulk-save loop with its one retry (46.4). Nothing here touches the network, the engine or
+ * Subtitles for a season. Pure: the candidates a run keeps when it ends in
+ * needs-pick, the rule that says a stored candidate may be saved without asking, the episode rows of the
+ * status sheet and the bulk-save loop with its one retry. Nothing here touches the network, the engine or
  * the store: the callers pass those in.
  */
 import { formatBytes } from '../../constants/format.ts';
@@ -12,7 +12,7 @@ import { PHASE_WORDS, episodeMain, episodeSaved } from './copy.ts';
 import type { RankedSubtitle } from './rank.ts';
 import type { FileRun, RequestEntry, RequestPhase } from './requests.ts';
 
-// ---------------------------------------------------------------- stored candidates (46.4)
+// ---------------------------------------------------------------- stored candidates
 
 /**
  * What a needs-pick run keeps of a result: just enough to download it again and to judge it. Short keys keep kv small
@@ -34,13 +34,13 @@ export interface StoredCandidate {
   e?: number;
 }
 
-/** 46.4: at most this many candidates per run. */
+/** At most this many candidates per run. */
 const MAX_STORED = 2;
-/** 46.4: bulk saves run at most this many at a time. */
+/** Bulk saves run at most this many at a time. */
 const BULK_CONCURRENT = 2;
 const REL_MAX = 120;
 
-/** 46.4: the top result per language (at most 2), the languages the user picked first. Nothing else is kept. */
+/** The top result per language (at most 2), the languages the user picked first. Nothing else is kept. */
 export function toStored(ranked: readonly RankedSubtitle[], languages: readonly string[], max = MAX_STORED): StoredCandidate[] {
   const inLanguages = ranked.filter((r) => Number.isFinite(languageRank(r.candidate.language, languages)));
   const others = ranked.filter((r) => !Number.isFinite(languageRank(r.candidate.language, languages)));
@@ -76,7 +76,7 @@ export function cleanStored(raw: unknown): StoredCandidate[] | undefined {
   return out.length > 0 ? out : undefined;
 }
 
-// ---------------------------------------------------------------- qualification (46.3)
+// ---------------------------------------------------------------- qualification
 
 export interface QualifyCtx {
   /** The show's title as the file names it. */
@@ -95,7 +95,7 @@ function isMultiEpisode(releaseName: string): boolean {
 }
 
 /**
- * 46.3: a stored candidate may be saved without asking only when all three hold:
+ * A stored candidate may be saved without asking only when all three hold:
  * - its title is the show's (strict title match, or an alias);
  * - its season and episode are the file's, and it is neither a season pack nor a multi-episode subtitle;
  * - its language is one of the user's.
@@ -135,7 +135,7 @@ export interface BestRun {
   ctx: QualifyCtx;
 }
 
-/** 46.3: the needs-pick episode runs whose best stored candidate qualifies. `k` is the length of this list. */
+/** The needs-pick episode runs whose best stored candidate qualifies. `k` is the length of this list. */
 export function qualifyingRuns(entry: Pick<RequestEntry, 'files' | 'ask'> | undefined, languages: readonly string[]): BestRun[] {
   const files = entry?.files;
   if (!entry || !files || Object.keys(files).length < 2) return [];
@@ -148,10 +148,10 @@ export function qualifyingRuns(entry: Pick<RequestEntry, 'files' | 'ask'> | unde
   return out.sort((a, b) => a.ctx.season - b.ctx.season || a.ctx.episode - b.ctx.episode);
 }
 
-/** 46.5: the page row shows "Use best match" when its pack has at least one qualifying run, else "See all". */
+/** The page row shows "Use best match" when its pack has at least one qualifying run, else "See all". */
 export const pageRowAction = (k: number): 'use-best' | 'see-all' => (k >= 1 ? 'use-best' : 'see-all');
 
-// ---------------------------------------------------------------- the episode rows (46.1)
+// ---------------------------------------------------------------- the episode rows
 
 export type EpisodeStart = 'results' | 'edit-name';
 
@@ -188,7 +188,7 @@ function episodeTitle(fileName: string): string {
   return /^-[A-Za-z0-9]+$/.test(base.slice(m.index + m[0].length).trim()) ? '' : rest;
 }
 
-/** 46.1 main line. */
+/** Main line. */
 export function episodeLabel(fileKey: string): string {
   const name = baseOf(fileKey);
   const p = parseName(name);
@@ -198,23 +198,23 @@ export function episodeLabel(fileKey: string): string {
 
 const NEEDS_YOU: readonly RequestPhase[] = ['needs-pick', 'none', 'failed'];
 
-/** 46.2: what opens, by phase. A run still waiting for its file has nothing to open. */
+/** What opens, by phase. A run still waiting for its file has nothing to open. */
 export function episodeStart(phase: RequestPhase): EpisodeStart | null {
   if (phase === 'none') return 'edit-name';
   if (phase === 'needs-pick' || phase === 'saved' || phase === 'has-already' || phase === 'skipped') return 'results';
   return null;
 }
 
-/** 46.1: the result in words. A saved episode names its language when it is known. */
+/** The result in words. A saved episode names its language when it is known. */
 export function episodeWord(phase: RequestPhase, language: string | null): string {
   return phase === 'saved' ? episodeSaved(language) : PHASE_WORDS[phase];
 }
 
-/** 46.1: a pack's request lists its video runs; one with a single run (or no file list yet) keeps its one row. */
+/** A pack's request lists its video runs; one with a single run (or no file list yet) keeps its one row. */
 export const isEpisodeRequest = (e: Pick<RequestEntry, 'files'> | undefined): boolean => !!e?.files && Object.keys(e.files).length >= 2;
 
 /**
- * 46.1: one row per video file run. Rows that need you come first, then the rest in episode order; rows whose names
+ * One row per video file run. Rows that need you come first, then the rest in episode order; rows whose names
  * can't be read go last, by name. `langOf` gives the language of the subtitle saved next to a video, when known.
  */
 export function episodeRows(entry: Pick<RequestEntry, 'files' | 'ask'>, langOf: (videoPath?: string) => string | null = () => null): EpisodeRow[] {
@@ -258,7 +258,7 @@ export function phaseCounts(phases: readonly (RequestPhase | undefined)[]): { sa
   return c;
 }
 
-// ---------------------------------------------------------------- bulk save (46.3, 46.4)
+// ---------------------------------------------------------------- bulk save
 
 /** 'stay': not saved and not worth searching again (the name is taken, or there is nowhere to write). */
 export type SaveResult = 'saved' | 'stay' | 'failed';
@@ -286,7 +286,7 @@ export interface BulkOutcome {
 }
 
 /**
- * 46.3 and 46.4: saves each run's stored best candidate, at most `BULK_CONCURRENT` at a time. A download that fails
+ * Saves each run's stored best candidate, at most `BULK_CONCURRENT` at a time. A download that fails
  * (an expired link, a source error) searches that one run again, once, and uses the new best candidate only if it
  * qualifies; otherwise the run stays in needs-pick. A taken name or a folder that can't be written is not retried.
  */

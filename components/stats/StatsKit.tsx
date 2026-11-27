@@ -102,7 +102,7 @@ export function StatsKit({ range, today, stats: A, mostSecs, mobileLimitBytes, t
     />
   );
 
-  // Streak card: built, and off until the owner decides (SHOW_STREAK_CARD in utils/stats/delight.ts). Its fire starts at the flame.
+  // Streak card: built, and off while SHOW_STREAK_CARD (utils/stats/delight.ts) is false. Its fire starts at the flame.
   const streak = SHOW_STREAK_CARD ? (
     <StatCard
       full

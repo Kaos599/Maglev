@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// NATIVE_CONTRACT 45.5: "No results? Point to the sources that are off". The counting (adult excluded, languages,
+// "No results? Point to the sources that are off". The counting (adult excluded, languages,
 // anime first, k = 0 shows nothing new), the strings, and the wiring. Pure: no rendering.
 process.removeAllListeners('warning');
 const fs = require('fs');

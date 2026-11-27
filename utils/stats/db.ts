@@ -1,4 +1,4 @@
-/** expo-sqlite binding for the stats store (docs/NATIVE_CONTRACT.md section 34.2). */
+/** expo-sqlite binding for the stats store. */
 import * as SQLite from 'expo-sqlite';
 import { STATS_DB_NAME, migrate, type StatsDb } from './schema.ts';
 

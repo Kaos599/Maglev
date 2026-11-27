@@ -79,7 +79,7 @@ export default function AddDownloadScreen() {
   const parts: DownloadParts = partsOverride ?? linkPrefs.downloadParts;
   const token = useRef(0);
   const urlRef = useRef('');
-  // NATIVE_CONTRACT 44.5 and 44.12: a video link gets the Subtitles row.
+  // A video link gets the Subtitles row.
   const fullName = probe ? baseName.trim() + splitName(probe.name).ext : '';
   const subs = useSubtitlesAuto(!!probe && fileKind(fullName || probe.name) === 'video');
   const allowLanRef = useRef(false);
@@ -325,10 +325,10 @@ export default function AddDownloadScreen() {
         haptic('commit');
         if (probe && subs.show) {
           const ask = buildAsk({ infoHash: '', key: `d:${res.id}`, name: renamed ?? probe.name, sizeBytes: probe.size ?? undefined });
-          // A link added while the Added message is on screen joins it (44.12); otherwise Auto asks on its own.
+          // A link added while the Added message is on screen joins it; otherwise Auto asks on its own.
           const joined = joinTrayIfShowing({ hash: ask.key, name: renamed ?? probe.name, ask, auto: subs.on });
           if (!joined && subs.on) askSubtitles([ask], { auto: true });
-          // 44.15 D4: Settings auto is on and this screen's switch is off: "not this one".
+          // Settings auto is on and this screen's switch is off: "not this one".
           else if (!joined && !subs.on && subs.settingsOn) markNotThisOne([ask]);
         }
         router.dismissTo('/');

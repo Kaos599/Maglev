@@ -11,7 +11,7 @@ import androidx.work.WorkManager
 import com.maglev.engine.EngineHost
 import java.util.concurrent.TimeUnit
 
-/** Schedules the unique periodic `maglev-feeds` work (contract 11.6). */
+/** Schedules the unique periodic `maglev-feeds` work. */
 object FeedScheduler {
     const val UNIQUE_PERIODIC = "maglev-feeds"
     const val UNIQUE_NOW = "maglev-feeds-now"

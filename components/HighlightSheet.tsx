@@ -16,6 +16,7 @@ import { useEntrance, useStagger } from './highlight/useEntrance';
 import { cardAt, scrimAt } from './highlight/timeline';
 import { cardUnit } from './highlight/timing';
 import { highlightPlan, isPlainLaunch } from '../utils/highlights';
+import { clearSharedLaunch, onSharedLinkTaken, sharedLaunchFlag } from '../utils/shareHandoff';
 import { getLastSeenVersion, setLastSeenVersion } from '../utils/prefs/highlights';
 import { useUpdatePrefs } from '../utils/prefs/update';
 
@@ -41,10 +42,25 @@ function usePlainLaunch(): boolean | null {
     let linkSinceBackground = false;
     let plainTimer: ReturnType<typeof setTimeout> | null = null;
     void Linking.getInitialURL()
-      .then((url) => alive && setPlain((prev) => (prev === false ? false : isPlainLaunch(url))))
-      .catch(() => alive && setPlain((prev) => (prev === false ? false : true)));
+      // A share card hands its link over through a native store, so the start URL is empty for it: a launch that
+      // took a link from the store is not plain either, or the card would open over the shared link's screen.
+      .then((url) => {
+        const fromLink = sharedLaunchFlag();
+        clearSharedLaunch(); // decided: the next start-up judges itself
+        if (alive) setPlain((prev) => (prev === false ? false : isPlainLaunch(url) && !fromLink));
+      })
+      .catch(() => {
+        const fromLink = sharedLaunchFlag();
+        clearSharedLaunch();
+        if (alive) setPlain((prev) => (prev === false ? false : !fromLink));
+      });
     // A link that arrives while the app runs counts too: this visit wasn't a plain one.
     const link = Linking.addEventListener('url', () => {
+      linkSinceBackground = true;
+      setPlain(false);
+    });
+    // The same for a share card link taken from the store while the app runs.
+    const stopTaken = onSharedLinkTaken(() => {
       linkSinceBackground = true;
       setPlain(false);
     });
@@ -65,6 +81,7 @@ function usePlainLaunch(): boolean | null {
     return () => {
       alive = false;
       link.remove();
+      stopTaken();
       app.remove();
       if (plainTimer) clearTimeout(plainTimer);
     };

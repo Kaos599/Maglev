@@ -15,5 +15,5 @@
     ".expo/types/**/*.ts",
     "expo-env.d.ts"
   ],
-  "exclude": ["node_modules", ".claude", "../maglev-release-v0.6"]
+  "exclude": ["node_modules", ".claude", ".cache", "docs", "../maglev-release-v0.6"]
 }

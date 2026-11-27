@@ -1,5 +1,5 @@
 /**
- * Turns engine snapshots into stats writes (docs/NATIVE_CONTRACT.md section 34.2). Pure logic plus a small coordinator whose
+ * Turns engine snapshots into stats writes. Pure logic plus a small coordinator whose
  * store, prefs and baseline storage are injected.
  *
  * The baseline is the counters seen at the last write, kept per item and saved between launches, so bytes moved while the app
@@ -16,7 +16,7 @@ import type { StatsStore } from './store.ts';
 
 export { dayKey } from './time.ts';
 
-/** The 0.26 engine fields (NATIVE_CONTRACT 34.1). Read as optional so this compiles and runs with or without them. */
+/** The 0.26 engine fields. Read as optional so this compiles and runs with or without them. */
 type TimingFields = { activeSecs?: number; finishedAt?: number; sessionBytes?: number; bytesWifi?: number; bytesMobile?: number };
 
 export const FLUSH_MS = 60_000;
@@ -24,12 +24,12 @@ export const FLUSH_MS = 60_000;
 const TICK_MS = 1000;
 
 /**
- * Seconds to add for one snapshot tick (NATIVE_CONTRACT 34.3, 0.27): the wall-clock time since the previous tick while any
+ * Seconds to add for one snapshot tick: the wall-clock time since the previous tick while any
  * item is Downloading, capped at 2 x the tick interval so a sleeping phone never adds the gap. 0 without an earlier tick.
  */
 export function activeTickSecs(lastAt: number, now: number, downloading: number, tickMs: number = TICK_MS): number {
   if (!(lastAt > 0) || !(now > lastAt) || downloading <= 0) return 0;
-  // Wall-clock time while anything downloads (contract 34.3): two downloads at once still count one second per second.
+  // Wall-clock time while anything downloads (not per download): two downloads at once still count one second per second.
   return Math.min(now - lastAt, 2 * tickMs) / 1000;
 }
 

@@ -3,7 +3,7 @@ package com.maglev.engine.storage
 import java.io.File
 
 /**
- * Picks the files worth handing to MediaScannerConnection (docs/NATIVE_CONTRACT.md section 12.2).
+ * Picks the files worth handing to MediaScannerConnection.
  * Pure JVM so it can be unit tested. Only files under public shared storage qualify, never app-private
  * or staging directories, and never paths that escape the output folder.
  */

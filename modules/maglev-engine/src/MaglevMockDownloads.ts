@@ -9,15 +9,15 @@ import type {
 import { displayUrl, nameFromUrl, parseDownloadUrl, sanitizeFileName } from './downloadLink.ts';
 
 /**
- * Dev and web simulation of URL downloads (NATIVE_CONTRACT 17, SM-30). Same validation and the same error
+ * Dev and web simulation of URL downloads. Same validation and the same error
  * codes as the Rust engine; only the bytes are invented. Never used in a release build (see MaglevNativeBridge).
  *
- * Words in a link steer the simulation, so every SM-30 row can be reached by hand:
+ * Words in a link steer the simulation, so every download state can be reached by hand:
  * `404` HTTP_STATUS, `auth` AUTH_REQUIRED (401), `refused` LINK_REFUSED (403), `.html` NOT_A_FILE, `offline` NETWORK, `expire` link expires half way
  * (needs_link), `changed` FILE_CHANGED half way, `noresume` a server without resume.
  */
 
-/** NATIVE_CONTRACT 25.1: rule tags an item can be exempted from. */
+/** Rule tags an item can be exempted from. */
 const EXEMPTABLE = new Set(['wifi_only', 'battery', 'charging_only', 'schedule', 'seed_metered']);
 const MAX_ACTIVE = 3;
 const SPEED = 2_000_000;
@@ -29,7 +29,7 @@ export interface MockDownloadHooks {
   blockedReason: () => string | null;
   folder: () => string;
   changed: () => void;
-  /** The simulated link is mobile data (NATIVE_CONTRACT 34.1). Absent means unmetered. */
+  /** The simulated link is mobile data. Absent means unmetered. */
   metered?: () => boolean;
 }
 
@@ -43,7 +43,7 @@ interface Item extends Omit<DownloadSnapshot, 'downLimitBps'> {
   sawExpire: boolean;
   sawChanged: boolean;
   needsRestart: boolean;
-  /** NATIVE_CONTRACT 34.1: milliseconds spent in `downloading`. The seconds, finish time and byte counts live on the snapshot fields. */
+  /** Milliseconds spent in `downloading`. The seconds, finish time and byte counts live on the snapshot fields. */
   activeMs: number;
 }
 
@@ -268,7 +268,7 @@ export class MockDownloads {
       i.needsRestart = false;
       i.sawChanged = true; // the restarted file is the new one
       if (i.error?.code === 'FILE_CHANGED') {
-        // NATIVE_CONTRACT 34.1: a different file, so the old counts go.
+        // A different file, so the old counts go.
         i.activeMs = 0;
         i.finishedAt = 0;
         i.sessionBytes = 0;
@@ -388,7 +388,7 @@ export class MockDownloads {
           i.downBps = speed;
           const had = i.downloaded;
           i.downloaded = Math.min(i.size ?? 0, i.downloaded + Math.floor(speed * seconds));
-          // NATIVE_CONTRACT 34.1: time and bytes count only while downloading.
+          // Time and bytes count only while downloading.
           const got = i.downloaded - had;
           i.activeMs += Math.round(seconds * 1000);
           i.sessionBytes = (i.sessionBytes ?? 0) + got;

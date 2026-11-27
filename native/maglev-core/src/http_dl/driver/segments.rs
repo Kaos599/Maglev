@@ -1,4 +1,4 @@
-//! One link download over several connections (`NATIVE_CONTRACT.md` section 17, "Segments").
+//! One link download over several connections.
 //!
 //! A child of `driver`, so it can use the manager's private state. The split is only used when the probe proved the
 //! server can do it (`Accept-Ranges: bytes`, a 206 for `Range: bytes=0-0`), the size is at least 8 MiB and there is
@@ -12,7 +12,7 @@
 //!   session limiter, which every chunk passes through, so it is shared by nature.
 //! - One coordinator loop (the transfer task itself) reports the sum of the segments, runs the stall rule on the sum,
 //!   flushes the sidecar and decides what a segment's end means.
-//! - A 429 or 503 on a segment is a refusal (contract 17.v): servers such as proof.ovh.net allow a few connections
+//! - A 429 or 503 on a segment is a refusal: servers such as proof.ovh.net allow a few connections
 //!   per address and refuse the rest, then hold new connections for minutes. The refused segment waits, the parts
 //!   that were accepted keep going, the connection cap drops to what the server accepted, and each finished part
 //!   hands its connection slot to the next waiting segment. If every part was refused, the download waits the
@@ -120,7 +120,7 @@ pub(super) enum PartReply {
     Body,
     /// Retry this segment (408, 500, 502, 504).
     Retry { retry_after: Option<Duration> },
-    /// The server will not take this connection now (429, 503): the segment waits for a free slot (contract 17.v).
+    /// The server will not take this connection now (429, 503): the segment waits for a free slot.
     Refused { retry_after: Option<Duration> },
     /// Anything else: stop splitting for good.
     Fallback,
@@ -381,7 +381,7 @@ impl Downloads {
         let mut last_held = held_of(&shared.snapshot());
         let mut bps_smooth: f64 = 0.0;
         let mut limit = limit;
-        // Contract 17.v. How many connections the server takes: the plan, until a refusal lowers it for the rest of
+        // How many connections the server takes: the plan, until a refusal lowers it for the rest of
         // the run. After a refusal every segment started is patient (it retries a 429 instead of giving up its turn).
         let mut max_live = n.max(1);
         let mut refused_once = false;
@@ -1334,7 +1334,7 @@ mod tests {
         }
         let _ = std::fs::remove_dir_all(&dir);
     }
-    // ---- contract 17.v: refused parts, and no speed while nothing moves ----
+    // ---- refused parts, and no speed while nothing moves ----
 
     /// proof.ovh.net took 4 of 8 parts and refused the rest with 429. The accepted parts keep going, each refused
     /// part waits for a slot, nothing falls back to one connection, and no range is fetched twice.

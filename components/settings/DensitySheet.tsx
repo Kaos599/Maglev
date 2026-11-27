@@ -12,7 +12,7 @@ const KINDS = [
   { value: 'torrent', label: 'Torrent' },
 ] as const;
 
-// NATIVE_CONTRACT 41.4: the two names, their icons and their one line each.
+// The two names, their icons and their one line each.
 const OPTIONS: { value: TelemetryDensity; name: string; text: string; spoken: string; icon: PixelIconName }[] = [
   { value: 'COMPACT', name: 'Compact', text: 'Speed and time left', spoken: 'Compact, speed and time left', icon: 'card-text' },
   { value: 'VERBOSE', name: 'Detailed', text: 'Adds amounts, connections and timing', spoken: 'Detailed, adds amounts, connections and timing', icon: 'grid-3x2' },
@@ -27,7 +27,7 @@ export interface DensitySheetProps {
 }
 
 /**
- * NATIVE_CONTRACT 41.4: choose how much the download pages show, with a live-looking preview of each. The Link | Torrent
+ * Choose how much the download pages show, with a live-looking preview of each. The Link | Torrent
  * switch changes only the pictures. Tapping a card saves the setting at once.
  */
 export function DensitySheet({ visible, onClose, value, onChange }: DensitySheetProps) {

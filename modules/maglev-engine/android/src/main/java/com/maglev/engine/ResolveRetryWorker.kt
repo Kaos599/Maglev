@@ -18,7 +18,7 @@ import com.maglev.engine.service.MaglevTorrentService
 import java.util.concurrent.TimeUnit
 
 /**
- * SM-37 (contract 20): every hour, with a network, clear `no_peers` so the 10 minute resolve window starts again.
+ * Every hour, with a network, clear `no_peers` so the 10 minute resolve window starts again.
  * Enqueued while any torrent has `health = no_peers`, cancelled when none has.
  */
 class ResolveRetryWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {

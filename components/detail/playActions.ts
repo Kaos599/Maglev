@@ -12,7 +12,7 @@ export interface PlayResult {
 }
 
 /**
- * Runs Play for one file (docs/contracts-0.19/play-and-storage.md section 1): open a finished file, or resume a
+ * Runs Play for one file: open a finished file, or resume a
  * user-paused torrent and stream. No new engine call: the stream reader fetches the start of the file first.
  */
 export async function playFile(

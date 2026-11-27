@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// SM-40 Provider setup (with review round 1 R1-14): every table row, the copy strings, and no-op behaviour
+// Provider setup: every table row, the copy strings, and no-op behaviour
 // for events outside the table.
 // Needs Node 22.18+ (runs the TypeScript source directly via type stripping).
 

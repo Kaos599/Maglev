@@ -1,5 +1,5 @@
 /**
- * Assistant provider prefs (docs/ASSISTANT_DESIGN.md §8.2, §8.3; SM-40).
+ * Assistant provider prefs: which provider, model and address the assistant uses.
  *
  * Pure TypeScript: no React and no expo imports, so Node tests run it directly.
  * Storage is injected (KeyValueStore, SecretStore). The app wires expo-sqlite kv-store and
@@ -127,7 +127,7 @@ export const PRESETS: readonly ProviderPreset[] = [
   {
     id: 'custom',
     label: 'Custom (Ollama on your network)',
-    // R1-14: no default. On a phone, localhost is the phone; the user types the computer's address.
+    // No default. On a phone, localhost is the phone; the user types the computer's address.
     baseUrl: '',
     defaultModel: 'llama3.1',
     models: [],
@@ -151,7 +151,7 @@ export interface AssistantPrefs {
   modelName: string | null;
   /** Secure-store key NAME for the API key (keyNameFor(presetId)). Null when no key is saved. Never the key. */
   keyRef: string | null;
-  /** Lifetime token counters from provider `usage`. Shown as tokens, never money (D4). */
+  /** Lifetime token counters from provider `usage`. Shown as tokens, never money. */
   tokensUsed: { input: number; output: number };
   /** Master switch from Settings > Assistant. Off hides the tab and stops every request. Default off. */
   enabled: boolean;
@@ -193,7 +193,7 @@ export function keyNameFor(presetId: PresetId): string {
   return `assistant.${presetId}`;
 }
 
-// ---- Base URL and LAN rule (SM-40) ----
+// ---- Base URL and LAN rule ----
 
 /**
  * True for hosts on a private network or loopback: 10/8, 172.16/12, 192.168/16, 127/8, ::1, fc00::/7.
@@ -215,7 +215,7 @@ export function isPrivateHost(hostname: string): boolean {
 
 const ADDRESS_COPY = 'That address must start with https://';
 
-/** R1-14: Android can't resolve mDNS (.local) names, so those addresses are refused with this line. */
+/** Android can't resolve mDNS (.local) names, so those addresses are refused with this line. */
 export const LOCAL_NAME_COPY = "Use the computer's address, like 192.168.1.20, not a .local name.";
 
 export type BaseUrlCheck = { ok: true; url: string } | { ok: false; reason: string };

@@ -1,5 +1,5 @@
 /**
- * Runs SM-40 (utils/assistant/providerMachine.ts) for the Settings → Assistant screen.
+ * Runs the provider-setup machine (utils/assistant/providerMachine.ts) for the Settings → Assistant screen.
  * The reducer decides every state change; this hook only runs its effects (probe, storeKey, openAuth,
  * exchangeCode, cancelAuth, removeKey, expireCards), owns the form fields and the 10-minute sign-in timer.
  */

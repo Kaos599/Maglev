@@ -29,7 +29,7 @@ import {
 } from '../../utils/addedTray';
 
 /*
- * The "Added" message (docs/NATIVE_CONTRACT.md section 44.3). Layout from the approved page: padding 12 all round, radius 16,
+ * The "Added" message. Layout: padding 12 all round, radius 16,
  * a 40 dp tile centred on two 20-line text rows, and an action row 12 below it whose button starts at the tile's left edge.
  */
 const SIDE_MARGIN = 12;
@@ -246,26 +246,26 @@ export const AddedTray = memo(AddedTrayImpl);
 // ---------------------------------------------------------------- the hook the Search screen uses
 
 export interface AddedTrayInput extends Omit<TrayAdd, 'auto'> {
-  /** True when this add should ask for subtitles on its own (Settings > Subtitles, section 44.6). */
+  /** True when this add should ask for subtitles on its own (Settings > Subtitles). */
   auto: boolean;
 }
 
 /**
  * Owns the message: the merged state, the 6 second timer (paused by a finger or the sheet, off with a screen reader),
- * and the calls into the subtitle requests (section 44.1). `node` goes inside the screen; `inset` is the bottom
+ * and the calls into the subtitle requests. `node` goes inside the screen; `inset` is the bottom
  * padding the result list needs while the message shows.
  */
-// The one mounted message, so a link added from the Add screen can join it (44.12).
+// The one mounted message, so a link added from the Add screen can join it.
 let live: { add: (i: AddedTrayInput) => void; visible: () => boolean; focused: () => boolean } | null = null;
 
-/** Joins the message when it is on screen and the Search tab is the one in front (44.15 F9). Returns false (and does nothing) when it is not. */
+/** Joins the message when it is on screen and the Search tab is the one in front. Returns false (and does nothing) when it is not. */
 export function joinTrayIfShowing(input: AddedTrayInput): boolean {
   if (!live || !live.visible() || !live.focused()) return false;
   live.add(input);
   return true;
 }
 
-export function useAddedTray({ onView, onAnnounce, focused = true }: { onView: () => void; onAnnounce?: (text: string) => void; /** The Search tab is in front (44.15 F9). */ focused?: boolean }) {
+export function useAddedTray({ onView, onAnnounce, focused = true }: { onView: () => void; onAnnounce?: (text: string) => void; /** The Search tab is in front. */ focused?: boolean }) {
   const consent = useSubtitleConsent();
   const [state, setState] = useState<TrayState | null>(null);
   const stateRef = useRef<TrayState | null>(null);
@@ -318,10 +318,10 @@ export function useAddedTray({ onView, onAnnounce, focused = true }: { onView: (
   const add = useCallback(
     (input: AddedTrayInput) => {
       const now = Date.now();
-      // 44.15 F9: under TalkBack a message older than 60 s stops merging; the add starts a new one.
+      // Under TalkBack a message older than 60 s stops merging; the add starts a new one.
       const prev = trayMayMerge(stateRef.current, { now, screenReader: screenReaderRef.current, focused: true }) ? stateRef.current : null;
       const key = input.ask?.key;
-      // 44.15 D10: nothing is asked on its own before the one-time OK.
+      // Nothing is asked on its own before the one-time OK.
       const auto = input.auto && !consent.needsOk;
       const next = mergeAdd(prev, { ...input, auto, phase: key ? getRequests()[key]?.phase : undefined }, now);
       // An add while a hold is on starts its 6 seconds when the hold ends.
@@ -341,7 +341,7 @@ export function useAddedTray({ onView, onAnnounce, focused = true }: { onView: (
     put(null);
   }, [put]);
 
-  /** 44.15 F7: a banner takes the message's slot but never closes a sheet that is open (the caller waits). */
+  /** A banner takes the message's slot but never closes a sheet that is open (the caller waits). */
   const sheetOpenRef = useRef(false);
   sheetOpenRef.current = sheet !== null;
   const hideMessage = useCallback(() => {
@@ -359,7 +359,7 @@ export function useAddedTray({ onView, onAnnounce, focused = true }: { onView: (
         setSheet('choose');
         return;
       }
-      // 44.15 D10: the first tap on Get subtitles shows the one-time notice; nothing is asked before Continue.
+      // The first tap on Get subtitles shows the one-time notice; nothing is asked before Continue.
       consent.require(() => {
         const now = stateRef.current;
         if (!now) return;
@@ -395,7 +395,7 @@ export function useAddedTray({ onView, onAnnounce, focused = true }: { onView: (
   }, [put]);
 
   const sheetAsks: SubtitleAsk[] = state ? (sheet === 'status' ? askedAsks(state) : pendingAsks(state)) : [];
-  // 44.15 F9: the action row follows what the asked videos are doing now.
+  // The action row follows what the asked videos are doing now.
   const phases = useRequestPhases(state ? askedAsks(state).map((a) => a.key) : []);
   const view = state && sheet === null ? trayView(state, phases) : null;
   const node = (

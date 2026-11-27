@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Finished-download actions (SM-17): which file "Open" uses.
+// Finished-download actions: which file "Open" uses.
 // Needs Node 22.18+ (runs the TypeScript source directly).
 
 process.removeAllListeners('warning');

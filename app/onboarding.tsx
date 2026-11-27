@@ -51,7 +51,7 @@ export default function OnboardingScreen() {
   const [wifiOnly, setWifiOnly] = useState(true);
   const step = STEPS[index];
 
-  // A first install never sees the new-feature sheet (docs/NATIVE_CONTRACT.md 37.2): remember the installed version.
+  // A first install never sees the new-feature sheet: remember the installed version.
   const markHighlightsSeen = useCallback(() => {
     const v = Constants.expoConfig?.version;
     if (v) setLastSeenVersion(v);

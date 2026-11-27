@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Jargon scan contract (ASSISTANT_DESIGN section 9, C-ASSIST-8). Pure TS, no network.
+// Jargon scan contract (words the assistant must not say to a person). Pure TS, no network.
 // Needs Node 22.18+ (runs the TypeScript source directly via type stripping).
 
 process.removeAllListeners('warning');

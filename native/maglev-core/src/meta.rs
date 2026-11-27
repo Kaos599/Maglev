@@ -46,23 +46,23 @@ pub struct TorrentMeta {
     /// Highest verified byte count seen; used to tell "never started" from "files were deleted".
     pub max_progress_bytes: u64,
     pub limits_waived: bool,
-    /// "Resume anyway" (contract section 25): the exemptable rule tags do not pause this torrent.
+    /// "Resume anyway": the exemptable rule tags do not pause this torrent.
     pub allowed_anyway: bool,
     /// The exemption was granted while the torrent was already complete (seeding), so finishing does not clear it.
     pub allowed_anyway_seeding: bool,
     pub sequential: bool,
     pub last_error: Option<ErrorInfo>,
     pub pending: Option<PendingAdd>,
-    /// Health tag (contract section 18.2): `files_missing`, `files_changed`, `storage_full`,
+    /// Health tag: `files_missing`, `files_changed`, `storage_full`,
     /// `storage_unavailable` or `no_peers`. While set the planner keeps the torrent paused.
     pub health: Option<String>,
-    /// Wall-clock milliseconds when a magnet started looking for its metadata (section 20).
+    /// Wall-clock milliseconds when a magnet started looking for its metadata.
     /// Set when the magnet is added, cleared when the metadata arrives.
     pub resolving_since_ms: Option<i64>,
-    /// Active time, finish time and the network split (contract section 34.1). Missing in files from before 0.26.
+    /// Active time, finish time and the network split. Missing in files from before 0.26.
     pub timing: Timing,
     /// Wall-clock milliseconds since a torrent with metadata, 0 bytes and no connected peer began
-    /// waiting for peers (section 20.1). Cleared as soon as a peer connects or a byte arrives.
+    /// waiting for peers. Cleared as soon as a peer connects or a byte arrives.
     /// Never saved: each process start gets a fresh window, so time the app was not running never counts
     /// (a fast-resumed torrent can go live without a check that would reset it).
     #[serde(skip)]
@@ -269,7 +269,7 @@ mod tests {
         let m = s2.get("abc").unwrap();
         assert_eq!(m.health.as_deref(), Some("files_missing"));
         assert_eq!(m.resolving_since_ms, Some(1_700_000_000_000));
-        // The stall clock is not saved (section 20.1): a reload starts a fresh window.
+        // The stall clock is not saved: a reload starts a fresh window.
         assert_eq!(m.stalled_since_ms, None);
         let _ = std::fs::remove_dir_all(&dir);
     }

@@ -38,7 +38,7 @@ for (const p of declared) {
 }
 for (const p of ALLOWED) assert(declared.includes(p), `allow-listed permission ${p} is missing from app.json android.permissions`);
 
-// In-app updater (contract 27.5): added by plugins/withSelfUpdate.js, not by app.json android.permissions.
+// In-app updater: added by plugins/withSelfUpdate.js, not by app.json android.permissions.
 // A PLAY BUILD must drop the updater, the plugin and every permission below (Play forbids self-updating apps).
 const SELF_UPDATE = [
   'android.permission.REQUEST_INSTALL_PACKAGES',

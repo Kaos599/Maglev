@@ -15,6 +15,7 @@ object QuickShareText {
     const val FIND_VIDEOS = "Find videos on this page"
     const val CLOSE = "Close"
     const val WEB_PAGE = "This is a web page, not a file"
+    const val CHECKING = "Checking the link…"
     const val NO_LINK = "No link in what you shared"
     const val COPY_DETAILS = "Copy details"
     const val DETAILS_COPIED = "Copied. Paste it into your bug report."
@@ -23,4 +24,7 @@ object QuickShareText {
     const val ADDED_SERVICE_LATER = "Added to Maglev. It starts when you open the app."
     const val COULD_NOT_ADD = "Couldn't add that. Try again."
     const val ENGINE_FAILED = "Maglev couldn't start. Open the app and try again."
+
+    /** Some files of a share were skipped. [total] is how many the user shared. Mirrors `quickShareCopy.someKept`. */
+    fun someKept(kept: Int, total: Int) = "Added $kept of $total files. The rest couldn't be read."
 }

@@ -76,8 +76,8 @@ Recipe: `distribution/fdroid/com.maglev.yml` (copy to `fdroiddata/metadata/com.m
 15. **Tag naming.** `release-apk.yml` triggers on `v*`. Beta tags `v<maj>.<min>-beta` match the recipe's
     `UpdateCheckMode: Tags ^v[0-9]+\.[0-9]+-beta$`. F-Droid users get betas as stable unless you tag stable releases `v<maj>.<min>`
     and widen the regex. **From 1.0 (2026-11-26) tags are `v<maj>.<min>` with no `-beta`.** Before submitting this recipe,
-    change `UpdateCheckMode` to `Tags ^v[0-9]+\.[0-9]+$`, `AutoUpdateMode` to `Version v%v`, and the `binary:` URLs to
-    `.../download/v%v/Maglev-v%v-<abi>.apk`, and start the Builds list at 1.0 (versionCode 1000 × 10 + ABI digit).
+    change `UpdateCheckMode` to `Tags ^v[0-9]+\.[0-9]+(\.[0-9]+)?$` (fix releases are tagged `v<maj>.<min>.<patch>`, e.g. `v1.0.1`), `AutoUpdateMode` to `Version v%v`, and the `binary:` URLs to
+    `.../download/v%v/Maglev-v%v-<abi>.apk`, and start the Builds list at 1.0 (versionCode 10000 × 10 + ABI digit; 1.0.1 is 10001 × 10 + digit).
 16. **Build time and memory.** Rust LTO + Gradle + Hermes on one buildserver VM per ABI. Add
     `timeout: 7200` to a build entry if the first run is killed.
 

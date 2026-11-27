@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// NATIVE_CONTRACT 36.6: subtitle hash, save and unzip. Proves the hash vector on the JS side, that the Kotlin test
+// Subtitle hash, save and unzip. Proves the hash vector on the JS side, that the Kotlin test
 // holds the same constant, that the Kotlin source exposes the calls and error codes, and that the mock implements them.
 // Needs Node 22.18+ (runs the TypeScript source directly).
 process.removeAllListeners('warning');

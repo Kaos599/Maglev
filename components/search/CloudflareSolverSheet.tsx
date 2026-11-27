@@ -10,7 +10,7 @@ import { Button } from '../ui';
 import { hostOf } from '../../utils/search/challenge';
 import { setClearance } from '../../utils/search/clearance';
 
-/** The WebView gives up after this long (SEARCH_CONTRACT section 8). */
+/** The WebView gives up after this long. */
 const SOLVE_TIMEOUT_MS = 60_000;
 
 // Reports the WebView's own User-Agent. Cloudflare ties cf_clearance to it, so every later request to the host reuses it.

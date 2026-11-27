@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Admission vectors (SM-35, docs/STATE_MACHINES_AND_SCREENS.md). The same fixture drives the Kotlin port.
+// Admission vectors. The same fixture drives the Kotlin port.
 // Needs Node 22.18+ (runs the TypeScript source directly via type stripping).
 
 process.removeAllListeners('warning');
@@ -57,7 +57,7 @@ async function main() {
   check('tight without pending downloads does not mention them', !/other downloads/.test(admissionCaption(tightAlone, 0) || ''));
   const no = admit({ freeBytes: 500 * MB, pendingNeed: 100 * MB, stagingFactor: 1, selectionBytes: 900 * MB });
   check('doesnt fit with pending downloads explains the budget', /only .* free after your other downloads finish/.test(admissionCaption(no, 100 * MB) || ''));
-  // SM-35 on the link sheets: the "Not enough space" banner gives the figures and the reason (2026-11-20 phone test:
+  // On the link sheets: the "Not enough space" banner gives the figures and the reason (seen on a phone:
   // a 1.5 GB file refused with 2.7 GB free because a paused torrent still needed its space).
   const { noSpaceBody } = await import('../utils/admissionCopy.ts');
   const held = admit({ freeBytes: 2765 * MB, pendingNeed: 1400 * MB, stagingFactor: 1, selectionBytes: 1500 * MB });
@@ -73,7 +73,7 @@ async function main() {
     const src = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
     check(`${f}: the space banner uses the hook's body, not the generic line`, /body=\{noSpace\}/.test(src) && !/notEnoughSpace\.body/.test(src));
   }
-  // SM-35 counts link downloads: every caller must hand pendingNeedOf the downloads as well as the torrents.
+  // Admission counts link downloads: every caller must hand pendingNeedOf the downloads as well as the torrents.
   for (const f of ['app/add-torrent.tsx', 'app/(tabs)/search.tsx', 'components/transfers/lowSpace.ts', 'utils/useDownloadAdmission.ts', 'utils/assistant/toolRunner.ts']) {
     const src = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
     const calls = [...src.matchAll(/pendingNeedOf\(([\s\S]*?)\)\s*;?\s*$/gm)];

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Tests for the Project Gutenberg and LibriVox providers (direct-file results, SEARCH_CONTRACT section 9).
+// Tests for the Project Gutenberg and LibriVox providers (direct-file results).
 // No network: fixtures are recorded responses, see scripts/fixtures/search/{gutenberg,librivox}_SOURCES.txt.
 // Needs Node 22.18+ (runs the TypeScript sources directly via type stripping).
 

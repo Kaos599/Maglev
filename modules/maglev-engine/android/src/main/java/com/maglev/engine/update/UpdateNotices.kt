@@ -10,6 +10,7 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.maglev.engine.R
+import com.maglev.engine.share.ShareHandoff
 
 /** The "Updates" notification channel and the three update notices (docs/NATIVE_CONTRACT.md section 27.3 and 27.5). */
 object UpdateNotices {
@@ -29,8 +30,7 @@ object UpdateNotices {
 
     /** Opens Updates, where the update card is. */
     private fun aboutIntent(context: Context): PendingIntent {
-        val i = Intent(Intent.ACTION_VIEW, Uri.parse("maglev://settings/updates")).setPackage(context.packageName)
-        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        val i = ShareHandoff.routeIntent(context, "maglev://settings/updates")
         return PendingIntent.getActivity(context, 4201, i, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
     }
 

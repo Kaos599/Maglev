@@ -123,7 +123,7 @@ async function main() {
   check('lowSpace: fully downloaded rows need nothing', lowSpaceWarning(10 * MB, [t(5 * GB, 5 * GB)], []) === null);
   check('lowSpace: pending need uses what is left, not the size', lowSpaceWarning(2 * GB, [t(5 * GB, 4 * GB)], []) === null);
   check('lowSpace: plenty of space shows nothing', lowSpaceWarning(50 * GB, [t(5 * GB, 0)], []) === null);
-  // SM-35: link downloads count too.
+  // Link downloads count too.
   const link = (state, size, downloaded) => ({ state, size, downloaded, error: null });
   check('lowSpace: a link download needing more than is free shows the banner', !!lowSpaceWarning(1 * GB, [], [link('downloading', 3 * GB, 0)]));
   check('lowSpace: a finished or size-less link needs nothing', lowSpaceWarning(10 * MB, [], [link('finished', 5 * GB, 5 * GB), link('downloading', null, 0)]) === null);

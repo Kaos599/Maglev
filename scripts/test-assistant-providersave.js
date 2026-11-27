@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// SM-40: a probe that finishes after Remove key must not save the key again. Pure helper test.
+// A probe that finishes after Remove key must not save the key again. Pure helper test.
 process.removeAllListeners('warning');
 let passed = 0;
 let failed = 0;

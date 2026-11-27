@@ -20,10 +20,10 @@ import java.util.concurrent.ExecutionException
 import java.util.concurrent.FutureTask
 
 /**
- * In-app updater (docs/NATIVE_CONTRACT.md section 27.4 and 27.5).
+ * In-app updater.
  * Downloads one APK from GitHub's release servers, verifies it, and hands it to PackageInstaller.
  * It uses its own HttpURLConnection, so nothing appears in Transfers.
- * Every entry point refuses with MANAGED when another app owns updates (27.1).
+ * Every entry point refuses with MANAGED when another app owns updates.
  */
 object AppUpdater {
     /** The only hosts a download may start on or be redirected to. */
@@ -74,7 +74,7 @@ object AppUpdater {
     /** Blocking. Call off the main thread. A second call while one runs joins the first. */
     fun download(context: Context, url: String, sha256: String, size: Long, requireVpn: Boolean = false): Map<String, Any?> {
         managed(context)?.let { return it }
-        // VPN only (Settings > Network) also covers a download the user started by hand (section 30).
+        // VPN only (Settings > Network) also covers a download the user started by hand.
         if (requireVpn && network(context)["vpn"] != true) return failure("BLOCKED", "Your network settings block this download right now.")
         if (!isAllowedUrl(url)) return failure("UPDATE_INVALID", "This update didn't pass Maglev's checks, so it wasn't installed.")
         if (!Regex("^[0-9a-fA-F]{64}$").matches(sha256)) return failure("UPDATE_INVALID", "This update didn't pass Maglev's checks, so it wasn't installed.")
@@ -317,7 +317,7 @@ object AppUpdater {
     }
 
     /**
-     * The four checks of 27.4: the file's SHA-256, the package name, a higher versionCode, and the same signing
+     * The four checks before an install: the file's SHA-256, the package name, a higher versionCode, and the same signing
      * certificates as the installed app. Returns null when all pass, otherwise a short reason for the log.
      */
     fun verify(context: Context, file: File, sha256: String): String? {

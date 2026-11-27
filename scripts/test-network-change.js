@@ -1,4 +1,4 @@
-// Source-level check: a default-network change reaches Rust as nativeNetworkChanged (contract section 17.x).
+// Source-level check: a default-network change reaches Rust as nativeNetworkChanged.
 const fs = require('fs');
 const path = require('path');
 const read = (p) => fs.readFileSync(path.join(__dirname, '..', p), 'utf8');

@@ -1,5 +1,5 @@
 /**
- * Plain-English subtitle copy, in one place (docs/NATIVE_CONTRACT.md section 36.10). Each error has one sentence and
+ * Plain-English subtitle copy, in one place. Each error has one sentence and
  * one action. Pure.
  */
 import { languageName } from './languages.ts';
@@ -18,17 +18,17 @@ export const PRIVACY_LINE =
 export const TURNED_OFF_BY_MAGLEV = 'Turned off by Maglev';
 
 export const FIND_SUBTITLES = 'Find subtitles…';
-// NATIVE_CONTRACT 42.1
+// Shown while a video has no bytes on disk yet. Find subtitles turns on once any of the file is saved.
 export const FILE_NOT_STARTED = 'When this file starts';
 export const SHEET_TITLE = 'Subtitles';
 export const DOWNLOAD_BUTTON = 'Download subtitle';
-// NATIVE_CONTRACT 42.3
+// The "Searching for" row: the name the search uses, which the user can edit.
 export const SEARCHING_FOR_LABEL = 'Searching for';
 export const CHANGE_NAME_LABEL = 'Change the name to search for';
 export const USE_FILE_NAME = 'Use file name';
 export const TYPE_A_TITLE = 'Type a title';
 export const SEARCH_BUTTON = 'Search';
-// NATIVE_CONTRACT 42.5
+// Notes under the results. An unfinished file has no fingerprint, so it is matched by name only.
 export const NOTE_MATCHED_BY_NAME = 'Matched by name. Exact matching works once the file finishes.';
 export const NOTE_MATCHED_BY_TYPED = 'Matched by the name you typed.';
 export const OTHER_LANGUAGE_TAB = 'Other…';
@@ -41,11 +41,11 @@ export const NAME_TAKEN_TITLE = 'A subtitle with this name already exists.';
 export const NAME_TAKEN_ACTIONS = { replace: 'Replace', keepBoth: 'Keep both', cancel: 'Cancel' } as const;
 export const KEEP_BOTH_NOTE = "Players may not load the second one automatically.";
 
-/** 39.1 S8: copies .2 to .9 all exist. */
+/** Copies .2 to .9 all exist. */
 export const COPIES_FULL_TITLE = 'There are already 9 copies. Replace one or cancel.';
-/** 39.1 S7: every row of this language already failed. */
+/** Every row of this language already failed. */
 export const NO_OTHER_ROWS = 'No other subtitles to try for this language.';
-/** 39.1 S6: SAF (file picker) folders. Shown on the menu row and in Settings > Subtitles. */
+/** SAF (file picker) folders. Shown on the menu row and in Settings > Subtitles. */
 export const SAF_UNAVAILABLE = 'Not available yet for folders picked with the file picker';
 
 export const NOTICE_CONTINUE = 'Continue';
@@ -65,7 +65,7 @@ const AMBIGUOUS_PACK = "This file has subtitles for several episodes and Maglev 
 const UNREADABLE_TEXT = "Maglev can't read this subtitle's text.";
 const UNSUPPORTED_FILE = "This subtitle's file type isn't supported.";
 
-/** "1 video", "2 videos": the noun takes the singular for exactly 1 (46.1). */
+/** "1 video", "2 videos": the noun takes the singular for exactly 1. */
 export const plural = (n: number, one: string, many = `${one}s`): string => (n === 1 ? one : many);
 
 export function groupFoundLine(count: number): string {
@@ -79,7 +79,7 @@ export interface CopyArgs {
   language?: string;
 }
 
-/** The sentence and the action for an error code (36.10). */
+/** The sentence and the action for an error code. */
 export function errorCopy(code: SubtitleErrorCode, a: CopyArgs = {}): ErrorCopy {
   const source = a.source ?? 'This source';
   switch (code) {
@@ -106,7 +106,7 @@ export function errorCopy(code: SubtitleErrorCode, a: CopyArgs = {}): ErrorCopy 
     case 'ambiguous_pack':
       return { message: AMBIGUOUS_PACK, action: 'Pick another' };
     case 'REPLACE_DENIED':
-      // NATIVE_CONTRACT 39.1 S5
+      // Replace failed because another app (or an earlier install) owns the file. Never say "can't write to this folder" here.
       return { message: 'That file belongs to another app. Save a second copy instead?', action: NAME_TAKEN_ACTIONS.keepBoth };
     case 'NAME_TAKEN':
       return { message: NAME_TAKEN_TITLE, action: NAME_TAKEN_ACTIONS.replace };
@@ -116,27 +116,27 @@ export function errorCopy(code: SubtitleErrorCode, a: CopyArgs = {}): ErrorCopy 
   }
 }
 
-// ---------------------------------------------------------------- NATIVE_CONTRACT 44: the "Added" message and requests
+// ---------------------------------------------------------------- the "Added" message and requests
 
-/** 44.6. The switch's line in Settings > Subtitles. */
+/** The switch's line in Settings > Subtitles. */
 export const AUTO_NEW_VIDEOS_SUBTITLE = 'In your languages, while Maglev is open';
 
-/** 45.4: the confirm sheet for the Settings switch. It always shows, because names go out in the background. */
+/** The confirm sheet for the Settings switch. It always shows, because names go out in the background. */
 export const AUTO_CONFIRM_TITLE = 'Get subtitles for new videos?';
 export const AUTO_CONFIRM_BODY =
   'While Maglev is open, it sends the names of new videos you add to your subtitle sources, and saves a subtitle when one fits. Close matches wait for you.';
 export const AUTO_CONFIRM_TURN_ON = 'Turn on';
 export const AUTO_CONFIRM_NOT_NOW = NOTICE_NOT_NOW;
 
-/** 45.4: the sheet's text. When the one-time notice was never accepted, it comes first and Turn on accepts both. */
+/** The sheet's text. When the one-time notice was never accepted, it comes first and Turn on accepts both. */
 export function autoConfirmBody(needsNotice: boolean, names: readonly string[]): string {
   return needsNotice ? `${privacyNotice(names)}\n\n${AUTO_CONFIRM_BODY}` : AUTO_CONFIRM_BODY;
 }
 
-/** 44.7: results only in languages the user didn't pick. */
+/** Results only in languages the user didn't pick. */
 export const foundInOtherOnly = (language: string): string => `Found in ${languageName(language)} only`;
 
-/** 44.8: what TalkBack says for the card icon, by state. */
+/** What TalkBack says for the card icon, by state. */
 export const CARD_ICON_WORDS = {
   getting: 'Getting subtitles',
   saved: 'Subtitles saved',
@@ -144,15 +144,15 @@ export const CARD_ICON_WORDS = {
   none: 'No subtitles found',
 } as const;
 
-// 44.9 The multi-video sheet.
-/** 44.9 / 46.1: "Subtitles for 1 video", "Subtitles for 23 episodes". The singular is used for 1. */
+// The multi-video sheet.
+/** "Subtitles for 1 video", "Subtitles for 23 episodes". The singular is used for 1. */
 export const multiTitle = (n: number, episodes = false): string => `Subtitles for ${n} ${plural(n, episodes ? 'episode' : 'video')}`;
 export const USES_YOUR_LANGUAGES = 'Uses your subtitle languages';
 export const CHANGE_LANGUAGES = 'Change';
 const MULTI_BUTTON_NONE = 'Get subtitles';
 export const multiButton = (k: number): string => (k <= 0 ? MULTI_BUTTON_NONE : `Get subtitles for ${k}`);
 export const SKIP_LABEL = 'Skip';
-/** 44.15 D6: appended to a row whose title and detail match an earlier row's: " · 2nd", " · 3rd", " · 4th", " · 11th", " · 21st". */
+/** Appended to a row whose title and detail match an earlier row's: " · 2nd", " · 3rd", " · 4th", " · 11th", " · 21st". */
 export function ordinalSuffix(n: number): string {
   const tens = n % 100;
   const word = tens >= 11 && tens <= 13 ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' } as Record<number, string>)[n % 10] ?? 'th';
@@ -161,7 +161,7 @@ export function ordinalSuffix(n: number): string {
 export const nonVideoOne = (name: string): string => `${name} is music, so it gets no subtitles.`;
 export const nonVideoMany = (k: number): string => `${k} other ${k === 1 ? 'add is' : 'adds are'} not ${k === 1 ? 'a video' : 'videos'}, so ${k === 1 ? 'it gets' : 'they get'} no subtitles.`;
 
-/** 44.9 status mode: a phase in words. */
+/** A phase in words. */
 export const PHASE_WORDS = {
   queued: 'Waiting for the file',
   searching: 'Getting\u2026',
@@ -185,7 +185,7 @@ export function statusSummary(c: { saved: number; needsYou: number; waiting: num
   return parts.join(' \u00B7 ');
 }
 
-// 44.14 The Subtitles row on the download page.
+// The Subtitles row on the download page.
 export const ROW_LABEL = 'Subtitles';
 export const ROW_NOT_STARTED = FILE_NOT_STARTED;
 export const ROW_NOT_ASKED = 'Not asked yet';
@@ -197,7 +197,7 @@ export const ROW_NONE = 'No match yet';
 export const ROW_OFFLINE = 'Waiting for internet';
 export const ROW_LIMITED = 'A source is busy · retrying soon';
 export const ROW_SKIPPED = 'Skipped';
-// 44.15 D8, D9, D10
+// Row states for a run that failed, cannot save, or needs the user.
 export const ROW_FAILED = "Sources didn't answer";
 export const ROW_UNAVAILABLE = "Can't save subtitles in this folder";
 export const ROW_NEEDS_OK = 'Needs your OK';
@@ -224,7 +224,7 @@ export function rowPackLine(c: { saved: number; total: number; needYou: number }
 /** What TalkBack reads: "Subtitles, {line}, button {label}". */
 export const rowLabel = (line: string, button: string | null): string => (button ? `${ROW_LABEL}, ${line}, button ${button}` : `${ROW_LABEL}, ${line}`);
 
-// ---------------------------------------------------------------- NATIVE_CONTRACT 45.5: sources that are off
+// ---------------------------------------------------------------- sources that are off
 
 export const TURN_ON_MORE_SOURCES = 'Turn on more sources';
 export const MORE_SOURCES = 'More sources';
@@ -242,19 +242,19 @@ export const offSourcesTail = (k: number): string => (k === 1 ? '1 source off' :
 /** The page row's line: "No match yet · 2 sources off". */
 export const rowNoneOff = (k: number): string => `${ROW_NONE} \u00B7 ${offSourcesTail(k)}`;
 
-// ---------------------------------------------------------------- NATIVE_CONTRACT 46: a season
+// ---------------------------------------------------------------- a season
 
-/** 46.1: the main line of an episode row. */
+/** The main line of an episode row. */
 export const episodeMain = (code: string, title: string): string => (title ? `${code} \u00B7 ${title}` : code);
-/** 46.1: "Saved · English". */
+/** "Saved · English". */
 export const episodeSaved = (language: string | null): string => (language ? `Saved \u00B7 ${languageName(language)}` : 'Saved');
-/** 46.3: the button in the status sheet. */
+/** The button in the status sheet. */
 export const useBestMatchFor = (k: number): string => `Use the best match for ${k}`;
-/** 46.5: the page row's button. */
+/** The page row's button. */
 export const USE_BEST_MATCH = 'Use best match';
-/** 46.3: while it runs. */
+/** While it runs. */
 export const bulkProgress = (i: number, k: number): string => `Saving ${i} of ${k}\u2026`;
-/** 46.3: the line after it finished. The second part is left out when nothing is left. */
+/** The line after it finished. The second part is left out when nothing is left. */
 export function bulkResult(saved: number, stillNeed: number): string {
   const head = `Saved ${saved}.`;
   return stillNeed > 0 ? `${head} ${stillNeed} still ${stillNeed === 1 ? 'needs' : 'need'} you.` : head;

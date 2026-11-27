@@ -17,7 +17,7 @@ export interface WhyStuckProps {
 }
 
 /**
- * NATIVE_CONTRACT 43.4 / 43.5: why a download is not moving, with the numbers and, for a torrent, one thing to try.
+ * Why a download is not moving, with the numbers and, for a torrent, one thing to try.
  * A surface card like the page's others: 1 px hairline border, no coloured edge. The caller decides when it shows;
  * it goes away as soon as data flows.
  */

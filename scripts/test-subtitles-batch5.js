@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Subtitle sources, batch 5 (NATIVE_CONTRACT 36.3, 36.12): Sous-Titres.eu, SubSynchro, Subclub, Subtitri Nekur,
+// Subtitle sources, batch 5: Sous-Titres.eu, SubSynchro, Subclub, Subtitri Nekur,
 // SubtitleStar, Subtitulamos.tv. No network: the parse functions run on recorded pages (scripts/fixtures/subtitles/*/SOURCES.txt)
 // and the search/download wrappers run against a fake fetch that serves those pages.
 // Needs Node 22.18+ (runs the TypeScript sources directly via type stripping).

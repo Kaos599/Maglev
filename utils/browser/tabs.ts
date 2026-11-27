@@ -1,5 +1,5 @@
 /**
- * Browser tabs: pure state (docs/NATIVE_CONTRACT.md section 24.10, machines T1 and T2). No React, no native imports.
+ * Browser tabs: pure state. No React, no native imports.
  *
  * `tabs` is kept in creation order (that order is the saved `position`); the switcher shows it newest first.
  * Every function returns a new state and never changes the one it was given.

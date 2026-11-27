@@ -13,14 +13,14 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
-/** What the list holds and where it came from (docs/NATIVE_CONTRACT.md section 24.4 `getBlocklistInfo`). */
+/** What the list holds and where it came from (`getBlocklistInfo`). */
 data class BlocklistInfo(
     val domains: Int,
     val updatedAt: Long?,
     val source: String,
     val urls: List<String>,
     val bytes: Long = 0L,
-    /** False when a conditional update found every address unchanged (section 31.2). */
+    /** False when a conditional update found every address unchanged. */
     val changed: Boolean = true,
 )
 
@@ -37,7 +37,7 @@ internal class Validators(val etag: String?, val lastModified: String?)
  */
 object BlocklistStore {
     private const val ASSET = "blocklist.txt"
-    /** Crypto-mining domains (section 24.4a). Merged into every active list, so a custom list never drops them. */
+    /** Crypto-mining domains. Merged into every active list, so a custom list never drops them. */
     private const val MINERS_ASSET = "miners.txt"
     private const val DIR = "browser"
     private const val FILE = "blocklist.txt"
@@ -74,7 +74,7 @@ object BlocklistStore {
         return set.get()
     }
 
-    /** NATIVE_CONTRACT 39.2 B4: the mining domains alone. Checked on every subresource request, with ad blocking on or off. Request threads only. */
+    /** The mining domains alone. Checked on every subresource request, with ad blocking on or off. Request threads only. */
     fun minerMatcher(): DomainSet {
         if (ready.count > 0) ready.await(3, TimeUnit.SECONDS)
         return minerSet
@@ -160,7 +160,7 @@ object BlocklistStore {
         BrowserGovernance.blockedReason(context)?.let { throw BlocklistException("BLOCKED", it) }
         warm(context)
         ready.await(10, TimeUnit.SECONDS)
-        // A conditional request is skipped when the downloaded list is missing (section 31.2).
+        // A conditional request is skipped when the downloaded list is missing.
         val stored = if (conditional && File(dir(context), FILE).isFile) readValidators(context) else emptyMap()
         val answers = LinkedHashMap<String, Fetched>()
         for (u in clean) answers[u] = fetch(u, stored[u])

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# C-SVC-3 device check (docs/NATIVE_CONTRACT.md section 11.7): the foreground service must come back after a crash.
+# C-SVC-3 device check: the foreground service must come back after a crash.
 #
 # Usage:
 #   scripts/device/test-service-restart.sh [--serial SERIAL] [--package com.maglev] [--timeout 60]

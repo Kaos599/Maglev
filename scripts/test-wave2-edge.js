@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// NATIVE_CONTRACT 21 (TypeScript side): duplicate add merges trackers, and the VPN-only rule reaches governance.
+// Duplicate add merges trackers, and the VPN-only rule reaches governance.
 // Needs Node 22.18+ (runs the TypeScript sources directly via type stripping).
 process.removeAllListeners('warning');
 
@@ -39,6 +39,6 @@ async function main() {
     console.error(`\n${failed} failed`);
     process.exit(1);
   }
-  console.log('\nwave 2 edge tests passed');
+  console.log('\nduplicate-add and VPN-only edge tests passed');
 }
 main();

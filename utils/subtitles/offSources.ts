@@ -1,4 +1,4 @@
-// NATIVE_CONTRACT 45.5: when no subtitle is found, count the sources that are off and could have answered. Pure:
+// When no subtitle is found, count the sources that are off and could have answered. Pure:
 // settings and provider lists only, nothing is fetched.
 import type { SubtitleProvider } from './types.ts';
 import { SUBTITLE_PROVIDERS, listTurnedOff, providerEnabled, type ListOverrides } from './providers/index.ts';

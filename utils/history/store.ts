@@ -1,5 +1,5 @@
 /**
- * Browser history logic (docs/NATIVE_CONTRACT.md section 24.9), over an injected database so tests can use node:sqlite.
+ * Browser history logic, over an injected database so tests can use node:sqlite.
  * No React and no native imports here.
  */
 
@@ -44,7 +44,7 @@ const SCHEMA = [
   )`,
   'CREATE INDEX IF NOT EXISTS pages_last ON pages(last_visited DESC)',
   'CREATE INDEX IF NOT EXISTS pages_host ON pages(host)',
-  // Tabs (24.10). Same database, so one open and one wipe.
+  // Tabs. Same database, so one open and one wipe.
   `CREATE TABLE IF NOT EXISTS tabs (
     id TEXT PRIMARY KEY,
     url TEXT NOT NULL,
@@ -56,7 +56,7 @@ const SCHEMA = [
   'CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)',
 ];
 
-/** A saved tab (24.10). `url` is '' for a page that isn't http(s). */
+/** A saved tab. `url` is '' for a page that isn't http(s). */
 export type TabRow = { id: string; url: string; title: string; position: number; opener: string | null; lastActive: number };
 
 
@@ -293,7 +293,7 @@ export function createHistoryStore(db: HistoryDb, prefs: () => HistoryPrefs) {
   function saveTabs(rows: TabRow[], activeId: string | null): Promise<boolean> {
     const job = tabsQueue.then(async () => {
       if (tabsBroken) return false;
-      // With "Save history" off tabs stay in memory (section 30).
+      // With "Save history" off tabs stay in memory.
       if (!prefs().saveHistory || prefs().privateBrowsing) return false; // private: tabs stay in memory
       try {
         await init();

@@ -38,7 +38,7 @@ export function useNetworkStatus() {
     if (busy) return;
     setBusy(true);
     try {
-      // The module's own restartEngine (NATIVE_CONTRACT 41) resolves with a result, never throws on failure.
+      // The module's own restartEngine resolves with a result, never throws on failure.
       if (typeof maglevEngine.restartEngine === 'function') {
         const res = await maglevEngine.restartEngine();
         if (!res || (res as { ok?: boolean }).ok === false) throw new Error('restart failed');

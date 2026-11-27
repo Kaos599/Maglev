@@ -5,7 +5,7 @@ import android.content.Context
 import android.content.Intent
 
 /**
- * BOOT_COMPLETED and MY_PACKAGE_REPLACED run [RestartEntry] (contract 19).
+ * BOOT_COMPLETED and MY_PACKAGE_REPLACED run [RestartEntry].
  * LOCKED_BOOT_COMPLETED is delivered because the receiver is directBootAware, and ignored: nothing here may
  * touch credential-protected storage before the user unlocks the phone.
  */

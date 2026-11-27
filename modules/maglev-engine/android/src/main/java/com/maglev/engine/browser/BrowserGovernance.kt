@@ -6,7 +6,7 @@ import android.net.NetworkCapabilities
 import com.maglev.engine.EngineHost
 
 /**
- * The user's Wi-Fi-only and VPN-only rules (docs/NATIVE_CONTRACT.md section 6, 21) for the block list update.
+ * The user's Wi-Fi-only and VPN-only rules for the block list update.
  * EngineHost keeps its network watcher private, so this reads the same saved rules and asks Android for the
  * current network with the same tests EngineHost uses (NOT_METERED plus Wi-Fi or Ethernet; TRANSPORT_VPN).
  * The Wi-Fi name whitelist is not checked: a list update is a few hundred KB, and the name is often unreadable.

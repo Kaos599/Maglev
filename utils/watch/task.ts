@@ -1,5 +1,6 @@
-// The background job. Import this file once for its side effect, at the top of app/_layout.tsx, so the task is
-// defined in the global scope in the app and in the headless run (docs/contracts-0.19/watch.md section 2).
+// The background job. Import this file once for its side effect, at the top of app/_layout.tsx, so the task is defined
+// in the global scope in the app and in the headless run. WorkManager runs it as one periodic job, at the shortest
+// interval among the active watches.
 //   TaskManager.defineTask: https://docs.expo.dev/versions/v58.0.0/sdk/task-manager/
 //   BackgroundTask:         https://docs.expo.dev/versions/v58.0.0/sdk/background-task/
 import * as BackgroundTask from 'expo-background-task';

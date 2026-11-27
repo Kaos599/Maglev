@@ -1,5 +1,5 @@
 /**
- * NATIVE_CONTRACT 43.1: the flow clock. One record per transfer id, shared by the card and the page so both say the
+ * The flow clock. One record per transfer id, shared by the card and the page so both say the
  * same thing about whether data is arriving. Pure functions take (prev, telemetry, now); the time is always passed in.
  * The module-level store at the bottom is the only state, in memory only.
  */

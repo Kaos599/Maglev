@@ -1,6 +1,6 @@
 /**
- * Downloads without a tap, Back-button hijacking, HTTPS-first and the found-files hint: pure logic
- * (docs/NATIVE_CONTRACT.md section 24.11). Mirrored in Kotlin (BrowserHardening.kt). No React, no native imports.
+ * Downloads without a tap, Back-button hijacking, HTTPS-first and the found-files hint: pure logic.
+ * Mirrored in Kotlin (BrowserHardening.kt). No React, no native imports.
  */
 import { TAP_MS } from './popups.ts';
 
@@ -14,10 +14,10 @@ export function downloadTapped(tapAgeMs: number | null, usesSoFar: number, userL
   );
 }
 
-/** NATIVE_CONTRACT 39.2 B1: a tap vouches for downloads from the same document this long. Mirrors DownloadRules.VOUCH_MS. */
+/** A tap vouches for downloads from the same page (the same document, not navigated away) for this long. Mirrors DownloadRules.VOUCH_MS. */
 const DOWNLOAD_VOUCH_MS = 30_000;
 
-/** NATIVE_CONTRACT 39.2 B1: shown when a download is held (the view still lists it in Files). */
+/** Shown when a download is held. A download is never held silently, and the view still lists it in Files. */
 export const DOWNLOAD_HELD_NOTICE = 'A download was held. Open Files to save it.';
 export const DOWNLOAD_HELD_ACTION = 'Open';
 

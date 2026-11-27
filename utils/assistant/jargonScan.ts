@@ -1,5 +1,5 @@
-// Splits assistant text into plain and glossary-term segments (docs/ASSISTANT_DESIGN.md section 9, "Jargon chips").
-// Pure TypeScript: no React, no engine, no network (contract C-ASSIST-8). The app scans, so the model cannot invent a chip.
+// Splits assistant text into plain and glossary-term segments (the app's "jargon chips").
+// Pure TypeScript: no React, no engine, no network. The app scans, so the model cannot invent a chip.
 //
 // Matching rules:
 // - Terms are the label and the aka names of every glossary entry shown as a chip.

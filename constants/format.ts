@@ -15,7 +15,7 @@ export function formatBytes(bytes: number): string {
 }
 
 /**
- * NATIVE_CONTRACT 45.2: the compact amount, "134/587 MB" when both sides format to the same unit and
+ * The compact amount, "134/587 MB" when both sides format to the same unit and
  * "820 MB/2.1 GB" when they differ. `done` drops a trailing ".0". `approx` goes before the total ("~", a stream's estimate).
  */
 export function formatCompactAmount(done: number, total: number, approx = ''): string {
@@ -30,7 +30,7 @@ export function formatCompactAmount(done: number, total: number, approx = ''): s
 /**
  * A speed in 7-9 characters: 3 significant digits ("2.00 MB/s", "62.5 MB/s", "125 MB/s"), and the unit moves up at
  * 1000 rather than 1024 ("0.98 MB/s", never "1000 KB/s"). The status line keeps a 9-character slot for it, so the
- * amount beside it never shifts and never floats away from it (owner pick 2026-11-20). Bytes per second stay whole.
+ * amount beside it never shifts and never floats away from it. Bytes per second stay whole.
  */
 export function formatSpeed(bytesPerSec: number): string {
   const b = typeof bytesPerSec === 'number' && Number.isFinite(bytesPerSec) && bytesPerSec >= 1 ? bytesPerSec : 0;

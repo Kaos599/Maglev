@@ -1,4 +1,4 @@
-//! Streaming readiness (contract section 11.4): how much of a file can be played right now.
+//! Streaming readiness: how much of a file can be played right now.
 //!
 //! Pure byte math over the piece bitfield, so it is unit tested without a session.
 //! librqbit's bitfield is `Msb0`: piece 0 is the top bit of byte 0.

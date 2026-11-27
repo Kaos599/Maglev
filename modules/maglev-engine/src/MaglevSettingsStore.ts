@@ -75,7 +75,7 @@ function sanitizeFolder(v: unknown): DownloadFolder | null {
 
 const LANGUAGE_TAG = /^[a-z]{2}(?:-[A-Za-z0-9]{2,4})?$/;
 
-/** Subtitle settings (section 36.2): tolerant read; anything of the wrong type falls back to its default. */
+/** Subtitle settings: tolerant read; anything of the wrong type falls back to its default. */
 function sanitizeSubtitles(v: unknown): MaglevSettings['subtitles'] {
   const d = DEFAULT_SETTINGS.subtitles;
   const o = isPlainObject(v) ? v : {};

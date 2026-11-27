@@ -1,4 +1,4 @@
-/** Subtitle sources, batch 2 (contract 36.3). Owned by one porting agent; the registry imports this array. */
+/** Subtitle sources, batch 2. The registry imports this array. */
 import type { SubtitleProvider } from '../types.ts';
 import { moviesubtitles } from './moviesubtitles.ts';
 import { subf2m } from './subf2m.ts';

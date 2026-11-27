@@ -1,5 +1,5 @@
 /**
- * Telemetry arrives once a second (NATIVE_CONTRACT: `onTelemetry` once per second) as fresh objects.
+ * Telemetry arrives once a second (`onTelemetry` fires once per second) as fresh objects.
  * These helpers keep the previous objects when nothing in them changed, so React state only updates
  * on a real change and memoized rows keep their identity. Pure: no React, no react-native.
  */

@@ -39,24 +39,24 @@ interface Props {
   mode: 'choose' | 'status';
   onConfirm: (keys: string[]) => void;
   onClose: () => void;
-  /** Names of adds that are not videos, for the one muted footnote (44.9). */
+  /** Names of adds that are not videos, for the one muted footnote. */
   nonVideo?: string[];
   /**
-   * 46.2: a tap on an episode row opens the single SubtitleSheet for that file (the page owns the target). Without it
+   * A tap on an episode row opens the single SubtitleSheet for that file (the page owns the target). Without it
    * the rows are not tappable.
    */
   onOpenEpisode?: (askKey: string, fileKey: string, start: EpisodeStart) => void;
 }
 
-/** One row of the status list: a request, or (46.1) one video file of a season pack. */
+/** One row of the status list: a request, or one video file of a season pack. */
 type StatusRow = { kind: 'ask'; ask: SubtitleAsk; index: number } | { kind: 'episode'; ep: EpisodeRow };
 
 /** The typing form of a row's name: the title without brackets or the "· n episodes" tail. */
 const typingForm = (a: SubtitleAsk): string => a.searchName ?? a.title.split(' · ')[0].replace(/[()]/g, '');
 
 /**
- * NATIVE_CONTRACT 44.9: subtitles for several videos at once. `choose` has a checkbox per row (all ticked), `status`
- * shows each row's phase in words. The pencil edits the name to search for (NATIVE_CONTRACT 42). In `choose` the typed
+ * Subtitles for several videos at once. `choose` has a checkbox per row (all ticked), `status`
+ * shows each row's phase in words. The pencil edits the name to search for. In `choose` the typed
  * name is handed to `askSubtitles` through `setAskSearchName`; in `status` it searches again at once.
  */
 export function MultiSubtitleSheet({ visible, asks, mode, onConfirm, onClose, nonVideo, onOpenEpisode }: Props) {
@@ -80,13 +80,13 @@ export function MultiSubtitleSheet({ visible, asks, mode, onConfirm, onClose, no
       setNames({});
       return;
     }
-    // 44.15 N26: a name typed in choose mode that was never asked for is forgotten.
+    // A name typed in choose mode that was never asked for is forgotten.
     if (mode === 'choose') clearAskSearchNames(asks.map((a) => a.key));
     // Only the sheet closing matters here.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
-  // 44.15 D6: identical rows get " · 2nd", " · 3rd" in add order.
+  // Identical rows get " · 2nd", " · 3rd" in add order.
   const titles = useMemo(() => rowTitles(asks), [asks]);
   const ticked = asks.filter((a) => !off.has(a.key));
   const draftOk = parseTyped(draft).title !== '';
@@ -104,7 +104,7 @@ export function MultiSubtitleSheet({ visible, asks, mode, onConfirm, onClose, no
     setEditing(null);
   };
 
-  // 46.1: in status mode a season pack lists one row per video file; everything else keeps one row per request.
+  // In status mode a season pack lists one row per video file; everything else keeps one row per request.
   const rows = useMemo<StatusRow[]>(
     () => {
       if (mode !== 'status') return asks.map((ask, index) => ({ kind: 'ask' as const, ask, index }));
@@ -149,7 +149,7 @@ export function MultiSubtitleSheet({ visible, asks, mode, onConfirm, onClose, no
         </View>
         <View style={styles.summaryRow}>
         {summary ? <Text style={styles.summary}>{summary}</Text> : null}
-        {/* 45.5: a row found nothing and some sources are off. */}
+        {/* A row found nothing and some sources are off. */}
         {mode === 'status' && nothingFound && offSources.count > 0 ? (
           <PressableScale
             onPress={() => {
@@ -165,7 +165,7 @@ export function MultiSubtitleSheet({ visible, asks, mode, onConfirm, onClose, no
         ) : null}
         </View>
 
-        {/* 46.3: saves each qualifying run's stored best candidate; only on this tap. */}
+        {/* Saves each qualifying run's stored best candidate; only on this tap. */}
         {mode === 'status' && (bestK >= 1 || prog) ? (
           <Button
             label={prog ? bulkProgress(bulkIndex(prog.done, prog.total), prog.total) : useBestMatchFor(bestK)}
@@ -219,7 +219,7 @@ export function MultiSubtitleSheet({ visible, asks, mode, onConfirm, onClose, no
             const on = !off.has(a.key);
             const editingRow = editing === a.key;
             const pack = isPackAsk(a, getRequests()[a.key]?.files);
-            // 44.15 D7 / D12: a pack has no pencil, and a saved row is changed through the single sheet.
+            // A pack has no pencil, and a saved row is changed through the single sheet.
             const canEdit = !pack && phase !== 'saved';
             const typed = pack ? undefined : names[a.key] ?? a.searchName;
             const word = phase ? (phase === 'needs-pick' && getRequests()[a.key]?.otherLang ? foundInOtherOnly(getRequests()[a.key].otherLang!) : PHASE_WORDS[phase]) : '';

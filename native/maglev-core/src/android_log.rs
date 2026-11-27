@@ -2,7 +2,7 @@
 //!
 //! No new crate: the core already depends on `tracing`, and a `tracing::Subscriber` is a small trait. On Android the
 //! text goes through `__android_log_write` (liblog, always present, declared by hand). On other hosts the writer
-//! does nothing, so the pure formatting below is unit tested anywhere. Contract section 41, "Debug log".
+//! does nothing, so the pure formatting below is unit tested anywhere.
 //! API: https://docs.rs/tracing-core/0.1.36/tracing_core/subscriber/trait.Subscriber.html
 
 use std::fmt::{self, Debug, Write as _};

@@ -16,7 +16,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
 /**
- * Retry failed downloads automatically (docs/NATIVE_CONTRACT.md, autoRetry). Link downloads only.
+ * Retry failed downloads automatically (the autoRetry setting). Link downloads only.
  * One work request per download id, delayed by the user's wait. It runs with the app closed.
  */
 class AutoRetryWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {

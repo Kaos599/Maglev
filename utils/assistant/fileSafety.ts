@@ -1,5 +1,5 @@
 /**
- * File-list safety check for the assistant (docs/ASSISTANT_DESIGN.md §3.4, review round 1: R1-7).
+ * File-list safety check for the assistant. It returns green, amber or red.
  *
  * Pure: no React, no react-native, no engine. Input is the file list of a
  * torrent plus what the search result claimed. Output is a level and structured
@@ -90,7 +90,7 @@ export interface SafetyResult {
 const MB = 1024 * 1024;
 const GB = 1024 * MB;
 
-/** Programs and scripts. A video or music torrent never needs one (§3.4). */
+/** Programs and scripts. A video or music torrent never needs one. */
 const EXECUTABLE_EXT = new Set([
   'exe', 'scr', 'bat', 'cmd', 'lnk', 'js', 'jse', 'vbs', 'vbe', 'wsf', 'wsh', 'reg', 'url', 'ps1', 'psm1',
   'msi', 'msp', 'jar', 'dll', 'com', 'pif', 'hta', 'cpl',

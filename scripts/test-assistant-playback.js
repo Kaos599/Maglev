@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Playback verdict check (docs/ASSISTANT_DESIGN.md D3). Runs on recorded probe outputs. No network.
+// Playback verdict check. Runs on recorded probe outputs. No network.
 // Needs Node 22.18+ (runs the TypeScript source directly via type stripping).
 
 process.removeAllListeners('warning');

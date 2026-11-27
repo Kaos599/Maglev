@@ -1,4 +1,4 @@
-//! What Maglev can observe while a magnet resolves (`docs/NATIVE_CONTRACT.md` section 12.1).
+//! What Maglev can observe while a magnet resolves.
 //!
 //! librqbit reports no progress while it looks for a magnet's metadata, so a side task counts the
 //! unique peer addresses the DHT returns. This module is the pure registry behind it: no session,

@@ -1,5 +1,5 @@
 // Playback advice from a parsed release name and the device codec probe
-// (docs/ASSISTANT_DESIGN.md section 9 "On your phone:", D3). Pure TypeScript, never throws.
+// for the "On your phone:" line on a result card. Pure TypeScript, never throws.
 // Rule: an unknown probe never gives "smooth".
 import type { ParsedRelease } from './releaseName';
 import type { PlaybackSupport, CodecSupport } from '../../modules/maglev-engine/src/MaglevEngine.types';

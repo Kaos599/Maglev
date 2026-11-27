@@ -3,7 +3,7 @@ package com.maglev.engine.browser
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
 
-/** A block list failure. [code] is one of the docs/NATIVE_CONTRACT.md section 24.4 codes. */
+/** A block list failure. [code] is one of the block list error codes. */
 class BlocklistException(val code: String, message: String) : Exception(message)
 
 /**
@@ -31,7 +31,7 @@ class DomainSet(private val domains: Set<String>) {
 }
 
 /**
- * Parser for block lists (docs/NATIVE_CONTRACT.md section 24.4). Pure Kotlin, no Android classes.
+ * Parser for block lists. Pure Kotlin, no Android classes.
  * Accepts hosts lines (`0.0.0.0 x`, `127.0.0.1 x`), adblock domain rules (`||x^` with no path and no options)
  * and plain domain lines. Comments, cosmetic and path rules, `localhost`-type names and invalid hosts are ignored.
  */
