@@ -64,7 +64,6 @@ export default function AddDownloadScreen() {
   const [notAFile, setNotAFile] = useState(false);
   // The page has no video: the error shows its message with Back only.
   const [noVideo, setNoVideo] = useState(false);
-  const [siteBlocked, setSiteBlocked] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
   const [addStopped, setAddStopped] = useState(false);
   const [folderLabel, setFolderLabel] = useState<string | null>(null);
@@ -103,7 +102,6 @@ export default function AddDownloadScreen() {
     setBaseName('');
     setNotAFile(false);
     setNoVideo(false);
-    setSiteBlocked(false);
     setAddError(null);
     setAddStopped(false);
     setStreamItem(null);
@@ -174,12 +172,6 @@ export default function AddDownloadScreen() {
       allowLanRef.current = allowLan;
       // A video page (YouTube, X, Instagram...) has no file to probe: read the page for its videos.
       if (isVideoSiteUrl(input)) {
-        if (settings.network.wifiOnly && onMeteredNetwork) {
-          setSiteBlocked(true);
-          setErrorView({ body: 'Waiting for Wi-Fi. Turn on Wi-Fi or allow mobile data in Settings.', primary: 'retry' });
-          setPhase('error');
-          return;
-        }
         await readSite(input, mine, false);
         return;
       }
@@ -209,21 +201,13 @@ export default function AddDownloadScreen() {
       }
       setProbe(null);
       // A web page that isn't a known video site may still hold a video: try it before giving up.
-      if ((res.code ?? '').toUpperCase() === 'NOT_A_FILE') {
-        if (settings.network.wifiOnly && onMeteredNetwork) {
-          setSiteBlocked(true);
-          setErrorView({ body: 'Waiting for Wi-Fi. Turn on Wi-Fi or allow mobile data in Settings.', primary: 'retry' });
-          setPhase('error');
-          return;
-        }
-        if (await readSite(input, mine, true)) return;
-      }
+      if ((res.code ?? '').toUpperCase() === 'NOT_A_FILE' && (await readSite(input, mine, true))) return;
       if (mine !== token.current) return;
       setNotAFile((res.code ?? '').toUpperCase() === 'NOT_A_FILE');
       setErrorView(probeErrorView(res.code, res.message, res.httpStatus));
       setPhase('error');
     },
-    [probeUrl, probeStream, router, readSite, resetState, settings.network.wifiOnly, onMeteredNetwork],
+    [probeUrl, probeStream, router, readSite, resetState],
   );
 
   // The `url` or `source` param (a share, a maglev:// link, or another screen) fills the field.
@@ -432,20 +416,6 @@ export default function AddDownloadScreen() {
   }
 
   // ---------- Error ----------
-  if (phase === 'error' && siteBlocked) {
-    return (
-      <Screen title="Add a link" onBack={close}>
-        <EmptyBlock
-          icon="warning"
-          error
-          title={empty.addDownload.waitingForNetwork.title}
-          body={errorView?.body}
-          primary={{ label: 'Open settings', onPress: () => router.push(actionRoute('openNetworkSettings') ?? '/settings/network') }}
-          secondary={{ label: 'Try again', onPress: () => void submit(urlRef.current) }}
-        />
-      </Screen>
-    );
-  }
   if (phase === 'error' && errorView?.primary === 'blocked') {
     return (
       <Screen title="Add a link" onBack={close}>
