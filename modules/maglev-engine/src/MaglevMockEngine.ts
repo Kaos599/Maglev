@@ -15,6 +15,7 @@ import type {
   FileHealthEntry,
   FilePriorityEntry,
   FreeSpace,
+  NetworkChangeEvent,
   NetworkState,
   GovernanceConfig,
   HealthTag,
@@ -1628,6 +1629,11 @@ export class MaglevMockEngine implements MaglevEngineApi {
       const snapshot = next.map((b) => ({ ...b }));
       this.blocksListeners.forEach((l) => l(snapshot));
     }
+  }
+
+  /** The simulator is always online on an unmetered link, so it never emits. */
+  public onNetworkChanged(_listener: (event: NetworkChangeEvent) => void): Unsubscribe {
+    return () => {};
   }
 
   public onStorageStatus(listener: (event: StorageStatus) => void): Unsubscribe {

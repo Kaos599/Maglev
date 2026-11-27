@@ -10,6 +10,7 @@ Theme-driven primitives. Import from `components/ui`. The full design guide is [
 - Banner: inline status with an optional action. EmptyBlock: empty and error states.
 - Sheet: bottom sheet for pickers and forms. SectionHeader: group label. ProgressBar: transfers.
 - Screen: safe-area container with optional header. PressableScale: build custom pressables.
+- LongName: a transfer's whole name, 3 lines then "Show more" (detail screens, the selection bar).
 
 ## Styling pattern
 ```ts

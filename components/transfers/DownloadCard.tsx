@@ -10,7 +10,8 @@ import { PixelIcon } from '../PixelIcon';
 import { StatusLine } from './StatusLine';
 import { useStatusOpts } from './useStatusOpts';
 import { IconButton, PressableScale, ProgressBar, ProgressTone } from '../ui';
-import { CARD_HEIGHT } from '../TransferCard';
+import { CARD_HEIGHT, NAME_LINE, cardMinHeights } from '../TransferCard';
+import { DEFAULT_NAME_LINES, type NameLines } from '../../utils/prefs/transfers';
 import { useBlockContext } from '../../utils/blocks/useActiveBlocks';
 import { SwipeRow } from './SwipeRow';
 import { swipePlan } from './swipe';
@@ -37,6 +38,8 @@ export interface DownloadCardProps {
   onSubtitles?: (id: string) => void;
   /** The "Show file type icons in Transfers" setting. The icon shares the slot of the selection checkbox. */
   showFileIcon?: boolean;
+  /** The "Transfer name lines" setting: lines before the name ends in "…", 0 for the whole name. */
+  nameLines?: NameLines;
 }
 
 function toneFor(d: DownloadSnapshot): ProgressTone {
@@ -54,7 +57,7 @@ function toneFor(d: DownloadSnapshot): ProgressTone {
 }
 
 /** Same card as a torrent: name, one bar, one status line, one button. The sheet behind a tap has the rest. */
-function DownloadCardImpl({ download: d, onPress, onAction: onActionProp, selectionMode = false, selected = false, onLongPress, onRemove, swipeEnabled = false, subtitle = null, onSubtitles, showFileIcon = true }: DownloadCardProps) {
+function DownloadCardImpl({ download: d, onPress, onAction: onActionProp, selectionMode = false, selected = false, onLongPress, onRemove, swipeEnabled = false, subtitle = null, onSubtitles, showFileIcon = true, nameLines = DEFAULT_NAME_LINES }: DownloadCardProps) {
   const { colors } = useTheme();
   const router = useRouter();
   // Settings actions go to their screen and Remove opens the sheet (which has the keep/delete choice) here,
@@ -66,6 +69,7 @@ function DownloadCardImpl({ download: d, onPress, onAction: onActionProp, select
     else onActionProp(dl, a);
   };
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const heights = useMemo(() => cardMinHeights(nameLines), [nameLines]);
   const etaRef = useRef<string | null>(null);
   const etaLabel = formatEta(d.state === 'downloading' ? d.eta : -1, etaRef.current);
   etaRef.current = etaLabel === '—' ? null : etaLabel;
@@ -81,7 +85,7 @@ function DownloadCardImpl({ download: d, onPress, onAction: onActionProp, select
     if (action) onAction(d, action);
   };
   const card = (
-    <View style={[styles.card, selected && styles.cardSelected]}>
+    <View style={[styles.card, { minHeight: heights.card }, selected && styles.cardSelected]}>
       <PressableScale
         onPress={() => onPress(d.id)}
         onLongPress={onLongPress ? () => onLongPress(d.id) : undefined}
@@ -111,7 +115,7 @@ function DownloadCardImpl({ download: d, onPress, onAction: onActionProp, select
           </View>
         ) : null}
         <View style={styles.body}>
-        <Text style={styles.name} numberOfLines={2} ellipsizeMode="tail">
+        <Text style={[styles.name, { minHeight: heights.name }]} numberOfLines={nameLines === 0 ? undefined : nameLines} ellipsizeMode="tail">
           {d.name}
         </Text>
         <ProgressBar progress={pct / 100} tone={toneFor(d)} indeterminate={indeterminate} accessibilityLabel={`${d.name} progress`} />
@@ -153,6 +157,7 @@ function same(a: DownloadCardProps, b: DownloadCardProps): boolean {
     a.onSubtitles === b.onSubtitles &&
     sameCardIcon(a.subtitle, b.subtitle) &&
     a.showFileIcon === b.showFileIcon &&
+    a.nameLines === b.nameLines &&
     x.id === y.id &&
     x.name === y.name &&
     x.state === y.state &&
@@ -196,5 +201,5 @@ const makeStyles = (c: ThemeColors) =>
     actionAnchor: { position: 'absolute', right: spacing.sm, top: '50%', marginTop: -22, width: touch.min, height: touch.min },
     subtitleAnchor: { position: 'absolute', right: spacing.sm + 8, top: 4, width: 28, height: 28 },
     cardSelected: { borderColor: c.accent, backgroundColor: alpha(c.accent, 0.08) },
-    name: { ...type.mono, fontSize: type.size.md, lineHeight: 18, color: c.text, flex: 1 },
+    name: { ...type.mono, fontSize: type.size.md, lineHeight: NAME_LINE, color: c.text, flex: 1 },
   });

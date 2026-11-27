@@ -1,8 +1,11 @@
 /**
- * Transfers list preferences (sort key + direction).
+ * Transfers list preferences (sort key + direction, name lines).
  * Uses expo-sqlite/kv-store's synchronous API; falls back to memory when the
  * native module is missing (Node tests, Expo Go without it, web).
  */
+import { useSyncExternalStore } from 'react';
+import { kvGet, kvSet } from './kv.ts';
+
 export type SortKey = 'name' | 'progress' | 'downSpeed' | 'upSpeed' | 'eta' | 'size' | 'added' | 'recent' | 'ratio';
 export type SortDir = 'asc' | 'desc';
 export interface TransferSort {
@@ -67,4 +70,48 @@ export function saveTransferSort(sort: TransferSort): void {
   } catch {
     // memory copy already holds it
   }
+}
+
+// ---- Name lines on the Transfers cards ----
+
+/**
+ * Lines a card's name can use before it ends in "…". 0 is the whole name. UI only: the engine never sees it.
+ * The default, 2, is what the cards showed before the setting existed.
+ */
+export type NameLines = 0 | 1 | 2 | 3;
+export const DEFAULT_NAME_LINES: NameLines = 2;
+const NAME_LINES_KEY = 'maglev.transfers.nameLines.v1';
+
+/** A stored value that is not 0, 1, 2 or 3 (an old build, a hand-edited store) falls back to the default. */
+export function normalizeNameLines(raw: unknown): NameLines {
+  const n = typeof raw === 'string' && raw.trim() !== '' ? Number(raw) : raw;
+  return n === 0 || n === 1 || n === 2 || n === 3 ? n : DEFAULT_NAME_LINES;
+}
+
+let nameLines: NameLines | null = null;
+const nameLineListeners = new Set<() => void>();
+
+export function getTransferNameLines(): NameLines {
+  if (nameLines === null) nameLines = normalizeNameLines(kvGet(NAME_LINES_KEY));
+  return nameLines;
+}
+
+export function setTransferNameLines(next: NameLines): NameLines {
+  nameLines = normalizeNameLines(next);
+  kvSet(NAME_LINES_KEY, String(nameLines));
+  nameLineListeners.forEach((l) => l());
+  return nameLines;
+}
+
+function subscribeNameLines(l: () => void): () => void {
+  nameLineListeners.add(l);
+  return () => {
+    nameLineListeners.delete(l);
+  };
+}
+
+/** The live value plus its setter; every card and the Appearance row share it, so a change applies at once. */
+export function useTransferNameLines(): [NameLines, typeof setTransferNameLines] {
+  const value = useSyncExternalStore(subscribeNameLines, getTransferNameLines, getTransferNameLines);
+  return [value, setTransferNameLines];
 }

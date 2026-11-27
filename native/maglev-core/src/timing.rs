@@ -12,7 +12,8 @@ pub const MAX_TICK: Duration = Duration::from_secs(5);
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Timing {
-    /// Milliseconds spent downloading (not paused, queued, waiting, checking or seeding).
+    /// Milliseconds spent downloading (not paused, queued, waiting, checking or seeding). For a link download it also
+    /// includes joining separate video and audio parts, so the total runs to the end of finishing.
     pub active_ms: u64,
     /// Unix seconds when the item first reached done; 0 until then.
     pub finished_at: i64,
@@ -37,9 +38,9 @@ impl Timing {
         (self.active_ms / 1000) as i64
     }
 
-    /// Adds the time since the last pass, only while downloading.
-    pub fn tick(&mut self, elapsed: Duration, downloading: bool) {
-        if downloading {
+    /// Adds the time since the last pass, only while the item is busy (downloading, or joining its parts).
+    pub fn tick(&mut self, elapsed: Duration, busy: bool) {
+        if busy {
             self.active_ms = self.active_ms.saturating_add(elapsed.min(MAX_TICK).as_millis() as u64);
         }
     }

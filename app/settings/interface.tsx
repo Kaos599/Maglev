@@ -7,7 +7,8 @@ import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, accents, radius, spacing, touch, type } from '../../constants/theme';
 import { PixelIcon } from '../../components/PixelIcon';
 import { ListRow, PressableScale, RadioCard, SegmentedControl, Toggle } from '../../components/ui';
-import { Card, Caption, SettingsPage } from '../../components/settings/SettingsParts';
+import { Card, Caption, ChipGroup, SettingsPage } from '../../components/settings/SettingsParts';
+import { useTransferNameLines, type NameLines } from '../../utils/prefs/transfers';
 import { FontStyle, TelemetryDensity } from 'maglev-engine';
 import { fontFamilies, resolveFontStyle } from '../../constants/fontStyles';
 import { fontStyleCopy, tabsCopy } from '../../constants/copy';
@@ -39,6 +40,14 @@ const ACCENTS: { name: AccentName; label: string }[] = [
   { name: 'mint', label: 'Mint' },
 ];
 
+// UI only: the cards read it directly and it never reaches the engine.
+const TRANSFER_LINE_CHOICES: readonly { value: NameLines; label: string }[] = [
+  { value: 1, label: '1' },
+  { value: 2, label: '2' },
+  { value: 3, label: '3' },
+  { value: 0, label: 'Full name' },
+];
+
 const FONT_ICONS: Record<FontStyle, PixelIconName> = { clean: 'interface', retro: 'grid', mono: 'file' };
 
 export default function InterfaceSettings() {
@@ -48,6 +57,7 @@ export default function InterfaceSettings() {
   const a = settings.appearance;
   const fontStyle = resolveFontStyle(a.fontStyle);
   const [densityOpen, setDensityOpen] = useState(false);
+  const [transferNameLines, setTransferNameLines] = useTransferNameLines();
   const set = (patch: Partial<typeof a>) => updateSettings((prev) => ({ appearance: { ...prev.appearance, ...patch } }));
 
   return (
@@ -133,6 +143,14 @@ export default function InterfaceSettings() {
           accessibilityLabel={DENSITY_ROW[a.telemetryDensity].spoken}
           accessibilityHint="Opens the choice with previews"
           testID="download-page-row"
+        />
+        <ChipGroup
+          label="Transfer name lines"
+          caption="How many lines a long name can use on each card in Transfers. Full name shows all of it."
+          options={TRANSFER_LINE_CHOICES}
+          value={transferNameLines}
+          onChange={setTransferNameLines}
+          minChipWidth={touch.min}
         />
         <ListRow
           title="Speed totals"

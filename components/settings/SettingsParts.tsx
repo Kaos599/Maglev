@@ -6,6 +6,7 @@ import { FocusAnchor, SettingsFocusProvider, rowKey } from './settingsFocus';
 import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
 import { Button, Chip, Screen, SectionHeader, Sheet, TextField } from '../ui';
+import type { TextFieldRef } from '../ui/TextField';
 
 /** Sub-screen shell: header with back, scrolling body, instant-apply content. */
 export function SettingsPage({ title, children }: { title: string; children: React.ReactNode }) {
@@ -84,12 +85,15 @@ export function ChipGroup<T extends string | number>({
   options,
   value,
   onChange,
+  minChipWidth,
 }: {
   label: string;
   caption?: string;
   options: readonly { value: T; label: string }[];
   value: T | null;
   onChange: (v: T) => void;
+  /** A floor for each chip's width. A one-character label ("1") leaves a chip narrower than the 44 dp touch target. */
+  minChipWidth?: number;
 }) {
   const { colors } = useTheme();
   const s = useMemo(() => makeStyles(colors), [colors]);
@@ -98,9 +102,17 @@ export function ChipGroup<T extends string | number>({
       <View style={s.group} accessibilityRole="radiogroup" accessibilityLabel={label}>
         <Text style={s.groupLabel}>{label}</Text>
         <View style={s.chips}>
-          {options.map((o) => (
-            <Chip key={String(o.value)} label={o.label} selected={o.value === value} onPress={() => onChange(o.value)} />
-          ))}
+          {options.map((o) => {
+            const chip = <Chip key={String(o.value)} label={o.label} selected={o.value === value} onPress={() => onChange(o.value)} />;
+            // The wrapper sets the floor and the chip stretches to it.
+            return minChipWidth ? (
+              <View key={String(o.value)} style={{ minWidth: minChipWidth }}>
+                {chip}
+              </View>
+            ) : (
+              chip
+            );
+          })}
         </View>
         {caption ? <Caption>{caption}</Caption> : null}
       </View>
@@ -151,6 +163,14 @@ export function InputSheet({
       setTouched(false);
     }
   }, [visible, initial]);
+  // autoFocus runs while the sheet's window is still sliding in, and Android then focuses the field without raising
+  // the keyboard. Focus by ref once the sheet reports it has finished opening. Closing blurs the field first, so the
+  // keyboard leaves with the sheet.
+  const fieldRef = useRef<TextFieldRef>(null);
+  useEffect(() => {
+    if (!visible) fieldRef.current?.blur();
+  }, [visible]);
+  const focusField = useCallback(() => fieldRef.current?.focus(), []);
   const error = validate(text.trim());
   const submit = () => {
     setTouched(true);
@@ -158,8 +178,9 @@ export function InputSheet({
     onSubmit(text.trim());
   };
   return (
-    <Sheet visible={visible} onClose={onClose} title={title} subtitle={subtitle}>
+    <Sheet visible={visible} onClose={onClose} onOpened={focusField} title={title} subtitle={subtitle}>
       <TextField
+        ref={fieldRef}
         onSurface
         value={text}
         onChangeText={(t) => {
@@ -171,7 +192,6 @@ export function InputSheet({
         secureTextEntry={secure}
         autoCapitalize="none"
         autoCorrect={false}
-        autoFocus
         placeholder={placeholder}
         trailing={unit ? <Text style={s.unit}>{unit}</Text> : undefined}
         error={touched && error ? error : undefined}
