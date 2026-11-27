@@ -1,5 +1,5 @@
 /**
- * Subtitle search and download (docs/NATIVE_CONTRACT.md sections 36.3, 36.5, 36.7). Orchestration only: the
+ * Subtitle search and download. Orchestration only: the
  * providers, the unzip and the clock come in as arguments, so Node tests run it with fakes.
  */
 import { ProviderError } from '../search/http.ts';
@@ -9,7 +9,7 @@ import { archiveKind, base64ToBytes, bytesToBase64, decodeSubtitleText, hasSubti
 import { subtitleFileName } from './naming.ts';
 import type { SubFormat, SubtitleCandidate, SubtitleProvider, SubtitleQuery } from './types.ts';
 
-/** Same per-source wait as search (SEARCH_CONTRACT section 4): 8 s unless told otherwise. */
+/** Same per-source wait as search: 8 s unless told otherwise. */
 const DEFAULT_WAIT_SECONDS = 8;
 /** A download is one request to one source; give it longer than a search. */
 const DOWNLOAD_WAIT_SECONDS = 15;
@@ -30,13 +30,13 @@ export interface SubtitleFile {
   videoBytes: number;
   /** 16 lowercase hex, from native `subtitleHash`, only for a finished local file. */
   hash?: string;
-  /** NATIVE_CONTRACT 42.4: text the user typed to search for. `fileName` and `videoBytes` stay the real file's. */
+  /** Text the user typed to search for. `fileName` and `videoBytes` stay the real file's. */
   searchName?: string;
 }
 
-/** The query for a file (36.3, 36.4). */
+/** The query for a file. */
 export function buildQuery(file: SubtitleFile, languages: string[]): SubtitleQuery {
-  // NATIVE_CONTRACT 42.4: the typed name (if any) is what gets parsed; the real file name stays for ranking and saving.
+  // The typed name (if any) is what gets parsed; the real file name stays for ranking and saving.
   const p = file.searchName ? parseTyped(file.searchName) : parseName(file.fileName);
   const q: SubtitleQuery = {
     fileName: file.fileName,
@@ -45,7 +45,7 @@ export function buildQuery(file: SubtitleFile, languages: string[]): SubtitleQue
     episodeConfidence: p.episodeConfidence,
     languages: languages.slice(),
   };
-  // NATIVE_CONTRACT 42.4: the fingerprint belongs to the file, not to a typed name.
+  // The fingerprint belongs to the file, not to a typed name.
   if (file.hash && !file.searchName) q.hash = file.hash;
   if (p.year !== undefined) q.year = p.year;
   if (p.season !== undefined) q.season = p.season;
@@ -132,7 +132,7 @@ async function guarded<T>(p: SubtitleProvider, waitMs: number, cancel: AbortSign
 export interface SearchSubtitlesOptions {
   /** Already filtered by `enabledProviders` (master switch, user switches, signed list). */
   providers: readonly SubtitleProvider[];
-  /** Language order (36.2), from `effectiveLanguages`. */
+  /** Language order, from `effectiveLanguages`. */
   languages: string[];
   hearingImpaired: 'both' | 'prefer' | 'avoid';
   waitSeconds?: number;
@@ -213,7 +213,7 @@ export interface PreparedSubtitle {
 }
 
 /**
- * Downloads one candidate and gets it ready to save: unzips when needed, picks the member (36.7), decodes to UTF-8
+ * Downloads one candidate and gets it ready to save: unzips when needed, picks the member, decodes to UTF-8
  * and finds the format. Throws SubtitleError (or a code from `failureCode`) for the error copy.
  */
 export async function downloadAndPrepare(c: SubtitleCandidate, d: DownloadDeps): Promise<PreparedSubtitle> {
@@ -232,7 +232,7 @@ export async function downloadAndPrepare(c: SubtitleCandidate, d: DownloadDeps):
     } catch {
       throw new SubtitleError('unsupported_archive');
     }
-    // NATIVE_CONTRACT 39.1 S1: a member counts only when its decoded text holds a cue.
+    // A member counts only when its decoded text holds a cue.
     const real = members.filter((m) => {
       const r = decodeSubtitleText(m.bytes, c.language);
       return r.ok ? hasSubtitleCues(r.text) : true; // unreadable text is reported as unreadable_text below
@@ -242,7 +242,7 @@ export async function downloadAndPrepare(c: SubtitleCandidate, d: DownloadDeps):
     bytes = pick.member.bytes;
   }
   const prepared = prepareText(bytes, c.language);
-  // NATIVE_CONTRACT 39.1 S1: once more on the final text, before anything is saved.
+  // Once more on the final text, before anything is saved.
   if (!hasSubtitleCues(prepared.text)) throw new SubtitleError('unreadable_text');
   return {
     text: prepared.text,

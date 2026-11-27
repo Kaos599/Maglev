@@ -1,5 +1,5 @@
 /**
- * Where an add came from (docs/NATIVE_CONTRACT.md section 34.2). The engine does not store an origin, so call sites that know
+ * Where an add came from. The engine does not store an origin, so call sites that know
  * it note it here, keyed by what the engine later reports: a torrent's info hash, or a link's address without query.
  * A small capped map in the kv store. An add that nobody noted has source null: unknown stays unknown.
  */

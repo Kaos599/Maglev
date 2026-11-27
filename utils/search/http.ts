@@ -1,5 +1,5 @@
 // Thin fetch wrapper: generic User-Agent, no cookies, Cloudflare/blocked detection.
-// Exception (SEARCH_CONTRACT section 8): a host the user passed a Cloudflare check on gets the WebView's
+// Exception: a host the user passed a Cloudflare check on gets the WebView's
 // User-Agent and the shared cookie jar (credentials 'include'), for that host only.
 
 import { hostOf, isCloudflareChallenge } from './challenge.ts';

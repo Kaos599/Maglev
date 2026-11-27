@@ -1,4 +1,4 @@
-// Tool definitions and argument validation for the assistant (ASSISTANT_DESIGN §4, SM-31 amendment D1, SM-39).
+// Tool definitions and argument validation for the assistant.
 // The model sees OpenAI-style function definitions from TOOLS. Every call it makes goes through validateArgs,
 // which checks the arguments against the schema in code, resolves session handles (r1, t1) to real ids, and
 // rejects anything else. Pure TypeScript: no React, no React Native, no engine imports.
@@ -6,7 +6,7 @@
 // Validation is hand-written and covers only the JSON Schema subset used here (object, array, string, integer,
 // number, boolean, enum, length, range, pattern, uniqueItems). Every object is closed: unknown keys are rejected
 // whether or not the schema says additionalProperties:false. Anthropic's compat layer ignores `strict`, so this
-// check is required anyway (§7.3).
+// check is required anyway.
 
 import type { HandleKind, HandleRegistry } from './handles.ts';
 import { normalizeLanguage } from './releaseName.ts';
@@ -41,7 +41,7 @@ export type ValidateResult =
   | { ok: true; args: Record<string, unknown>; /** Plain-English remarks about what was fixed or ignored, for the tool result. */ notes?: string[] }
   | { ok: false; error: { code: 'bad_args' | 'unknown_tool'; message: string } };
 
-/** The eight tools the model sees (docs/ASSISTANT_DESIGN.md, 0.11). Few tools, because free models call many tools badly. */
+/** The read tools the model sees. Few tools, because free models call many tools badly. */
 const READ_TOOL_NAMES = ['search_torrents', 'browse_torrents', 'get_result_details', 'list_transfers', 'ask_user', 'open_screen'] as const;
 
 const PROPOSAL_TOOL_NAMES = ['propose_add', 'propose_change', 'watch_title'] as const;
@@ -72,15 +72,15 @@ export const READ_TOOLS: ReadonlySet<string> = new Set<string>(READ_TOOL_NAMES);
 export const PROPOSAL_TOOLS: ReadonlySet<string> = new Set<string>(PROPOSAL_TOOL_NAMES);
 
 /**
- * Tools a plan step may use (R1-2). No plan inside a plan, and no destructive step: propose_delete and
+ * Tools a plan step may use. No plan inside a plan, and no destructive step: propose_delete and
  * propose_remove_files always get their own card.
  */
 const PLAN_STEP_TOOL_NAMES = ['propose_add', 'propose_select_files', 'propose_pause_resume'] as const;
 
-/** Destructive proposal tools. The turn machine allows at most one such card per turn (R1-4). */
+/** Destructive proposal tools. The turn machine allows at most one such card per turn. */
 export const DESTRUCTIVE_TOOLS: ReadonlySet<string> = new Set<string>(['propose_delete', 'propose_remove_files']);
 
-/** Max steps in one plan (SM-39). */
+/** Max steps in one plan. */
 const PLAN_MAX_STEPS = 6;
 
 /** Handle fields and the kind of real id they stand for. Any other field is a plain value. */
@@ -109,7 +109,7 @@ const FILE_INDEX_LIST = (maxItems: number, description?: string): JsonSchema => 
 });
 const REASON: JsonSchema = { type: 'string', maxLength: 200, description: 'One plain sentence for the user.' };
 
-// ---- Read tools (ASSISTANT_DESIGN §4.2) ----
+// ---- Read tools ----
 
 const SEARCH_TORRENTS: JsonSchema = {
   type: 'object',
@@ -203,7 +203,7 @@ const EXPLAIN_ERROR: JsonSchema = {
   additionalProperties: false,
 };
 
-// ---- Proposal tools (ASSISTANT_DESIGN §4.3, SM-31 amendment). Each only creates a card. ----
+// ---- Proposal tools. Each only creates a card. ----
 
 const PROPOSE_ADD: JsonSchema = {
   type: 'object',
@@ -404,7 +404,7 @@ const PARAMETERS: Record<ToolName, JsonSchema> = {
   propose_plan: PROPOSE_PLAN,
 };
 
-// Short, plain English. Nothing here may mention adult content (D2).
+// Short, plain English. Nothing here may mention adult content.
 const DESCRIPTIONS: Record<ToolName, string> = {
   search_torrents:
     'Search the enabled sources for torrents. Returns the best matches with size, sharing, upload age when known, and a space check. Just the title. Add a year, season or episode only if the user gave one.',

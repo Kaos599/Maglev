@@ -1,16 +1,16 @@
 /**
- * The assistant's tool runner (docs/ASSISTANT_DESIGN.md §3.5, §4, §5.4, §6, §7.3 and review round 1).
+ * The assistant's tool runner.
  *
  * Runs the read tools against search, browse and the engine, builds the proposal cards, re-checks them on Confirm
- * and runs the confirmed action. Contract: utils/assistant/runtime.ts (`ToolRunner`).
+ * and runs the confirmed action. Its interface is in utils/assistant/runtime.ts (`ToolRunner`).
  *
  * Pure: no React, no react-native, no expo, no engine import. Everything impure comes in through
  * `ToolRunnerDeps`; utils/assistantApp/appToolRunner.ts binds the real modules. Node tests import this file.
  *
  * Rules kept here:
- * - Card facts and fit verdicts are computed by the app from fresh engine and search data (§4.5).
- * - Ids in tool content are handles only (r1, t1). No info hashes, magnets or device paths (§4.1).
- * - Every string from the outside world is sanitised and sits in a `*_untrusted` field (§7.3).
+ * - Card facts and fit verdicts are computed by the app from fresh engine and search data.
+ * - Ids in tool content are handles only (r1, t1). No info hashes, magnets or device paths.
+ * - Every string from the outside world is sanitised and sits in a `*_untrusted` field.
  * - run() never throws. Failures become `{ok:false,error:{code,message}}` content.
  */
 import { formatBytes, formatSpeed } from '../../constants/format.ts';
@@ -57,7 +57,7 @@ export type RunnerEngine = Pick<
 export interface ToolRunnerDeps {
   /**
    * Run a search with the user's prefs applied (enabled sources, mirrors, hide-dead, extra indexers).
-   * Adult content must never be switched on here (D2). Same shape as `searchAll` in utils/search/aggregate.ts.
+   * Adult content must never be switched on here. Same shape as `searchAll` in utils/search/aggregate.ts.
    */
   search(query: string, category: Category, opts: { signal: AbortSignal; onUpdate?: (u: SearchUpdate) => void }): Promise<SearchUpdate>;
   /** The user's search prefs the runner needs: the risky-source warning switch and the provider table. */
@@ -66,13 +66,13 @@ export interface ToolRunnerDeps {
   resolveResult(result: MergedResult, signal: AbortSignal): Promise<MergedResult>;
   /**
    * List what is new or popular in one kind, with the user's prefs applied (enabled sources, mirrors, wait).
-   * Adult content is never listed (D2). Same shape as `browseAll` in utils/search/browse.ts. Optional: without it
+   * Adult content is never listed. Same shape as `browseAll` in utils/search/browse.ts. Optional: without it
    * browse_torrents fails plainly and search_torrents never turns a generic query into a browse.
    */
   browse?(kind: BrowseKind, order: BrowseOrder, period: BrowsePeriod, opts: { signal: AbortSignal; onUpdate?: (u: SearchUpdate) => void }): Promise<SearchUpdate>;
   engine: RunnerEngine;
   /**
-   * The saved watches (utils/watch, docs/contracts-0.19/watch.md). Optional: without it watch_title fails plainly.
+   * The saved watches (utils/watch). Optional: without it watch_title fails plainly.
    * `add` is only called after the user taps Confirm on the card.
    */
   watch?: {
@@ -102,7 +102,7 @@ const WATCH_MAX = 20;
 const NO_SPACE_READ = "Couldn't check free space, so Maglev can't add this right now.";
 const GONE = 'That download is gone.';
 
-/** Plain English for engine error codes (SM-36 copy). Never the raw engine message. */
+/** Plain English for engine error codes. Never the raw engine message. */
 function plainEngineError(code: string): string {
   switch (code) {
     case 'DUPLICATE': return 'Already in your downloads.';
@@ -387,7 +387,7 @@ interface Row {
 }
 
 /**
- * Id of one step of a plan card, for the step-by-step plan machine (SM-39): `c3:0` is the first step of c3.
+ * Id of one step of a plan card, for the step-by-step plan machine: `c3:0` is the first step of c3.
  * `revalidate` and `execute` accept it; the plain card id runs every step in order.
  */
 export function planStepId(cardId: string, index: number): string {
@@ -657,7 +657,7 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
   }
 
   /**
-   * Stores the shown rows (handles are issued here, in the order shown, R1-10) and builds the model rows, the
+   * Stores the shown rows (handles are issued here, in the order shown) and builds the model rows, the
    * cards and the space facts shared by search_torrents and browse_torrents.
    */
   function present(shown: Ranked[], cardRows: Ranked[], o: PresentOptions): { rowsData: Data[]; cardViews: ResultCardView[]; tail: Data } {
@@ -822,7 +822,7 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
     }
     ctx.progress(progressText, 'done');
 
-    // R1-9: the model's free text becomes title, year, season and episode here, not in the model.
+    // The model's free text becomes title, year, season and episode here, not in the model.
     const parsedQuery = parseQuery(queryText);
     const stopped = (): void => {
       if (ctx.signal.aborted) throw new CancelledError();
@@ -1446,7 +1446,7 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
     if (snap.downBps > 0) data.speed_text = formatSpeed(snap.downBps);
     if (snap.etaSecs >= 0) data.eta_secs = snap.etaSecs;
     if (snap.resolvingSecs !== null) data.looking_for_files_secs = snap.resolvingSecs;
-    // The engine's message can name device paths, so only the code and the app's plain text go out (§4.1).
+    // The engine's message can name device paths, so only the code and the app's plain text go out.
     if (snap.error) data.error = { code: snap.error.code, plain: plainEngineError(snap.error.code) };
     if (args.include_files === true) {
       data.files = res.files.slice(0, 60).map((f: DetailFile) => ({
@@ -1458,7 +1458,7 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
     return succeed(data);
   }
 
-  /** §5.4 table: plain meaning and what the app offers. */
+  /** Plain meaning of each pause or health reason, and what the app offers. */
   function pauseCopy(tag: string): { plain: string; fixes: string[] } {
     switch (tag) {
       case 'user': return { plain: 'You paused it.', fixes: ['Resume'] };
@@ -1549,7 +1549,7 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
     const handle = registry.issue('result', stored.hash);
     const files = stored.files;
     if (!files || !stored.magnet) return { error: `Look inside ${handle} first with get_result_details, then propose it.` };
-    const can = canPropose({ safety: stored.safety, flags: stored.ranked?.flags }); // R1-8: red is enforced here, not in the prompt.
+    const can = canPropose({ safety: stored.safety, flags: stored.ranked?.flags }); // Red is enforced here, not in the prompt.
     if (!can.ok) return { error: can.reason ?? "Maglev won't add this." };
     if (!space.known) return { error: NO_SPACE_READ };
 
@@ -1682,7 +1682,7 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
     return null;
   }
 
-  /** watch_title: a card that saves a background watch once confirmed (docs/contracts-0.19/watch.md section 8). */
+  /** watch_title: a card that saves a background watch once confirmed. */
   function watchProblem(query: string, category: string): string | null {
     const w = deps.watch;
     if (!w) return 'Watching is not available right now.';
@@ -1799,7 +1799,7 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
       confirmLabel: `Remove ${plural(n, 'file')}`,
       sourceName: `${names.join(', ')}${more > 0 ? ` and ${more} more` : ''}`,
       facts: [
-        // NATIVE_CONTRACT §14 confirm copy.
+        // Fixed confirm copy for removals.
         `Deletes ${formatBytes(bytes)} from your phone and stops downloading ${n === 1 ? 'it' : 'them'}. Other files keep going.`,
         'There is no undo.',
       ],
@@ -1884,7 +1884,7 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
     let pendingAdds = 0;
     for (let i = 0; i < steps.length; i++) {
       const step = steps[i];
-      // R1-2: no destructive step and no plan inside a plan.
+      // No destructive step and no plan inside a plan.
       if (step.tool !== 'propose_add' && step.tool !== 'propose_select_files' && step.tool !== 'propose_pause_resume') {
         return { error: `Step ${i + 1}: a plan can only add, select files or pause/resume. Removing gets its own card.` };
       }

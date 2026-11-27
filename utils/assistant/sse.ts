@@ -1,13 +1,13 @@
 /**
  * Streaming parser for OpenAI-compatible Chat Completions (SSE) with tool calls.
- * Pure: no React, no react-native, no network. SM-41 in docs/STATE_MACHINES_AND_SCREENS.md
- * is the law; design notes in docs/ASSISTANT_DESIGN.md §8.6.
+ * Pure: no React, no react-native, no network. The stream is a small state machine: text, a tool call being
+ * streamed, then done or error.
  *
  * Usage: const p = createStreamParser(); events = p.push(chunk); ...; outcome = p.finish();
  * Chunks are strings. Decode bytes with a streaming TextDecoder so multi-byte UTF-8 is never split.
  */
 
-/** SM-41 states. `toolCall` also exposes the index of the call being streamed (`toolIndex`). */
+/** Parser states. `toolCall` also exposes the index of the call being streamed (`toolIndex`). */
 export type StreamState = 'idle' | 'text' | 'toolCall' | 'done' | 'error';
 
 /**
@@ -44,7 +44,7 @@ export function sanitizeSnippet(raw: unknown, max: number = MAX_DETAIL_CHARS): s
 }
 
 /**
- * Extra fields every streaming request body must carry so the provider sends a final `usage` chunk (R1-12).
+ * Extra fields every streaming request body must carry so the provider sends a final `usage` chunk.
  * Spread it into the request: `{ ...body, ...requestExtras() }`.
  */
 export function requestExtras(): { stream_options: { include_usage: true } } {
@@ -175,7 +175,7 @@ const BAD_ARGS: StreamFailure = {
   message: STREAM_COPY.badArgs,
 };
 
-/** Maps a provider error status to plain English (SM-31 copy). */
+/** Maps a provider error status to plain English. */
 function providerFailure(status: number | undefined, err?: Record<string, unknown>): StreamFailure {
   let message = PROVIDER_STOPPED;
   if (status === 401 || status === 403) message = 'Check your key.';

@@ -1,5 +1,5 @@
 /**
- * The source list file (docs/NATIVE_CONTRACT.md section 31.1). Pure: no React Native imports, so Node tests run it.
+ * The source list file. Pure: no React Native imports, so Node tests run it.
  * A field that fails its check is dropped on its own; the rest of the file still applies. Only a wrong `schema`, a
  * missing `serial` or an unreadable file rejects the whole file.
  */
@@ -31,7 +31,7 @@ export interface SourcesFile {
   serial: number;
   generatedAt: string;
   sources: Record<string, SourceEntry>;
-  /** Subtitle providers (docs/NATIVE_CONTRACT.md section 36.9): same entry shape, caps and precedence as `sources`. */
+  /** Subtitle providers: same entry shape, caps and precedence as `sources`. */
   subtitles?: Record<string, SourceEntry>;
   trackers?: string[];
   blocklistUrls?: string[];

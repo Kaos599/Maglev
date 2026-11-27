@@ -3,7 +3,7 @@ import Storage from 'expo-sqlite/kv-store';
 import { maglevEngine } from 'maglev-engine';
 import type { ScheduleConfig, ScheduleRule } from 'maglev-engine';
 
-/** Contract: docs/NATIVE_CONTRACT.md section 11.5. Days are 0 = Monday through 6 = Sunday. */
+/** Mirrors the config Kotlin evaluates. Days are 0 = Monday through 6 = Sunday. */
 const KEY = 'maglev.schedule.v1';
 const MB = 1_048_576;
 

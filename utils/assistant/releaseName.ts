@@ -1,4 +1,4 @@
-// Deterministic release-name parser (docs/ASSISTANT_DESIGN.md section 2.10).
+// Deterministic release-name parser.
 // Pure TypeScript: no React, no engine, no network. Never throws.
 // Every fact is read from the name; anything the name does not say stays unknown.
 

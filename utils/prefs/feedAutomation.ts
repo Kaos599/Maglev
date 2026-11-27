@@ -4,7 +4,7 @@ import { maglevEngine } from 'maglev-engine';
 import type { FeedAutomationConfig, FeedRule } from 'maglev-engine';
 import { loadFeeds } from '../feeds';
 
-/** Contract: docs/NATIVE_CONTRACT.md section 11.6. */
+/** Mirrors the feed automation config that Kotlin runs while the app is closed. */
 const KEY = 'maglev.feeds.automation.v1';
 
 export type IntervalMins = 15 | 30 | 60;

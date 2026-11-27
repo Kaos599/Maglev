@@ -1,4 +1,5 @@
-// Watch for a title: pure logic. Contract: docs/contracts-0.19/watch.md.
+// Watch for a title: pure logic. A watch is a saved search that Maglev re-runs in the background; it notifies once for
+// each result it has not seen before.
 // No React, no storage, no native calls, so scripts/test-watch.js can run it in Node.
 
 import { formatBytes } from '../../constants/format.ts';

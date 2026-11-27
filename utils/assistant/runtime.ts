@@ -1,13 +1,13 @@
 /**
- * Contract between the assistant's moving parts (build steps 12 and 13, docs/ASSISTANT_DESIGN.md §10).
- * Types only. No React, no engine, no expo imports (C-ASSIST-8).
+ * Contract between the assistant's moving parts: tool runner, chat controller and UI.
+ * Types only. No React, no engine, no expo imports.
  *
  *   ToolRunner      utils/assistant/toolRunner.ts       runs tools against search and the engine, owns card facts
  *   AssistantChat   utils/assistantApp/useAssistantChat.ts  drives turnMachine + cardMachine + the provider stream
  *   UI              components/assistant/*               renders AssistantChat; never calls the model or the engine
  *
  * Every string a view model carries is already plain English, sanitised and ready to show. The UI does no
- * formatting beyond layout. Facts on cards come from the app, never from the model (§4.5).
+ * formatting beyond layout. Facts on cards come from the app, never from the model.
  */
 import type { CardState } from './cardMachine.ts';
 import type { Chip } from './glossary.ts';
@@ -17,7 +17,7 @@ import type { Label, Tier } from './scoring.ts';
 
 // ---------------------------------------------------------------- view models
 
-/** One shortlisted search result, rendered by the app from `Ranked` (§9 "Result cards"). */
+/** One shortlisted search result, rendered by the app from `Ranked`. */
 export interface ResultCardView {
   /** Session handle, e.g. "r1". */
   handle: string;
@@ -27,19 +27,19 @@ export interface ResultCardView {
   chips: Chip[];
   /** e.g. "2.1 GB". */
   sizeText: string;
-  /** e.g. "120 sharing". Uses "sharing", never "seeders" (R1-15). */
+  /** e.g. "120 sharing". Uses "sharing", never "seeders". */
   sharingText: string;
   /** Short source names, e.g. "Knaben, YTS". */
   sourcesText: string;
   fit: 'fits' | 'tight' | 'too_big' | 'unknown';
   /** e.g. "9 GB left after". Empty when unknown. */
   fitText: string;
-  /** Plain reasons from scoring (§3.5), at most 3. */
+  /** Plain reasons from scoring, at most 3. */
   reasons: string[];
   tier: Tier;
   /** Badge on the shortlisted three only. */
   label?: Label;
-  /** SEARCH_CONTRACT §7 warning line when a source is flagged risky. */
+  /** Warning line when every source of the result is flagged risky. */
   riskyWarning?: string;
   /** Present only after get_result_details looked inside. Red shows a danger banner. */
   safety?: { level: SafetyLevel; text: string };
@@ -78,7 +78,7 @@ export interface FileRowView {
   flag?: 'danger' | 'warn';
 }
 
-/** A proposal awaiting the user's tap (§9 "Proposal cards"). */
+/** A proposal awaiting the user's tap. */
 export interface ProposalCardView {
   cardId: string;
   /** The proposal tool that made it, e.g. "propose_add". */
@@ -98,7 +98,7 @@ export interface ProposalCardView {
   confirmLabel: string;
   /** "Not now". */
   dismissLabel: string;
-  /** Destructive: danger tone on Confirm and the NATIVE_CONTRACT §14 copy in `facts`. */
+  /** Destructive: danger tone on Confirm and the fixed removal copy in `facts`. */
   danger: boolean;
   /** A source is flagged risky: the UI shows the existing "Add from a risky source?" sheet before confirm(). */
   risky: boolean;
@@ -127,7 +127,7 @@ export type ChatItem =
   | { kind: 'card'; id: string; view: ProposalCardView; state: CardState }
   /** One-line app note: "Added.", "Freed 1.9 GB.", "Stopped." */
   | { kind: 'note'; id: string; text: string }
-  /** SM-31 error copy. `action` is the one recovery the UI offers. */
+  /** Plain-English error copy. `action` is the one recovery the UI offers. */
   | { kind: 'error'; id: string; message: string; action?: 'settings' | 'retry' }
   /**
    * 0.11 ask_user: a question with tappable answers (AI Elements "Questionnaire"). Tapping one calls
@@ -151,7 +151,7 @@ export type ScreenTarget =
 /** What a busy turn is doing. See AssistantChat.phase. */
 export type ChatPhase = 'idle' | 'thinking' | 'tools' | 'writing';
 
-/** Why the composer is locked (R1-6 send gate). 'ready' means Send works. */
+/** Why the composer is locked. Send needs the Assistant on, the first-use notice accepted and a key. 'ready' means Send works. */
 export type ChatGate = 'ready' | 'disabled' | 'notAccepted' | 'noKey';
 
 /** What the chat screen renders and calls. Produced by useAssistantChat. */
@@ -171,11 +171,11 @@ export interface AssistantChat {
   providerName: string;
   /** 0.11: the model in use as the user knows it, e.g. "Llama 3.3 70B (free)". Shown in the composer's model chip. */
   modelName?: string;
-  /** Tokens used on this provider, all time (D4: tokens, not money). */
+  /** Tokens used on this provider, all time (tokens, not money). */
   tokensUsed: { input: number; output: number };
   send(text: string): void;
   stop(): void;
-  /** SM-42 CLEAR: chat, cards and handles go. */
+  /** Chat, cards and handles go. */
   clear(): void;
   /** Call after any risky-source sheet was accepted. */
   confirm(cardId: string): void;
@@ -193,10 +193,10 @@ export interface AssistantChat {
   answer?(itemId: string, option: string): void;
 }
 
-// ---------------------------------------------------------------- tool runner (step 12)
+// ---------------------------------------------------------------- tool runner
 
 export interface ToolRunContext {
-  /** Aborted on Stop, Clear, key removal, backgrounding and the 60 s tool timeout (R1-5). */
+  /** Aborted on Stop, Clear, key removal, backgrounding and the 60 s tool timeout. */
   signal: AbortSignal;
   /**
    * Report a progress line for this call. Calling again with the same text updates its state. `detail` is a live
@@ -206,7 +206,7 @@ export interface ToolRunContext {
 }
 
 export interface ToolRunOutput {
-  /** The role:"tool" message content: JSON `{ok:true,data}` or `{ok:false,error:{code,message}}`, sanitised (§4.1). */
+  /** The role:"tool" message content: JSON `{ok:true,data}` or `{ok:false,error:{code,message}}`, sanitised. */
   content: string;
   /** search_torrents: the shortlist to render as result cards. */
   results?: ResultCardView[];
@@ -222,19 +222,19 @@ export type RevalidateResult = { ok: true } | { ok: false; reason: string };
 export type ExecuteResult = { ok: true; summary: string } | { ok: false; code: string; message: string };
 
 export interface ToolRunner {
-  /** The one handle registry for the session (R1-10). The turn machine validates arguments against it. */
+  /** The one handle registry for the session. The turn machine validates arguments against it. */
   readonly registry: HandleRegistry;
   /** Run one read tool. Never throws: failures become `{ok:false}` content. Cancelled → error code "cancelled". */
   run(call: { id: string; name: string; args: Record<string, unknown> }, ctx: ToolRunContext): Promise<ToolRunOutput>;
   /**
    * Build the card for a proposal tool the turn machine accepted. Computes the facts from fresh engine and
    * search data. Refuses (returns `error`, which becomes the tool result) on: unknown handle, red safety on
-   * propose_add (R1-8), a plan with a destructive or dependent step (R1-2).
+   * propose_add, a plan with a destructive or dependent step.
    */
   prepareCard(cardId: string, tool: string, args: Record<string, unknown>): Promise<ProposalCardView | { error: string }>;
-  /** On Confirm (§4.5): target still exists, indices in range, admit() again with fresh free space. */
+  /** On Confirm: target still exists, indices in range, admit() again with fresh free space. */
   revalidate(cardId: string, signal?: AbortSignal): Promise<RevalidateResult>;
-  /** Run the confirmed action against the engine. `message` is plain English (SM-36 copy for the code). */
+  /** Run the confirmed action against the engine. `message` is plain English (the plain-English copy for the code). */
   execute(cardId: string): Promise<ExecuteResult>;
   /** The transfer or result handle a card acts on, for TargetGone and "newer card for the same target". */
   cardTarget(cardId: string): string | undefined;

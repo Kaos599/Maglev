@@ -1,5 +1,5 @@
 /**
- * Subtitle languages (docs/NATIVE_CONTRACT.md section 36.2): ISO 639-1 codes plus the regional tags pt-BR, zh-CN,
+ * Subtitle languages: ISO 639-1 codes plus the regional tags pt-BR, zh-CN,
  * zh-TW and es-419. Pure. `normalizeLanguage` turns what providers return ("eng", "English", "pob",
  * "Portuguese (Brazil)", "pt_BR") into one of these codes.
  */
@@ -172,7 +172,7 @@ export function phoneLocale(): string | null {
   }
 }
 
-/** Default languages (36.2): the phone's language, then English if that isn't English. */
+/** Default languages: the phone's language, then English if that isn't English. */
 export function defaultLanguages(locale: string | null | undefined = phoneLocale()): string[] {
   const own = normalizeLanguage(locale ?? '');
   if (!own) return ['en'];

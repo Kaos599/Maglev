@@ -1,5 +1,5 @@
 /**
- * The applied source list, in memory (docs/NATIVE_CONTRACT.md section 31.1 "Applying"). Pure: no React Native
+ * The applied source list, in memory. Pure: no React Native
  * imports, so search code and Node tests read it. `utils/lists/index.ts` fills it at start and after an update.
  */
 import type { SourceEntry, SourcesFile } from './schema.ts';
@@ -42,7 +42,7 @@ export function listDisabled(id: string): { note: string | null } | null {
   return e && e.enabled === false ? { note: e.note ?? null } : null;
 }
 
-/** The file's entry for a subtitle provider (section 36.9), or undefined. */
+/** The file's entry for a subtitle provider, or undefined. */
 function subtitleEntry(id: string): SourceEntry | undefined {
   return current?.subtitles?.[id];
 }

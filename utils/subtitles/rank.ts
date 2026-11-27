@@ -1,5 +1,5 @@
 /**
- * Grouping and order of subtitle results (docs/NATIVE_CONTRACT.md section 36.5). Pure.
+ * Grouping and order of subtitle results. Pure.
  */
 import { languageRank } from './languages.ts';
 import { parseRelease } from './parseName.ts';
@@ -24,7 +24,7 @@ export interface RankOptions {
   /** The video's file name. */
   fileName: string;
   episodeConfidence: SubtitleQuery['episodeConfidence'];
-  /** Language order from 36.2. */
+  /** Language order: the user's pick, else the phone's language then English. */
   languages: readonly string[];
   hearingImpaired: 'both' | 'prefer' | 'avoid';
 }

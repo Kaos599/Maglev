@@ -66,7 +66,7 @@ PROVIDERS.push(limetorrents, torrentdownloads, torrentdownload, therarbg, ext, m
 
 export { limetorrents, torrentdownloads, torrentdownload, therarbg, ext, mypornclub, xxxclub, xxxtracker };
 
-// Books, feeds and niche sources. Gutenberg and LibriVox return direct files (SEARCH_CONTRACT section 9) and are on by default.
+// Books, feeds and niche sources. Gutenberg and LibriVox return direct files and are on by default.
 import { gutenberg } from './gutenberg.ts';
 import { librivox } from './librivox.ts';
 import { showrss } from './showrss.ts';

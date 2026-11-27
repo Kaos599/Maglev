@@ -1,6 +1,6 @@
 /**
- * Sizes for the files the browser finds. Runs in JS, no native change (docs/NATIVE_CONTRACT.md 24.3 leaves
- * `size` null when the page gave none). Direct files: HEAD, then a one-byte ranged GET. Streams: the engine's
+ * Sizes for the files the browser finds. Runs in JS, with no native change: the view leaves
+ * `size` null when the page gave none. Direct files: HEAD, then a one-byte ranged GET. Streams: the engine's
  * probeStream gives an estimate. Anything unknown stays null and the UI shows an em dash.
  */
 import type { StreamVariant } from '../modules/maglev-engine/src/MaglevEngine.types';

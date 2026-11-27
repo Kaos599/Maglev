@@ -1,5 +1,5 @@
-// Chat controller for the assistant (build step 13, docs/ASSISTANT_DESIGN.md §10). Plain TypeScript: no React,
-// no react-native, no expo imports. It drives SM-31 (turnMachine), SM-38 (cardMachine) and SM-42 (session rules),
+// Chat controller for the assistant. Plain TypeScript: no React,
+// no react-native, no expo imports. It drives the turn machine, the card machine and the session rules,
 // runs every effect, and publishes an `AssistantChat` snapshot for the UI (utils/assistant/runtime.ts).
 //
 // Events are queued and applied one at a time, so an effect that raises an event never re-enters the machine.
@@ -37,11 +37,11 @@ import { presetById, type AssistantPrefs } from '../prefs/assistant.ts';
 import type { StreamFn } from './client.ts';
 import { restoreItems, type ChatStore } from './chatStore.ts';
 
-/** R1-5: a read tool that has not finished after this long is answered "That took too long." */
+/** A read tool that has not finished after this long is answered "That took too long." */
 export const TOOL_TIMEOUT_MS = 60_000;
-/** SM-31: UI text updates are batched at 50 ms. */
+/** UI text updates are batched at 50 ms. */
 const TEXT_BATCH_MS = 50;
-/** Upper bound of the jitter added to a retry that had no Retry-After. SM-31 says "about 250 ms". */
+/** Upper bound of the jitter added to a retry that had no Retry-After. */
 const RETRY_JITTER_MS = 250;
 /** Time a card may take to be built, and to be rechecked on Confirm. A hung engine call fails the card instead. */
 const PREP_TIMEOUT_MS = 20_000;
@@ -179,7 +179,7 @@ function contentFailed(content: string): boolean {
 }
 
 /**
- * R1-3 "target gone": the transfer handles (t1…) of pending cards whose transfer was listed before and is not
+ * "Target gone": the transfer handles (t1…) of pending cards whose transfer was listed before and is not
  * listed now. A transfer never seen is left alone, so an engine restart that briefly empties the list expires
  * nothing. `resolve` maps a handle to the engine id (link downloads are "dl:<id>").
  */
@@ -270,7 +270,7 @@ export function createChatController(deps: ChatDeps): ChatController {
   function hasKey(): boolean {
     const key = getKey();
     if (key) return true;
-    // A local server (Ollama) needs no key (R1-14).
+    // A local server (Ollama) needs no key.
     return presetById(getPrefs().presetId).local;
   }
 
@@ -926,7 +926,7 @@ export function createChatController(deps: ChatDeps): ChatController {
   }
 
   /**
-   * Runs a multi-step plan card through SM-39 (planMachine). The card as a whole was checked on Confirm; here every
+   * Runs a multi-step plan card through the plan machine. The card as a whole was checked on Confirm; here every
    * step is checked again right before it runs (target exists, free space, admit), because the earlier steps change
    * the world. A failing step stops the plan and the later steps never run. A retry starts after the steps that ran.
    */
@@ -1055,7 +1055,7 @@ export function createChatController(deps: ChatDeps): ChatController {
       const hadKey = lastHadKey;
       lastEnabled = enabled;
       lastHadKey = had;
-      if (hadKey && !had) dispatch({ type: 'Clear' }); // SM-42 KEY_REMOVED
+      if (hadKey && !had) dispatch({ type: 'Clear' }); // the key was removed
       else if (wasEnabled && !enabled) dispatch({ type: 'Disabled' });
       else emit();
     },

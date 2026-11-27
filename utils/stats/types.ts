@@ -1,4 +1,4 @@
-/** Row shapes of the local stats tables (docs/NATIVE_CONTRACT.md section 34.2). Times are unix seconds, sizes are bytes. */
+/** Row shapes of the local stats tables. Times are unix seconds, sizes are bytes. */
 
 export type StatsKind = 'torrent' | 'link' | 'stream';
 
@@ -29,7 +29,7 @@ export interface DayCounts {
   finished: number;
   failed: number;
   cancelled: number;
-  /** Seconds that day while anything was Downloading, wall-clock (NATIVE_CONTRACT 34.3, 0.27). Days before 0.27 read 0. */
+  /** Seconds that day while anything was Downloading, wall-clock. Days before 0.27 read 0. */
   activeSecs: number;
 }
 
