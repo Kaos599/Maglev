@@ -1,6 +1,6 @@
 //! Loopback HTTP server that streams torrent files to the media player.
 //!
-//! `GET /stream/<id>/<file>` with HTTP Range support, backed by librqbit's per-file
+//! `GET /stream/<token>/<id>/<file>` with HTTP Range support, backed by librqbit's per-file
 //! `ManagedTorrent::stream`, which prioritises the pieces under the read position.
 //! A minimal HTTP/1.1 implementation over tokio is used instead of hyper to keep the binary small.
 //! The server only listens on 127.0.0.1.

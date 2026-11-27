@@ -19,7 +19,7 @@ import com.maglev.engine.RestartEntryKind
 import com.maglev.engine.browser.HistoryWipe
 
 /**
- * Foreground service (type dataSync) that keeps the process alive while torrents run.
+ * Foreground service (specialUse on API 34+, dataSync below) that keeps the process alive while torrents run.
  * Started and stopped by [EngineHost] from telemetry; JS never manages it.
  */
 class MaglevTorrentService : Service() {
