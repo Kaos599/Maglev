@@ -25,6 +25,7 @@ export const LICENSES: readonly LicenseRow[] = [
   { name: "expo-navigation-bar", version: "58.0.4", license: "MIT", url: "https://github.com/expo/expo/tree/HEAD/packages/expo-navigation-bar" },
   { name: "expo-router", version: "58.0.31", license: "MIT", url: "https://github.com/expo/expo/tree/HEAD/packages/expo-router" },
   { name: "expo-secure-store", version: "58.0.3", license: "MIT", url: "https://github.com/expo/expo/tree/HEAD/packages/expo-secure-store" },
+  { name: "expo-splash-screen", version: "58.0.14", license: "MIT", url: "https://github.com/expo/expo/tree/HEAD/packages/expo-splash-screen" },
   { name: "expo-sqlite", version: "58.0.16", license: "MIT", url: "https://github.com/expo/expo/tree/HEAD/packages/expo-sqlite" },
   { name: "expo-status-bar", version: "58.0.5", license: "MIT", url: "https://github.com/expo/expo/tree/HEAD/packages/expo-status-bar" },
   { name: "expo-task-manager", version: "58.0.14", license: "MIT", url: "https://github.com/expo/expo/tree/HEAD/packages/expo-task-manager" },
