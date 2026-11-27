@@ -10,6 +10,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import android.view.View
 import android.widget.Toast
@@ -46,6 +47,16 @@ class QuickShareActivity : Activity() {
     @Volatile private var addError = false
     @Volatile private var displayName: String? = null
     private var shape: String = ""
+    /** True while the card asks the server what a link is ([askServer]). Main thread only. */
+    private var checking = false
+    /** After [ASK_MS] with no answer, the card stops waiting and shows the page card. */
+    private val giveUp = Runnable {
+        if (checking) {
+            checking = false
+            Log.i(TAG, "no answer in time, showing the page card")
+            render()
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -95,14 +106,21 @@ class QuickShareActivity : Activity() {
             addWithoutCard()
             return
         }
+        // A link whose name doesn't say what it is (10Mb.dat, /get?id=5) may still be a file: ask its server before
+        // calling it a page. A BROWSABLE VIEW can come from a web page, which must not make Maglev send requests.
+        checking = cls.kind == ShareKind.WEB_PAGE && !fromBrowser
         val c = QuickShareCard(this, QuickShareCard.palette(this, QuickSharePrefs.appearanceMode(applicationContext)), ::onAction, ::finish)
         card = c
         setContentView(c.view)
         render()
-        if (addable) inspect()
+        if (addable) inspect() else if (checking) askServer()
     }
 
     override fun onDestroy() {
+        // Stop waiting for the server. The request itself can't be interrupted, so it ends on its own timeout and its
+        // answer is dropped: a closed card never changes and never starts a download.
+        checking = false
+        ui.removeCallbacks(giveUp)
         worker.shutdown()
         super.onDestroy()
     }
@@ -293,10 +311,14 @@ class QuickShareActivity : Activity() {
                 Glyph.WARNING, QuickShareText.NO_LINK, null, null, null, close,
                 CardButton(CardAction.COPY_DETAILS, QuickShareText.COPY_DETAILS),
             )
-            ShareKind.WEB_PAGE -> CardState(
-                Glyph.PAGE, QuickShareText.WEB_PAGE, host(cls.source), null, null,
-                CardButton(CardAction.FIND_VIDEOS, QuickShareText.FIND_VIDEOS), close,
-            )
+            ShareKind.WEB_PAGE -> if (checking) {
+                CardState(Glyph.PAGE, QuickShareText.CHECKING, host(cls.source), null, null, close, null)
+            } else {
+                CardState(
+                    Glyph.PAGE, QuickShareText.WEB_PAGE, host(cls.source), null, null,
+                    CardButton(CardAction.FIND_VIDEOS, QuickShareText.FIND_VIDEOS), close,
+                )
+            }
             else -> {
                 val glyph = if (cls.kind == ShareKind.FILE_LINK) Glyph.FILE else Glyph.MAGNET
                 val title = info.name ?: displayName ?: cls.name ?: when (cls.kind) {
@@ -354,13 +376,53 @@ class QuickShareActivity : Activity() {
                 ui.post { render() }
                 return@execute
             }
-            val got = QuickShareAdd.inspect(cls, localTorrent)
-            info = got
-            existing = QuickShareAdd.findExisting(cls, got)
-            lowSpace = if (existing == null) got.sizeBytes?.let { QuickShareAdd.lowSpace(it) } else null
-            loaded = true
+            settle(cls, QuickShareAdd.inspect(cls, localTorrent))
             ui.post { render() }
         }
+    }
+
+    /** What the card knows once the source is read, plus the duplicate and space checks. Worker thread. */
+    private fun settle(c: ShareClass, got: QuickShareAdd.Info) {
+        info = got
+        existing = QuickShareAdd.findExisting(c, got)
+        lowSpace = if (existing == null) got.sizeBytes?.let { QuickShareAdd.lowSpace(it) } else null
+        loaded = true
+    }
+
+    /**
+     * Asks the server what the link is, with the request Add a link makes, and waits at most [ASK_MS] for engine start
+     * and answer together. A file answer turns the card into the file card, with the name and size the server gave. A
+     * page, an error or no answer in time leaves the page card. Download is offered, never started: this is a link the
+     * user may have meant as a page, so "Add without asking" does not apply.
+     */
+    private fun askServer() {
+        val url = cls.source
+        if (url == null) { checking = false; render(); return }
+        val app = applicationContext
+        val deadline = SystemClock.elapsedRealtime() + ASK_MS
+        ui.postDelayed(giveUp, ASK_MS)
+        worker.execute {
+            val answer = if (QuickShareAdd.startEngine(app)) QuickShareAdd.askServer(url, deadline - SystemClock.elapsedRealtime()) else null
+            ui.post { onServerAnswer(url, answer) }
+        }
+    }
+
+    /** Main thread. Ignored once the card closed or stopped waiting, so a late answer changes nothing. */
+    private fun onServerAnswer(url: String, answer: QuickShareAdd.Info?) {
+        if (!checking || isDestroyed) return
+        checking = false
+        ui.removeCallbacks(giveUp)
+        Log.i(TAG, if (answer != null) "the server says the link is a file" else "the server says the link is a page, or failed")
+        if (answer != null) {
+            val c = ShareClass(ShareKind.FILE_LINK, url, answer.name, null)
+            cls = c
+            info = answer
+            worker.execute {
+                settle(c, answer)
+                ui.post { if (!isDestroyed) render() }
+            }
+        }
+        render()
     }
 
     private fun onAction(a: CardAction) {
@@ -453,6 +515,9 @@ class QuickShareActivity : Activity() {
         val VIDEO_SITE_HOSTS = listOf("youtube.com", "youtu.be", "x.com", "twitter.com", "instagram.com", "reddit.com", "vimeo.com", "tiktok.com")
 
         const val TAG = "MaglevShare"
+
+        /** How long the card asks a server what a link is before it shows the page card. */
+        const val ASK_MS = 5_000L
 
         /** Extras download managers (1DM, ADM) and some browsers use for the link (issue #162). Read only as text. */
         val LINK_EXTRAS = listOf("url", "link", "uri", "android.intent.extra.URL", "com.android.browser.application_id_url")

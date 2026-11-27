@@ -687,6 +687,8 @@ export const quickShareCopy = {
   findVideos: 'Find videos on this page',
   close: 'Close',
   webPage: 'This is a web page, not a file',
+  /** A link whose name doesn't say what it is, while the card asks its server (at most 5 s). */
+  checking: 'Checking the link…',
   noLink: 'No link in what you shared',
   copyDetails: 'Copy details',
   detailsCopied: 'Copied. Paste it into your bug report.',

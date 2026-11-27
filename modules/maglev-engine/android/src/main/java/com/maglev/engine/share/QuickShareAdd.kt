@@ -94,12 +94,21 @@ object QuickShareAdd {
                 (meta["info_hash"] as? String)?.lowercase() ?: cls.infoHash,
             )
         }
-        ShareKind.FILE_LINK -> {
-            val probe = EngineHost.probeUrl(cls.source ?: "", emptyMap(), PROBE_MS)
-            if (probe["ok"] != true) Info(null, null, null, null)
-            else Info((probe["name"] as? String)?.ifEmpty { null }, (probe["size"] as? Number)?.toLong()?.takeIf { it > 0 }, null, null)
-        }
+        ShareKind.FILE_LINK -> askServer(cls.source ?: "", PROBE_MS) ?: Info(null, null, null, null)
         else -> Info(null, null, null, null)
+    }
+
+    /**
+     * What the server says a link is, with the request Add a link makes. A file gives its name and size where the
+     * server says them. A web page, an error or no answer within [timeoutMs] gives null. The engine calls an answer a
+     * page when its content type is HTML, whatever the Content-Disposition says, and its download refuses the same
+     * answers, so the card never offers Download for a link the download would turn down.
+     */
+    fun askServer(url: String, timeoutMs: Long): Info? {
+        if (url.isEmpty() || timeoutMs <= 0) return null
+        val probe = EngineHost.probeUrl(url, emptyMap(), timeoutMs)
+        if (probe["ok"] != true) return null
+        return Info((probe["name"] as? String)?.ifEmpty { null }, (probe["size"] as? Number)?.toLong()?.takeIf { it > 0 }, null, null)
     }
 
     /** `scheme://host/path`: how the downloads list shows a link (no user, query or fragment). */

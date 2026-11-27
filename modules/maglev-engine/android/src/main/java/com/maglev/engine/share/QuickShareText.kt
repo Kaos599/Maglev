@@ -15,6 +15,7 @@ object QuickShareText {
     const val FIND_VIDEOS = "Find videos on this page"
     const val CLOSE = "Close"
     const val WEB_PAGE = "This is a web page, not a file"
+    const val CHECKING = "Checking the link…"
     const val NO_LINK = "No link in what you shared"
     const val COPY_DETAILS = "Copy details"
     const val DETAILS_COPIED = "Copied. Paste it into your bug report."
