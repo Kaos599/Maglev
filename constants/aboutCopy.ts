@@ -3,7 +3,7 @@ import { REPO_URL } from '../components/settings/StarTicket';
 export const LICENCE_URL = `${REPO_URL}/blob/main/LICENSE`;
 
 export const aboutExtrasCopy = {
-  tagline: 'Downloads almost any link: videos, web pages, files and torrents.',
+  tagline: 'Downloads almost any link: videos, files, magnets and torrents.',
   licence: { title: 'Open-source licence', value: 'GPL-3.0', hint: 'Opens the licence page' },
   releaseNotes: 'Release notes',
   releaseNotesFor: (version: string) => `Release notes for ${version}`,
