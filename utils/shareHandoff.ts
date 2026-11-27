@@ -1,4 +1,4 @@
-import { takePendingShare } from '../modules/maglev-engine/src/MaglevQuickShare';
+import { dropPendingShare as dropNativeShare, takePendingShare } from '../modules/maglev-engine/src/MaglevQuickShare';
 
 // Every link that opens an Add screen (a share, a magnet or .torrent from another app, a Watch notification's Download
 // action) waits in a one-shot native store. The app reads and clears it each time it starts and each time it comes back
@@ -34,7 +34,7 @@ export function clearSharedLaunch(): void {
   sharedLaunch = false;
 }
 
-/** A link left for the running app, or null. Tells the listeners, so the What's New decision can wait. */
+/** A link left for the running app in the last minute, or null. Tells the listeners, so the What's New decision can wait. */
 export function takeSharedLink(): string | null {
   const link = takePendingShare(false);
   if (link) listeners.forEach((l) => l());
@@ -43,7 +43,7 @@ export function takeSharedLink(): string | null {
 
 /** A link arrived another way while the app runs; it is newer than anything waiting, so what waits is dropped. */
 export function dropPendingShare(): void {
-  takePendingShare(false);
+  dropNativeShare();
 }
 
 /** Calls [cb] whenever a link is taken while the app runs. Returns the way to stop. */

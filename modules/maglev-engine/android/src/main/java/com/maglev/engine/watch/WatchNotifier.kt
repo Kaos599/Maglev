@@ -11,7 +11,7 @@ import com.maglev.engine.R
 import com.maglev.engine.share.ShareHandoff
 
 /**
- * Posts "<title> is up" for a watch (docs/contracts-0.19/watch.md section 7). Open and Download are routes
+ * Posts "<title> is up" for a watch. Open and Download are routes
  * (maglev://search?..., maglev://add-torrent?source=...) that reach the app through the one-shot store, so nothing is
  * added without the Add screen's checks and a later start from the icon never replays them.
  */

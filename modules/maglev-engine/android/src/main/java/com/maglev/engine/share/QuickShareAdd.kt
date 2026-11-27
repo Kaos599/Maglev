@@ -13,7 +13,7 @@ import com.maglev.engine.util.Json
 import java.io.File
 
 /**
- * Everything the quick share card asks of the engine (docs/contracts-0.19/quick-share.md section 5). Blocking: call from a
+ * Everything the quick share card asks of the engine. Blocking: call from a
  * worker thread. It reuses the add paths the feed drain uses (`EngineHost.addTorrent`, `EngineHost.addDownload`); nothing
  * here invents a value. An unknown size stays null.
  */
@@ -127,7 +127,7 @@ object QuickShareAdd {
         return Existing(pct.coerceIn(0, 100))
     }
 
-    /** "Needs X, Y free": the same admission check the feed drain uses (`Admission`, SM-35). Null when it fits or cannot be judged. */
+    /** "Needs X, Y free": the same admission check the feed drain uses (`Admission`). Null when it fits or cannot be judged. */
     fun lowSpace(needBytes: Long): LowSpace? {
         val space = EngineHost.freeSpace()
         if (space["ok"] != true) return null
@@ -135,7 +135,7 @@ object QuickShareAdd {
         val ownFree = Json.long(space["freeBytes"])
         val free = if (staged) (space["targetFreeBytes"] as? Number)?.toLong()?.coerceAtMost(ownFree) ?: ownFree else ownFree
         val list = EngineHost.call { NativeCore.nativeListTorrents() }
-        // Torrents and link downloads both still need space (SM-35, NATIVE_CONTRACT 10.3).
+        // Torrents and link downloads both still need space.
         val pending = if (list["ok"] == true) Admission.pendingNeedFromList(list) else 0L
         // Judge against what the storage rule keeps free (StorageGuard), or the card offers Download for a
         // transfer that is paused as Storage full the moment it starts. The text shows the space Maglev can use.

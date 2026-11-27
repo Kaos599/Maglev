@@ -20,6 +20,9 @@ object ShareHandoff {
     /** A share that was never opened must not pop up later. */
     const val MAX_AGE_MS = 10 * 60 * 1000L
 
+    /** While the app runs a share is taken at once, so anything older than this is not what the user just did. */
+    const val WARM_MAX_AGE_MS = 60 * 1000L
+
     /** Extra on the card's intent: open this maglev:// route in the app through the store (see [routeIntent]). */
     const val EXTRA_OPEN_ROUTE = "com.maglev.engine.share.OPEN_ROUTE"
 
@@ -70,12 +73,14 @@ object ShareHandoff {
                 .commit() // blocking on purpose: it must be on disk before the app is started
             waiting = true
         }
+        // A running app is told so it need not wait for an app-state change (split-screen keeps it resumed).
+        MaglevQuickShareModule.notifyWaiting()
     }
 
     /**
-     * The waiting link, once. It is cleared whether or not it was still fresh. Null when there is none. A warm take
-     * (while the app runs) does no disk work when this process knows the store is empty; a start-up take always reads it
-     * and is also the only place old copies are swept.
+     * The waiting link, once. It is cleared whether or not it was still fresh. Null when there is none. A start-up take
+     * always reads the disk, accepts an entry up to [MAX_AGE_MS] old and is the only place old copies are swept. A warm
+     * take (while the app runs) accepts only [WARM_MAX_AGE_MS] and does no disk work when the store is known empty.
      */
     fun take(context: Context, startUp: Boolean): String? {
         if (startUp) sweepCopies(context)
@@ -89,9 +94,21 @@ object ShareHandoff {
             waiting = false
             if (link == null) return null
             val age = System.currentTimeMillis() - at
-            if (link.isBlank() || age !in 0..MAX_AGE_MS) return null
+            if (link.isBlank() || age !in 0..(if (startUp) MAX_AGE_MS else WARM_MAX_AGE_MS)) return null
             if (trusted != null) TrustedShare.record(trusted)
             return link
+        }
+    }
+
+    /**
+     * Clears the waiting entry without reading it, and without marking anything as trusted. For a link that reached the
+     * app another way and is newer. Does no disk work when the store is known empty.
+     */
+    fun drop(context: Context) {
+        synchronized(lock) {
+            if (waiting == false) return
+            context.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit().clear().commit()
+            waiting = false
         }
     }
 

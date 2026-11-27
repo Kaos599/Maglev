@@ -21,7 +21,7 @@ import kotlin.math.ln
 import kotlin.math.pow
 
 /**
- * The quick share card (docs/contracts-0.19/quick-share.md). A translucent activity that floats over the app the user
+ * The quick share card. A translucent activity that floats over the app the user
  * shared from. It receives magnet, .torrent, text and http(s) file links, shows what they are, and adds them to the
  * engine without opening Maglev's own window. "Open in Maglev" leaves the link in [ShareHandoff] and starts MainActivity
  * plainly. The same activity is the way in for Maglev's own notification and tile taps ([ShareHandoff.routeIntent]), so
@@ -53,10 +53,18 @@ class QuickShareActivity : Activity() {
         EngineHost.attach(applicationContext)
         original = intent ?: Intent()
         // Maglev's own notification and tile taps: no card, straight to the app through the one-shot store. The card is
-        // exported, so only an allowlisted route is accepted; a rejected one just closes.
-        if (original.hasExtra(ShareHandoff.EXTRA_OPEN_ROUTE)) {
-            val route = original.getStringExtra(ShareHandoff.EXTRA_OPEN_ROUTE)
-            if (route != null && ShareHandoff.allowedRoute(route)) launchApp(route) else finish()
+        // exported, so only an allowlisted route is accepted; a rejected one just closes. Reading an extra unpacks the
+        // whole extras bundle, and a caller can put a class we do not have in it, which throws. An uncaught throw here
+        // would take the engine's process down with the card, so the read is guarded like every other one in this file.
+        val route = try { original.getStringExtra(ShareHandoff.EXTRA_OPEN_ROUTE) } catch (e: Exception) { null }
+        if (route != null) {
+            if (ShareHandoff.allowedRoute(route)) launchApp(route) else rejectRoute()
+            return
+        }
+        // Maglev's own route intents carry data and no action. Data with no action and no readable route is a route we
+        // could not accept, not a share, so it must not fall through to the "No link" card.
+        if (original.action == null && original.data != null) {
+            rejectRoute()
             return
         }
         if (original.action == Intent.ACTION_SEND_MULTIPLE) {
@@ -71,17 +79,17 @@ class QuickShareActivity : Activity() {
             Log.i(TAG, "No link in a hand-off:\n$shape")
         }
         if (original.action == Intent.ACTION_VIEW) cls = ShareClassify.withHandOffName(cls, handOffName(original))
+        // A web page can start a BROWSABLE VIEW, so that one always shows the card and never earns the trusted mark below.
+        val fromBrowser = original.action == Intent.ACTION_VIEW && original.hasCategory(Intent.CATEGORY_BROWSABLE)
         // Video sites (prototype): a shared YouTube, X or Instagram page goes straight to the add sheet, which
         // reads the video and lists qualities. Same host list as utils/videoSites.ts VIDEO_SITE_HOSTS.
-        if (cls.kind == ShareKind.WEB_PAGE && isVideoSite(host(cls.source))) {
+        if (!fromBrowser && cls.kind == ShareKind.WEB_PAGE && isVideoSite(host(cls.source))) {
             // The stored entry carries this exact link as trusted, so the add screen reads it at once. A maglev:// link
             // from a web page or another app never gets a mark and still waits for a tap.
             launchApp("maglev://add-download?url=" + Uri.encode(cls.source ?: ""), cls.source)
             return
         }
         val addable = cls.kind == ShareKind.MAGNET || cls.kind == ShareKind.TORRENT_FILE || cls.kind == ShareKind.FILE_LINK
-        // A web page can start a BROWSABLE VIEW, so that one always shows the card.
-        val fromBrowser = original.action == Intent.ACTION_VIEW && original.hasCategory(Intent.CATEGORY_BROWSABLE)
         if (addable && !fromBrowser && QuickSharePrefs.addWithoutAsking(applicationContext)) {
             setContentView(View(this))
             addWithoutCard()
@@ -149,7 +157,7 @@ class QuickShareActivity : Activity() {
         return ShareClassify.describeHandOff(i.action, i.type, i.data?.scheme, extras, items)
     }
 
-    /** The file name a browser sends with a download hand-off (contract 8.1): ADM's extra first, then the generic one. */
+    /** The file name a browser sends with a download hand-off: ADM's extra first, then the generic one. */
     private fun handOffName(i: Intent): String? = try {
         i.getStringExtra("com.android.extra.filename") ?: i.getStringExtra("filename")
     } catch (e: Exception) {
@@ -172,6 +180,11 @@ class QuickShareActivity : Activity() {
             link != null -> launchApp(link)
             else -> launchApp(null)
         }
+    }
+
+    private fun rejectRoute() {
+        Log.w(TAG, "route rejected")
+        finish()
     }
 
     /** The link waits in the one-shot store and the app starts with no data. Null starts the app with nothing waiting. */
@@ -201,15 +214,14 @@ class QuickShareActivity : Activity() {
     private fun keepLocalTorrents(sources: List<String>, packed: Boolean) {
         val app = applicationContext
         worker.execute {
-            val tried = sources.take(ShareHandoff.MAX_FILES)
-            val kept = tried.mapNotNull { ShareHandoff.keepLocalTorrent(app, it, original.type) }
+            val kept = sources.take(ShareHandoff.MAX_FILES).mapNotNull { ShareHandoff.keepLocalTorrent(app, it, original.type) }
             ui.post {
                 if (isDestroyed) return@post
                 when {
                     kept.isEmpty() -> { toast(QuickShareText.COULD_NOT_ADD); finish() }
                     !packed && kept.size == 1 -> launchApp(kept[0])
                     else -> {
-                        if (kept.size < tried.size) toast(QuickShareText.someKept(kept.size, tried.size))
+                        if (kept.size < sources.size) toast(QuickShareText.someKept(kept.size, sources.size))
                         launchApp("maglev://share?" + kept.joinToString("&") { "u=" + Uri.encode(it) })
                     }
                 }
@@ -380,7 +392,7 @@ class QuickShareActivity : Activity() {
         render()
         val app = applicationContext
         worker.execute {
-            // A magnet still being read must stop first, or the add would wait for it (NATIVE_CONTRACT 10.4).
+            // A magnet still being read must stop first, or the add would wait for it.
             cls.infoHash?.let { if (!loaded) EngineHost.cancelResolve(it) }
             if (cls.kind == ShareKind.TORRENT_FILE && localTorrent == null && cls.source?.startsWith("content://", true) == true) {
                 localTorrent = QuickShareAdd.localize(app, cls.source!!)
