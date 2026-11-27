@@ -31,6 +31,7 @@ import { SpeedLimitSheet } from '../../components/detail/SpeedLimitSheet';
 import { Banner, Button, EmptyBlock, IconButton, ListRow, Screen, Sheet, TextField, type ProgressTone } from '../../components/ui';
 import { toneColor } from '../../components/transfers/StatusLine';
 import { ProgressBadge, ProgressCard } from '../../components/detail/ProgressCard';
+import { FullName } from '../../components/detail/FullName';
 import { CompactLine } from '../../components/detail/CompactLine';
 import { WhyStuck } from '../../components/detail/WhyStuck';
 import { useFlowClock } from '../../components/transfers/useStatusOpts';
@@ -231,6 +232,8 @@ export default function DownloadScreen() {
       contentStyle={styles.content}
       testID="download-page"
     >
+      <FullName name={d.name} />
+
       {/* NATIVE_CONTRACT 40.2 Progress card: the state in the card's words and colour, the percent, then the bar. */}
       <ProgressCard
         badge={<ProgressBadge label={status.lead} tint={tint} />}

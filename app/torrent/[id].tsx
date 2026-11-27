@@ -29,6 +29,7 @@ import { TorrentStats } from '../../components/detail/TorrentStats';
 import { CompactLine } from '../../components/detail/CompactLine';
 import { TimeRows } from '../../components/detail/TimeRows';
 import { ProgressCard } from '../../components/detail/ProgressCard';
+import { FullName } from '../../components/detail/FullName';
 import { useSettings } from '../../context/SettingsContext';
 import { PeerRow, TrackerRow } from '../../components/detail/rows';
 import { DoneActions, OpenFolderButton } from '../../components/detail/DoneActions';
@@ -824,6 +825,7 @@ export default function TorrentDetailScreen() {
 
   const header = (
     <View>
+      <FullName name={snap.name || 'Torrent'} />
       {notice ? (
         <View style={styles.block}>
           <Banner tone={notice.tone} title={notice.text} onDismiss={() => setNotice(null)} />
