@@ -5,7 +5,7 @@ import Animated, { cancelAnimation, useAnimatedStyle, useSharedValue, withSpring
 import { scheduleOnRN } from 'react-native-worklets';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../context/ThemeContext';
-import { ThemeColors, backdropOpacity, motion, radius, sheetDragOffset, shouldDismissSheet, spacing, touch, type } from '../../constants/theme';
+import { ThemeColors, backdropOpacity, motion, radius, sheetDragOffset, shouldDismissSheet, spacing, type } from '../../constants/theme';
 import { useMotion } from './useMotion';
 import { useKeyboardInset } from '../assistant/useKeyboardInset';
 import { useOverlayTracking } from '../../utils/overlayTracker';
@@ -139,7 +139,7 @@ export function Sheet({ visible, onClose, title, subtitle, hideTitle, children, 
   const reduce = m.disabled;
   const base = m.base;
   const easing = m.easing;
-  // A busy sheet may ignore onClose; if visible is still true after a tick, spring it back so it is never trapped off-screen.
+  // A sheet whose owner ignores onClose while busy must not be left invisible over a live Modal; wait out the slide-out first.
   const requestCloseFromDrag = useCallback(() => {
     onClose();
     if (snapBackTimer.current) clearTimeout(snapBackTimer.current);
@@ -149,8 +149,8 @@ export function Sheet({ visible, onClose, title, subtitle, hideTitle, children, 
         cancelAnimation(offset);
         offset.value = reduce ? 0 : withSpring(0, { duration: motion.duration.base, dampingRatio: 1 });
       }
-    }, 50);
-  }, [onClose, offset, reduce]);
+    }, reduce ? 150 : base + 150);
+  }, [onClose, offset, reduce, base]);
 
   const pan = usePanGesture({
     enabled: visible,
@@ -217,10 +217,6 @@ export function Sheet({ visible, onClose, title, subtitle, hideTitle, children, 
                   <View ref={titleRef} accessible accessibilityRole="header" accessibilityLabel={title} style={styles.grabberOnly}>
                     <View style={[styles.grabber, styles.grabberNoMargin]} />
                   </View>
-                ) : scroll ? (
-                  <View style={styles.grabberScroll}>
-                    <View style={[styles.grabber, styles.grabberNoMargin]} />
-                  </View>
                 ) : (
                   <>
                     <View style={styles.grabber} />
@@ -240,14 +236,6 @@ export function Sheet({ visible, onClose, title, subtitle, hideTitle, children, 
                 showsVerticalScrollIndicator
                 persistentScrollbar
               >
-                {!hideTitle ? (
-                  <View style={styles.scrollHeader}>
-                    <Text ref={titleRef} style={styles.title} accessibilityRole="header">
-                      {title}
-                    </Text>
-                    {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
-                  </View>
-                ) : null}
                 {children}
               </ScrollView>
             ) : (
@@ -282,12 +270,10 @@ const makeStyles = (c: ThemeColors) =>
     // contentNoTitle's 4 dp, the handle sits 16 dp above the content, like handle to title on a titled sheet.
     // Not a tap target (the title is its TalkBack label), so the 44 dp rule does not apply.
     grabberOnly: { height: 20, justifyContent: 'center' },
-    grabberScroll: { height: touch.min, justifyContent: 'center' },
     grabberNoMargin: { marginBottom: 0 },
     grabber: { alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: c.borderStrong, marginBottom: spacing.lg },
     title: { ...type.bodyStrong, fontSize: type.size.xl, color: c.text },
     subtitle: { ...type.body, fontSize: type.size.md, color: c.textMuted, marginTop: spacing.xs },
-    scrollHeader: { marginBottom: spacing.lg },
     content: { marginTop: spacing.lg, flexShrink: 1 },
     contentNoTitle: { marginTop: spacing.xs },
   });
