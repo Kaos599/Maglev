@@ -21,6 +21,7 @@ import {
   afterFailure,
   afterMissing,
   askSubtitles,
+  beginWrite,
   canWriteNow,
   canWriteState,
   deleteRequest,
@@ -29,8 +30,10 @@ import {
   getAutoBaseline,
   getRequests,
   getRequestsVersion,
+  isHeld,
   isNewTransfer,
   isRunning,
+  isWriting,
   isSettledPhase,
   linkNameKind,
   nextDetailAt,
@@ -229,7 +232,7 @@ export function useSubtitleRequests(): void {
       const epoch = entry.epoch ?? 0;
       const ref = { key, epoch, pack };
       const ctl = new AbortController();
-      registerRun(key, fileKey, ctl);
+      registerRun(key, fileKey, ctl, target.videoPath);
       const base = { vp: target.videoPath, saved: prev.saved };
       // A pack's run that ends in needs-pick keeps its top candidate per language (at most 2) for "Use best match".
       let cands: ReturnType<typeof toStored> = [];
@@ -281,10 +284,22 @@ export function useSubtitleRequests(): void {
             writeCard(ref, target, 'needs-look', out.pick.candidate.language);
             return;
           }
-          const saved = await downloadAndSave(
-            { candidate: out.pick.candidate, provider, sourceName: provider.name, target, query: res.query, choice: 'normal', signal: ctl.signal },
-            { unzip: (b) => maglevEngine.unzipSubtitles(b), save: (v, n, b, r) => maglevEngine.saveSubtitle(v, n, b, r) },
-          );
+          // The sheet may have taken this video over since the search began: it saves, the runner doesn't.
+          if (isHeld(key, target.videoPath) || isWriting(key, target.videoPath)) {
+            // Back to waiting, never left on "searching": the runner looks again once the video is free.
+            setRun(key, fileKey, { ...base, phase: 'queued', tries: prev.tries, fails: prev.fails }, { epoch });
+            return;
+          }
+          const endWrite = beginWrite(key, target.videoPath);
+          let saved: Awaited<ReturnType<typeof downloadAndSave>>;
+          try {
+            saved = await downloadAndSave(
+              { candidate: out.pick.candidate, provider, sourceName: provider.name, target, query: res.query, choice: 'normal', signal: ctl.signal },
+              { unzip: (b) => maglevEngine.unzipSubtitles(b), save: (v, n, b, r) => maglevEngine.saveSubtitle(v, n, b, r) },
+            );
+          } finally {
+            endWrite();
+          }
           if (ctl.signal.aborted && saved.status !== 'saved') return;
           if (saved.status === 'saved') {
             setRun(key, fileKey, { vp: target.videoPath, phase: 'saved', tries, saved: true }, { otherLang: null, epoch });
@@ -426,7 +441,8 @@ export function useSubtitleRequests(): void {
           if (retry !== null) soon(retry);
           refreshCard(ref, target, r);
           const kind = planRun(r, { started, complete, typed: typedOne && videos.length === 1, now, online: networkOnline });
-          if (!kind || isRunning(key, fileKey)) continue;
+          // While the sheet is open for this video, or a write for it is under way, the runner leaves it alone.
+          if (!kind || isRunning(key, fileKey) || isHeld(key, target.videoPath) || isWriting(key, target.videoPath)) continue;
           // Without the one-time OK a request waits; the row says "Needs your OK".
           if (!runnable) continue;
           // A sidecar is never written while the transfer is being moved (the folder is stale).
@@ -464,7 +480,7 @@ export function useSubtitleRequests(): void {
         if (retry !== null) soon(retry);
         refreshCard(ref, target, r);
         const kind = planRun(r, { started, complete: d.state === 'finished', typed: typedOne, now, online: networkOnline });
-        if (!kind || isRunning(key, null) || !runnable) continue;
+        if (!kind || isRunning(key, null) || !runnable || isHeld(key, target.videoPath) || isWriting(key, target.videoPath)) continue;
         if (!networkOnline) {
           if (r.phase !== 'offline') setRun(key, null, { ...afterFailure('offline', r, now), vp: target.videoPath }, { epoch });
           continue;

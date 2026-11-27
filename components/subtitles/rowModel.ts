@@ -79,8 +79,8 @@ export interface RowModel {
   glyph: RowGlyph;
   start: SheetStart;
   a11y: string;
-  /** A second text button: "More sources", or "See all" next to "Use best match". */
-  extra?: { label: string; action: 'more-sources' | 'see-all' };
+  /** A second text button: "More sources", "See all" next to "Use best match", or Cancel next to "Pick now". */
+  extra?: { label: string; action: 'more-sources' | 'see-all' | 'cancel' };
 }
 
 /** Counts for a season pack from the request's per-file runs. Null unless there are two or more videos. */
@@ -152,12 +152,19 @@ export function rowModel(i: RowInput): RowModel {
   }
 
   const language = i.language ?? i.stored?.lang ?? null;
+  // While the automatic search runs, the sheet can take the video over and show what comes in as it comes;
+  // Cancel stays as the second button. A stored "getting" state has no request to cancel.
+  const waiting = (line: string): RowModel => {
+    const cancel = fromRequest ? { label: ROW_BUTTONS.cancel, action: 'cancel' as const } : null;
+    if (!i.canOpenSheet) return make(line, false, cancel, 'getting');
+    const m = make(line, false, { label: ROW_BUTTONS.pickNow, action: 'pick' }, 'getting');
+    return cancel ? { ...m, extra: cancel } : m;
+  };
   switch (phase) {
     case 'queued':
-      return make(i.fileListKnown ? ROW_QUEUED : ROW_QUEUED_NO_LIST, false, { label: ROW_BUTTONS.cancel, action: 'cancel' }, 'getting');
+      return waiting(i.fileListKnown ? ROW_QUEUED : ROW_QUEUED_NO_LIST);
     case 'searching':
-      // A stored "getting" state has no request to cancel.
-      return make(ROW_SEARCHING, false, fromRequest ? { label: ROW_BUTTONS.cancel, action: 'cancel' } : null, 'getting');
+      return waiting(ROW_SEARCHING);
     case 'saved':
       return make(language ? rowSaved(language) : rowSavedNoLanguage, false, sheet(ROW_BUTTONS.change, 'find'), 'saved');
     case 'needs-pick':

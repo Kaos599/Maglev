@@ -56,7 +56,8 @@ function check(name, cond) {
   check('result words: none, getting, waiting, failed', S.episodeWord('none', null) === 'None found · edit name' && S.episodeWord('searching', null) === 'Getting…' && S.episodeWord('queued', null) === 'Waiting for the file' && S.episodeWord('failed', null) === "Sources didn't answer");
   check('saved with no known language says "Saved"', S.episodeWord('saved', null) === 'Saved');
   check('a row without a known size shows only the words', rows.find((r) => r.phase === 'queued').detail === 'Waiting for the file');
-  check('a tap opens results for needs-pick and saved, the name field for none, nothing while waiting', S.episodeStart('needs-pick') === 'results' && S.episodeStart('saved') === 'results' && S.episodeStart('none') === 'edit-name' && S.episodeStart('queued') === null && S.episodeStart('searching') === null);
+  // A searching episode opens its sheet, which takes it over from the automatic search; a queued one may have no file yet.
+  check('a tap opens results for needs-pick, saved and searching, the name field for none, nothing while queued', S.episodeStart('needs-pick') === 'results' && S.episodeStart('saved') === 'results' && S.episodeStart('searching') === 'results' && S.episodeStart('none') === 'edit-name' && S.episodeStart('queued') === null);
   check('phase counts feed the summary', JSON.stringify(S.phaseCounts(rows.map((r) => r.phase))) === JSON.stringify({ saved: 1, needsYou: 1, waiting: 1 }));
   check('23 files: 21 saved and 2 need you', copy.statusSummary(S.phaseCounts([...Array(21).fill('saved'), 'needs-pick', 'needs-pick'])) === '21 saved · 2 need you');
 
