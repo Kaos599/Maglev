@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// C-ASSIST-1: release-name vectors and property tests (docs/ASSISTANT_DESIGN.md section 2.12).
+// Release-name vectors and property tests.
 // Needs Node 22.18+ (runs the TypeScript source directly via type stripping).
 
 process.removeAllListeners('warning');

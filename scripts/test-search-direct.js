@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// SEARCH_CONTRACT section 9: direct-file results. No network. Needs Node 22.18+.
+// Direct-file search results. No network. Needs Node 22.18+.
 
 process.removeAllListeners('warning');
 

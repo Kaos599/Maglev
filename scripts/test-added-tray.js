@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The "Added" message (NATIVE_CONTRACT 44.3, 44.4, 44.5): merge, counts, words, timer, action choice, and what counts as a video.
+// The "Added" message: merge, counts, words, timer, action choice, and what counts as a video.
 // Needs Node 22.18+.
 process.removeAllListeners('warning');
 const fs = require('fs');

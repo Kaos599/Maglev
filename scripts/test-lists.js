@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Self-updating lists (docs/NATIVE_CONTRACT.md section 31.7): schema validation, the serial rule, mirror precedence,
+// Self-updating lists: schema validation, the serial rule, mirror precedence,
 // disabled sources, trackers, the default ad list address rule, the 24 h gate, network rules, state machine L1, a
 // full check with fakes, and a real signature round trip. Pure plus fakes. Needs Node 22.18+ (runs the TypeScript
 // source directly). The signature check here uses node:crypto, which stands in for the Kotlin verifier.

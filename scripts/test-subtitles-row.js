@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// NATIVE_CONTRACT 44.14: the Subtitles row on the download page. The phase to line/button table, the season-pack
+// The Subtitles row on the download page. The phase to line/button table, the season-pack
 // count, when the row shows, the sheet's initial event, and the wiring on both pages. Pure: no rendering.
 process.removeAllListeners('warning');
 const fs = require('fs');

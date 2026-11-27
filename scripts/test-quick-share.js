@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Quick share (docs/contracts-0.19/quick-share.md): plugin manifest output, the setting round trip, link classification
+// Quick share: plugin manifest output, the setting round trip, link classification
 // (shared fixture with the Kotlin test) and the native wiring. Needs Node 22.18+ (runs the TypeScript source directly).
 process.removeAllListeners('warning');
 const fs = require('fs');

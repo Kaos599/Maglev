@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Byte and speed formatters must be total: never "undefined" or "NaN" (docs/UI_SPEC_PHASE2.md S11.4).
+// Byte and speed formatters must be total: never "undefined" or "NaN".
 // Needs Node 22.18+ (runs the TypeScript source directly via type stripping).
 
 process.removeAllListeners('warning');
@@ -31,7 +31,7 @@ async function main() {
   check('45.5 MB keeps one decimal', formatBytes(45.5 * 1024 * 1024) === '45.5 MB');
   check('999.96 MB rolls up to 1.0 GB, never 1000 MB', formatBytes(1023.96 * 1024 * 1024) === '1.0 GB');
   // Speeds: 3 significant digits, and the unit moves up at 1000, so a speed is always 7-9 characters
-  // ("62.5 MB/s", "125 MB/s", "0.98 MB/s") and the status line's speed slot can be 9 wide (owner pick 2026-11-20).
+  // ("62.5 MB/s", "125 MB/s", "0.98 MB/s") and the status line's speed slot can be 9 wide.
   const M = 1024 * 1024;
   const sp = [
     [0, '0 B/s'], [512, '512 B/s'], [999, '999 B/s'], [1000, '0.98 KB/s'], [4.1 * 1024, '4.10 KB/s'],

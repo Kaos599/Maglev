@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Star prompt (docs/NATIVE_CONTRACT.md section 33): every gate, the outcomes, prefs, the About row and the copy.
+// Star prompt: every gate, the outcomes, prefs, the About row and the copy.
 // Needs Node 22.18+ (runs the TypeScript source directly).
 process.removeAllListeners('warning');
 

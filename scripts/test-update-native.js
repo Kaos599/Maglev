@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// In-app updates, static checks on the Kotlin, manifest, plugin and wiring (docs/NATIVE_CONTRACT.md section 27.10).
+// In-app updates, static checks on the Kotlin, manifest, plugin and wiring.
 // Gradle is never run locally, so this reads the source and proves the safety rules are there.
 const fs = require('fs');
 const path = require('path');

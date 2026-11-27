@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Settings > Subtitles (docs/NATIVE_CONTRACT.md 36.2, 36.9, 36.10): the page wiring, the languages order helpers,
+// Settings > Subtitles: the page wiring, the languages order helpers,
 // and the Sources screen with fake providers, including a source the signed list turned off.
 // Needs Node 22.18+ (runs the TypeScript source directly).
 process.removeAllListeners('warning');
@@ -29,11 +29,11 @@ function check(name, cond, extra) {
   console.log('[page]');
   const page = read('app/settings/subtitles.tsx');
   check('the three screens exist and are registered in the layout', ['subtitles', 'subtitle-languages', 'subtitle-sources'].every((n) => exists(`app/settings/${n}.tsx`) && read('app/_layout.tsx').includes(`name="settings/${n}"`)));
-  check('master switch "Subtitles" with the contract subtitle', copy.SETTINGS_TITLE === 'Subtitles' && copy.SETTINGS_SWITCH_SUBTITLE === 'Show Find subtitles on videos' && /SETTINGS_SWITCH_SUBTITLE/.test(page) && /patch\(\{ enabled \}\)/.test(page));
+  check('master switch "Subtitles" with its subtitle', copy.SETTINGS_TITLE === 'Subtitles' && copy.SETTINGS_SWITCH_SUBTITLE === 'Show Find subtitles on videos' && /SETTINGS_SWITCH_SUBTITLE/.test(page) && /patch\(\{ enabled \}\)/.test(page));
   check('rows in order: switch, Languages, Hearing impaired, Sources, privacy line', (() => { const p = ['patch({ enabled })', 'copy.languages.title', 'copy.hearing.title', 'copy.sources.title', '<Caption>{PRIVACY_LINE}'].map((x) => page.indexOf(x)); return p.every((x, i) => x > 0 && (i === 0 || x > p[i - 1])); })());
   check('hearing options are Show both / Prefer / Avoid', eq(Object.values(copy.HEARING_OPTIONS), ['Show both', 'Prefer', 'Avoid']) && /hearingImpaired/.test(page));
   check('with the master switch off the other rows stay visible but are disabled', /const off = !sub\.enabled/.test(page) && /pointerEvents=\{off \? 'none' : 'auto'\}/.test(page) && /opacity: 0\.45/.test(page) && (page.match(/disabled=\{off\}/g) || []).length >= 2);
-  check('the privacy line is the contract text', copy.PRIVACY_LINE === "Looking up subtitles sends the video's file name and a fingerprint of the file to the source you use. Nothing is sent until you tap Find subtitles.");
+  check('the privacy line is the exact text', copy.PRIVACY_LINE === "Looking up subtitles sends the video's file name and a fingerprint of the file to the source you use. Nothing is sent until you tap Find subtitles.");
   check('the OpenSubtitles row is gated by hasOpenSubtitlesKey, which is false without a build key', /hasOpenSubtitlesKey\(\) \? \(/.test(page) && S.hasOpenSubtitlesKey() === false);
   check('settings are UI only: written through updateSettings({subtitles}), never toNativeConfig', /subtitles: \{ \.\.\.prev\.subtitles/.test(read('components/subtitles-settings/useSubtitleSettings.ts')) && !/subtitle/i.test(read('modules/maglev-engine/src/toNativeConfig.ts')));
   const tab = read('app/(tabs)/settings.tsx');
@@ -88,7 +88,7 @@ function check(name, cond, extra) {
   const ov = { alpha: { enabled: false, note: 'Back next week' }, beta: { enabled: false } };
   const off = S.sourceRows([A, B, C], { sourceEnabled: { alpha: true, beta: true } }, ov);
   check('"Turned off by Maglev": the list wins over the user switch and carries its note', off[0].on === false && off[0].turnedOff.note === 'Back next week' && off[1].on === false && off[1].turnedOff.note === null && off[2].turnedOff === null);
-  check('turned-off text is the contract wording', copy.TURNED_OFF_BY_MAGLEV === 'Turned off by Maglev');
+  check('turned-off text is the exact text', copy.TURNED_OFF_BY_MAGLEV === 'Turned off by Maglev');
   check('the rows agree with enabledProviders (what actually runs)', eq(S.sourceRows([A, B, C], { sourceEnabled: { beta: true } }, ov).filter((r) => r.on).map((r) => r.id), reg.enabledProviders({ enabled: true, sourceEnabled: { beta: true } }, ov, [A, B, C]).map((p) => p.id)));
   check('the page value counts sources that are on, and says so when there are none', S.sourcesValue(rows) === '2 on' && S.sourcesValue(off) === '1 on' && S.sourcesValue([]) === 'None yet');
   check('with the shipped registry the rows build without error', Array.isArray(S.sourceRows(reg.SUBTITLE_PROVIDERS, { sourceEnabled: {} }, null)));

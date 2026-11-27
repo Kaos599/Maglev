@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Browser tabs, link menu, pop-ups and redirects (NATIVE_CONTRACT 24.10): static checks on the Kotlin.
+// Browser tabs, link menu, pop-ups and redirects: static checks on the Kotlin.
 const fs = require('fs');
 const path = require('path');
 const root = path.join(__dirname, '..');

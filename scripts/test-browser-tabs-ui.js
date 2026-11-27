@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Browser tabs, link menu, pop-up card and settings (NATIVE_CONTRACT 24.10): static checks on the screens.
+// Browser tabs, link menu, pop-up card and settings: static checks on the screens.
 const fs = require('fs');
 const path = require('path');
 const root = path.join(__dirname, '..');

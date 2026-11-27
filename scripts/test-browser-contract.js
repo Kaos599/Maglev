@@ -1,5 +1,5 @@
 /**
- * Static checks for the browser (docs/NATIVE_CONTRACT.md section 24): the Kotlin view, the module registration, the TS
+ * Static checks for the browser: the Kotlin view, the module registration, the TS
  * binding and the bundled block list. Kotlin is never compiled locally (CI is the compiler), so this reads the source.
  *
  *   node scripts/test-browser-contract.js

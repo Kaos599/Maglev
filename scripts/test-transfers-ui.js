@@ -36,7 +36,7 @@ async function main() {
   const { selectionKey, parseSelectionKey, splitSelection } = await import('../utils/bulkSummary.ts');
 
   console.log('torrent status');
-  // Owner rule 2026-11-18: left = one phrase then the percent last, never an amount; right = one value
+  // Rule: left = one phrase then the percent last, never an amount; right = one value
   // (speed if data flows, else the amount, else the size, else a dash).
   const left = (x) => (x.pct ? `${x.lead} · ${x.pct}` : x.lead);
   let s = model.torrentStatus(torrent(), '1 min');
@@ -164,7 +164,7 @@ async function main() {
   d = copy.downloadStatus(dl({ state: 'paused', pausedBy: 'user', downBps: 0 }), undefined, {}, { shortAmount: narrow(360) });
   check('narrow card: link shows downloaded bytes only', d.value === '412 MB' && /412 MB of 1\.2 GB/.test(d.text), JSON.stringify(d));
 
-  // NATIVE_CONTRACT 43: say what a download is doing, and why it isn't moving.
+  // Say what a download is doing, and why it isn't moving.
   console.log('flow clock and stuck states (43)');
   const fc = await import('../components/transfers/flowClock.ts');
   check('QUIET_MS is the same 5 s as the speed hold', fc.QUIET_MS === 5000 && fc.QUIET_MS === hold.SPEED_HOLD_MS);
@@ -220,7 +220,7 @@ async function main() {
   let seen = 0;
   model.torrentStatus(torrent({ etaSeconds: -1 }), '—', {}, { shortAmount: (n) => { seen = n; return false; } });
   check('the narrow test sees the whole right text (amount, separator, speed)', seen === '412 MB of 1.2 GB · 3.20 MB/s'.length, String(seen));
-  // NATIVE_CONTRACT 45.2: the compact amount while data flows.
+  // The compact amount while data flows.
   const tight = (n) => (chars) => chars > n; // fits only when the right side is n characters or fewer
   s = model.torrentStatus(torrent({ etaSeconds: -1, downloadedBytes: 134 * MB, totalSizeBytes: 587 * MB }), '—', {}, { shortAmount: tight(25) });
   check('45.2 same unit: "134/587 MB" then the speed, long form read aloud', s.amount === '134/587 MB' && s.value === '3.20 MB/s' && /134 MB of 587 MB/.test(s.text), JSON.stringify(s));
@@ -271,7 +271,7 @@ async function main() {
   check('link quiet 5 s: Waiting for the server, percent, amount', left(d) === 'Waiting for the server · 34%' && d.value === '412 MB of 1.2 GB' && d.tone === 'muted', JSON.stringify(d));
   d = lq(0, { stalled: true });
   check('link stalled by the engine flag alone: Waiting for the server', left(d) === 'Waiting for the server · 34%' && d.value === '412 MB of 1.2 GB', JSON.stringify(d));
-  // Offline while still downloading (2026-11-20 phone test: Wi-Fi off said "Waiting for the server"). Same line as a torrent.
+  // Offline while still downloading (Wi-Fi off said "Waiting for the server"). Same line as a torrent.
   const off = { blocks: [{ tag: 'offline' }] };
   d = copy.downloadStatus(dl({ downBps: 0, eta: -1 }), '—', off, { quietMs: 9000 });
   check('link waiting while offline: No internet connection', left(d) === 'No internet connection · 34%' && d.tone === 'muted' && d.value === '412 MB of 1.2 GB', JSON.stringify(d));
@@ -308,7 +308,7 @@ async function main() {
   check('why waiting: stats, none sending, last data ago', w.stats.map((x) => `${x.label}=${x.value}`).join('|') === 'Peers found=24|Connected=2, none sending|Last data=2 min ago', JSON.stringify(w.stats));
   w = copy.torrentWhy({ ...base, situation: 'waiting', peerTimeoutMins: 0, peers: [{ downBps: 0 }, { downBps: 100 }], lastDataAgoMs: null, quietMs: 12000 });
   check('why waiting: setting Never drops the sentence; a sending peer drops "none sending"; unseen last data is a dash', w.sentence === 'No data for 12 s. The peers it had stopped sending. Maglev keeps looking.' && w.stats[1].value === '2' && w.stats[2].value === '—', JSON.stringify(w));
-  // NATIVE_CONTRACT 45.1: the block while the torrent has no file list.
+  // The block while the torrent has no file list.
   let rw = copy.torrentResolvingWhy({ peersTotal: 0, trackers: [], resolvingSecs: 75 });
   check('45.1 title, no peers: sentence plus "No one sharing it has been found yet."', rw.title === "Why it hasn't started" && rw.sentence === "Maglev needs this torrent's file list from someone who has it. No one sharing it has been found yet.", rw.sentence);
   check('45.1 stats with no trackers: Peers found and Trying for (m:ss) only', rw.stats.map((x) => `${x.label}=${x.value}`).join('|') === 'Peers found=0|Trying for=1:15', JSON.stringify(rw.stats));

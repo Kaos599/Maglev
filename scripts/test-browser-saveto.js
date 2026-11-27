@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// "Save to" for one download (docs/BROWSER_DOWNLOAD_GAPS.md R5). The choice goes to addDownload as
+// "Save to" for one download. The choice goes to addDownload as
 // DownloadOptions.folder and never changes the engine's target. `folder` is a POSIX path Rust writes to
 // (EngineHost.addDownload only fills it in when it is missing), so the sheet offers subfolders of the default
 // root, not a SAF tree. Needs Node 22.18+ (runs TypeScript source directly).

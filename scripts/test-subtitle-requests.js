@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// NATIVE_CONTRACT 44.7, 44.8, 44.9, 44.12: subtitle requests. Outcome table, phase roll-up, run planning and the
+// Subtitle requests. Outcome table, phase roll-up, run planning and the
 // retry limit, removal, the 100 cap, dedupe, the autoSince rule, copy and wiring. Pure: no rendering.
 process.removeAllListeners('warning');
 const fs = require('fs');
@@ -167,7 +167,7 @@ function check(name, cond) {
   check('the runner is mounted once in the layout', (read('app/_layout.tsx').match(/<SubtitleRequestRunner \/>/g) || []).length === 1);
 
 
-  // ============================================================ NATIVE_CONTRACT 44.15
+  // ============================================================ Subtitle requests, last group
   {
     const TR = await import('../utils/addedTray.ts');
     const MK = await import('../utils/mediaKind.ts');

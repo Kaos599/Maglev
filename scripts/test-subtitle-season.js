@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// NATIVE_CONTRACT 46: subtitles for a season. Plurals, one row per file in status mode, the qualification rule for
+// Subtitles for a season. Plurals, one row per file in status mode, the qualification rule for
 // "Use the best match", stored candidates, bulk save with its single retry, and the page row's button. Pure: no rendering.
 process.removeAllListeners('warning');
 const fs = require('fs');

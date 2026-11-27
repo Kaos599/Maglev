@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Browser history UI (NATIVE_CONTRACT 24.9): static source checks for the wiring the screens need.
+// Browser history UI: static source checks for the wiring the screens need.
 // No runtime import of React Native code; plain Node is enough.
 const fs = require('fs');
 const path = require('path');

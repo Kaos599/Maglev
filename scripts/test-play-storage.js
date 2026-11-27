@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// 0.19: Play while downloading and low-storage protection (docs/contracts-0.19/play-and-storage.md).
+// 0.19: Play while downloading and low-storage protection.
 // Needs Node 22.18+ (runs the TypeScript source directly).
 
 process.removeAllListeners('warning');
@@ -147,7 +147,7 @@ async function main() {
   const detail = fs.readFileSync(path.join(root, 'app/torrent/[id].tsx'), 'utf8');
   check('detail screen has Play', /pickPlayFile/.test(detail) && /playCopy/.test(detail));
 
-  // Delete size counts skipped files too (heldBytes, NATIVE_CONTRACT 18.4): deleting removes the whole folder.
+  // Delete size counts skipped files too (heldBytes): deleting removes the whole folder.
   {
     const { snapshotToTelemetry } = await import('../modules/maglev-engine/src/snapshotMapping.ts');
     const base = { id: 'a'.repeat(40), name: 'Sintel', state: 'SEEDING', finished: true, progressBytes: 1600, totalBytes: 1600, uploadedBytes: 0, downBps: 0, upBps: 0, peersLive: 0, peersSeen: 0, etaSecs: -1, ratio: 0, seedingSecs: 0, pausedBy: null, error: null, outputFolder: '/x', addedAt: 0 };

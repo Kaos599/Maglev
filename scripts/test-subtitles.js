@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Subtitles, pure part (docs/NATIVE_CONTRACT.md section 36.12): file name reading, grouping and order, zip member
+// Subtitles, pure part: file name reading, grouping and order, zip member
 // choice, text decoding per code page, file naming and the name-taken path, settings and the privacyAck gate, the
 // signed-list `subtitles` map, provider switches, and search orchestration with fake providers.
 // Needs Node 22.18+ (runs the TypeScript source directly).
@@ -289,7 +289,7 @@ const utf8 = (s) => Uint8Array.from(Buffer.from(s, 'utf8'));
   const nativeCfg = read('modules/maglev-engine/src/toNativeConfig.ts');
   check('UI only: toNativeConfig never reads the subtitle settings', !/subtitle/i.test(nativeCfg));
   const bridge = read('modules/maglev-engine/src/MaglevNativeBridge.ts');
-  check('UI only: the settings types say so', /UI only[^\n]*section 36\.2|section 36\.2[^\n]*UI only/i.test(read('modules/maglev-engine/src/MaglevSettings.types.ts')) && !/subtitles\.(enabled|languages|privacyAck)/.test(bridge));
+  check('UI only: the settings types say so', /UI only/.test(read('modules/maglev-engine/src/MaglevSettings.types.ts')) && !/subtitles\.(enabled|languages|privacyAck)/.test(bridge));
   check('languages: phone language then English, or the user pick', eq(prefs.effectiveLanguages({ languages: [] }, 'fr-FR'), ['fr', 'en']) && eq(prefs.effectiveLanguages({ languages: ['it'] }, 'fr-FR'), ['it']));
   check('privacyAck gate: needed until accepted', prefs.needsPrivacyNotice({ privacyAck: false }) && !prefs.needsPrivacyNotice({ privacyAck: true }) && prefs.privacyAckPatch().privacyAck === true);
   check('source switch and language move helpers', eq(prefs.withSourceEnabled({ sourceEnabled: { a: true } }, 'b', false), { a: true, b: false }) && eq(prefs.withLanguageAt(['en', 'de', 'fr'], 'fr', 0), ['fr', 'en', 'de']) && eq(prefs.withLanguageAt(['en'], 'de', 9), ['en', 'de']));

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Browser tabs and pop-ups (NATIVE_CONTRACT 24.10): pure state machines T1, T2, T4, T5, tab persistence over node:sqlite, prefs.
+// Browser tabs and pop-ups: pure state machines T1, T2, T4, T5, tab persistence over node:sqlite, prefs.
 // Needs Node 22.18+ (runs the TypeScript source directly).
 process.removeAllListeners('warning');
 const path = require('path');

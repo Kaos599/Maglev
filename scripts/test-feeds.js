@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Feed rule contract tests (docs/NATIVE_CONTRACT.md section 11.6).
+// Feed rule contract tests.
 // Runs every vector in scripts/fixtures/feeds/rule-vectors.json against utils/feedRules.ts.
 // Needs Node 22.18+ (runs the TypeScript sources directly via type stripping).
 

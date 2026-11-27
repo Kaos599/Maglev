@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Error banner mapping must match SM-36 rows exactly (docs/STATE_MACHINES_AND_SCREENS.md).
+// Error banner mapping must match the table rows exactly.
 // Needs Node 22.18+ (runs the TypeScript source directly via type stripping).
 
 process.removeAllListeners('warning');
@@ -35,7 +35,7 @@ async function main() {
 
   for (const [code, ctx, expected] of rows) {
     const got = actionsFor(code, ctx);
-    check(`${code} maps to its SM-36 row`, same(got, expected), JSON.stringify(got));
+    check(`${code} maps to its table row`, same(got, expected), JSON.stringify(got));
   }
 
   check('unknown code uses INTERNAL row', same(actionsFor('???', none), actionsFor('INTERNAL', none)));

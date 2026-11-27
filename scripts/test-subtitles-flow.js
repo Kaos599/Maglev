@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// NATIVE_CONTRACT 36.5, 36.7, 36.8, 36.10: the subtitle flow in the app. Entry-point rules, the hash gate, name taken,
+// The subtitle flow in the app. Entry-point rules, the hash gate, name taken,
 // every error's copy and action, the sheet's state machine, the card icon, and the wiring. Pure: no rendering.
 // Needs Node 22.18+ (runs the TypeScript source directly).
 process.removeAllListeners('warning');
@@ -128,7 +128,7 @@ const nativeErr = (code) => Object.assign(new Error(code), { code });
   const kb3 = await run(textProvider, { save: async (v, n) => { if (!/\.3\.srt$/.test(n)) throw nativeErr('NAME_TAKEN'); return { path: n }; } }, { choice: 'keep-both' });
   check('Keep both goes on to .3 when .2 is taken too', kb3.fileName === 'Show.S01E02.1080p.en.3.srt');
   check('the keep-both note says players may not load it', /may not load/.test(C.KEEP_BOTH_NOTE));
-  check('name-taken title is the contract sentence', C.NAME_TAKEN_TITLE === 'A subtitle with this name already exists.' && C.NAME_TAKEN_ACTIONS.replace === 'Replace' && C.NAME_TAKEN_ACTIONS.keepBoth === 'Keep both' && C.NAME_TAKEN_ACTIONS.cancel === 'Cancel');
+  check('name-taken title is the exact sentence', C.NAME_TAKEN_TITLE === 'A subtitle with this name already exists.' && C.NAME_TAKEN_ACTIONS.replace === 'Replace' && C.NAME_TAKEN_ACTIONS.keepBoth === 'Keep both' && C.NAME_TAKEN_ACTIONS.cancel === 'Cancel');
 
   console.log('[every error is one sentence and one action]');
   const expectErr = async (name, outcome, code, message, action, kind) => {

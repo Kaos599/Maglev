@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// SM-28 Tracker edit machine (NATIVE_CONTRACT 15). Parse cases, then one assertion per row of the transition table.
+// Tracker edit machine. Parse cases, then one assertion per row of the transition table.
 // Needs Node 22.18+ (runs the TypeScript sources directly via type stripping).
 process.removeAllListeners('warning');
 

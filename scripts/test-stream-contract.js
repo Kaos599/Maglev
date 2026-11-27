@@ -1,5 +1,5 @@
 /**
- * Static checks for saving HLS and DASH streams (docs/NATIVE_CONTRACT.md section 24.8). Rust and Kotlin are never
+ * Static checks for saving HLS and DASH streams. Rust and Kotlin are never
  * compiled locally (CI is the compiler), so this reads the sources: the JNI names agree on all three sides, the error
  * codes and messages agree with the contract, the TS types are there, and the join runs before the copy into the
  * user's folder.

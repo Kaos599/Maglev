@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// NATIVE_CONTRACT 47: a finished torrent never reads 99%, "Done · {reason}" on the card, Resume is not offered for a
+// A finished torrent never reads 99%, "Done · {reason}" on the card, Resume is not offered for a
 // torrent held by a file health tag (card, swipe, menu, selection, Resume all, Kotlin), and a refused resume explains itself.
 // Needs Node 22.18+.
 process.removeAllListeners('warning');

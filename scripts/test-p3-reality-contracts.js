@@ -135,7 +135,7 @@ contract('C-ENG-2', 'P0',
   'Given the shipped arm64 .so, When its size and strings are inspected, Then it is >= 3 MB and embeds librqbit/dht code',
   () => {
     const dir = 'modules/maglev-engine/android/src/main/jniLibs';
-    // Binaries are never committed (AGENTS.md §4.5). With no local build, the CI gate in
+    // Binaries are never committed (a committed binary would go stale). With no local build, the CI gate in
     // .github/workflows/_rust-android.yml enforces the same rule on every push.
     if (!exists(`${dir}/arm64-v8a/libmaglev_core.so`)) {
       skip('no local .so (gitignored); enforced by CI _rust-android size/reality/16KB gate');
@@ -220,7 +220,7 @@ contract('C-SVC-1', 'P0',
   });
 
 contract('C-SVC-2', 'P0',
-  'Given a notification action, When "Pause all" is tapped, Then the service handles it and JS receives onNotificationAction (NATIVE_CONTRACT §6)',
+  'Given a notification action, When "Pause all" is tapped, Then the service handles it and JS receives onNotificationAction',
   () => {
     const svcFiles = walk('modules/maglev-engine/android/src', ['.kt']).filter((f) => /MaglevTorrentService\.kt$/.test(f));
     const svc = svcFiles[0] ? code(svcFiles[0]) : '';
@@ -389,7 +389,7 @@ contract('C-UI-SET', 'P1',
     assert(!!dir, 'settings directory exists (app/settings or app/(tabs)/settings)');
     if (!dir) return;
     const files = fs.readdirSync(abs(dir)).filter((f) => f.endsWith('.tsx'));
-    // The index is either <dir>/index.tsx or the Settings tab itself (UI_SPEC S8), never both (duplicate /settings route).
+    // The index is either <dir>/index.tsx or the Settings tab itself, never both (a duplicate /settings route).
     const tabIndex = exists('app/(tabs)/settings.tsx');
     const dirIndex = files.includes('index.tsx');
     assert(tabIndex !== dirIndex, `exactly one settings index (tab: ${tabIndex}, ${dir}/index.tsx: ${dirIndex})`);
@@ -494,7 +494,7 @@ contract('C-SEARCH-1', 'P1', 'Search engine files exist and the search contract 
   assert(r.status === 0, 'node scripts/test-search.js exits 0');
 });
 
-contract('C-W3-1', 'P1', 'Wave 3 JS side: file priority, reannounce, free space, Live Updates (NATIVE_CONTRACT 10.1-10.5)', () => {
+contract('C-W3-1', 'P1', 'Wave 3 JS side: file priority, reannounce, free space, Live Updates', () => {
   const bridge = read('modules/maglev-engine/src/MaglevNativeBridge.ts');
   const mock = read('modules/maglev-engine/src/MaglevMockEngine.ts');
   const add = read('app/add-torrent.tsx') + read('components/add/SpaceStrip.tsx');
@@ -523,13 +523,13 @@ contract('C-NAV-1', 'P0', 'A hidden tab sets href:null without tabBarButton', ()
 });
 
 // The assistant's logic stays pure and testable in node: only the tool runner may reach the engine or React Native.
-contract('C-PORT-1', 'P1', 'A busy listening port falls back to a free port with a warning (issue #76, NATIVE_CONTRACT 9)', () => {
+contract('C-PORT-1', 'P1', 'A busy listening port falls back to a free port with a warning (issue #76)', () => {
   const src = code('native/maglev-core/src/engine.rs');
   const doc = read('docs/NATIVE_CONTRACT.md');
   const msg = 'Port {port} is used by another app, so Maglev picked a free port for now. Change it in Settings > Network > Incoming port if you need a fixed one.';
   assert(src.includes(msg), 'engine.rs holds the exact warning text');
-  if (doc) assert(doc.includes(msg.replace('{port}', '<n>')), 'NATIVE_CONTRACT.md holds the same text');
-  else skip('docs/ not present (CI has no private docs)');
+  if (doc) assert(doc.includes(msg.replace('{port}', '<n>')), 'the private notes hold the same text');
+  else skip('private notes not present (CI has none)');
   assert(/cfg\.listen_port\s*!=\s*0\s*&&\s*is_addr_in_use\(/.test(src), 'retry only when a fixed port was busy');
   assert(/free_port_config\(&cfg\)/.test(src) && /listen_port\s*=\s*0/.test(src), 'retry config sets listen_port = 0');
   assert(/build_options\(&retry_cfg,/.test(src), 'the retry builds options from the retry config');

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// SM-41 stream assembly (docs/STATE_MACHINES_AND_SCREENS.md §6) and recorded fixtures
-// (docs/ASSISTANT_DESIGN.md §8.6). Runs the TypeScript source directly (Node 22.18+ type stripping).
+// Stream assembly and recorded fixtures
+//. Runs the TypeScript source directly (Node 22.18+ type stripping).
 // Every fixture is fed whole, then split at every character boundary, then one character at a time;
 // all three must give identical events and outcome. Also checks CRLF and UTF-8 byte splits.
 
@@ -54,7 +54,7 @@ async function main() {
   const { createStreamParser, requestExtras } = await import('../utils/assistant/sse.ts');
   const make = createStreamParser;
 
-  console.log('SM-41 rules');
+  console.log('stream assembly rules');
 
   test('multiple events in one chunk are returned in order', () => {
     const p = make();
@@ -267,7 +267,7 @@ async function main() {
     assert.strictEqual(r.outcome.text, 'Your download is stuck at 99%, usually because no peers are left.');
   });
 
-  console.log('R1-12: usage, truncation, synthesis, caps');
+  console.log('usage, truncation, synthesis, caps');
   const sse = (o) => `data: ${JSON.stringify(o)}\n\n`;
   const tc = (frag, finish) => sse({ choices: [{ index: 0, delta: { tool_calls: [frag] }, ...(finish ? { finish_reason: finish } : {}) }] });
 

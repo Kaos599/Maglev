@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// SM-32 file health banner machine, SM-33/SM-37 copy, magnet trackers, SM-35 pending need and one-tap decision.
+// File health banner machine, banner copy, magnet trackers, pending need and one-tap decision.
 // One assertion per row of the transition table, on {kind, effects}.
 // Needs Node 22.18+ (runs the TypeScript sources directly via type stripping).
 process.removeAllListeners('warning');
@@ -91,7 +91,7 @@ async function main() {
     { type: 'call', action: 'again', indices: [2], dir: '' },
   ]);
 
-  // Banner copy (SM-32, SM-33, SM-37)
+  // Banner copy
   const b2 = m.fileHealthBanner(missing);
   check('missing banner title (n files)', b2 && b2.title === '2 files were deleted outside Maglev.', b2 && b2.title);
   check('missing banner title (1 file)', m.fileHealthBanner({ kind: 'missing', indices: [1] }).title === '1 file was deleted outside Maglev.');
@@ -124,19 +124,19 @@ async function main() {
   for (const [tag, label] of Object.entries(labels)) check(`label for ${tag}`, m.healthLabel(tag) === label, m.healthLabel(tag));
   check('no label for other tags', m.healthLabel('user') === undefined && m.healthLabel(null) === undefined);
 
-  // SM-37
+  // Banner copy, last group
   check('elapsed seconds', m.formatElapsed(45) === '45s');
   check('elapsed minutes', m.formatElapsed(185) === '3m 05s', m.formatElapsed(185));
   check('elapsed hours', m.formatElapsed(3720) === '1h 02m', m.formatElapsed(3720));
   check('resolving line', m.resolvingLine(7, 12) === 'Looking for peers · 7 found · 12s');
 
-  // Magnet (NATIVE_CONTRACT 21)
+  // Magnet
   const mag = buildMagnet('abc', 'My File', ['udp://t1.example:80/announce', 'http://t2.example/a?x=1&y=2', 'udp://t1.example:80/announce']);
   check('magnet has xt and dn', mag.startsWith('magnet:?xt=urn:btih:abc&dn=My%20File'), mag);
   check('magnet has one tr per distinct tracker, encoded', (mag.match(/&tr=/g) || []).length === 2 && mag.includes(`&tr=${encodeURIComponent('http://t2.example/a?x=1&y=2')}`), mag);
   check('magnet without trackers has no tr', !buildMagnet('abc', 'n').includes('tr='));
 
-  // SM-35
+  // Pending need
   const GB = 1024 ** 3;
   check(
     'pendingNeed sums unfinished torrents',

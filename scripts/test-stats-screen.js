@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Stats screen (NATIVE_CONTRACT 34.2): the pure functions behind the Pixel city and the card kit. Ranges and buckets
+// Stats screen: the pure functions behind the Pixel city and the card kit. Ranges and buckets
 // (Monday-start weeks, the first-stats-day bound), busiest bucket, streaks, the usual finish hour, the category rollup
 // into Other, and the formatting of sizes, durations and speeds. Plus the wiring of the screen by source.
 // Needs Node 22.18+ (runs the TypeScript source directly).
@@ -285,7 +285,7 @@ async function main() {
   check('reduce motion respected', /useReduceMotion|useMotion/.test(all));
   check('records sheet offers Show this day', /Show this day/.test(all));
   const detail = read('app/torrent/[id].tsx');
-  // NATIVE_CONTRACT 41.2: the torrent page draws its Detailed numbers (boxes and Timing row) through TorrentStats.
+  // The torrent page draws its Detailed numbers (boxes and Timing row) through TorrentStats.
   check('detail shows the timing row', /<TorrentStats/.test(detail) && /<TimingRow/.test(read('components/detail/TorrentStats.tsx')));
   check('transfers rows say Done in', /doneLead/.test(read('components/transfers/model.ts')) && /doneLead/.test(read('utils/downloadCopy.ts')));
   const city = read('components/stats/PixelCity.tsx');
@@ -305,7 +305,7 @@ async function main() {
     .filter((f) => /import\s*\{[^}]*\brouter\b[^}]*\}\s*from\s*['"]expo-router['"]/.test(read(f)));
   check('no screen imports the global expo-router router (use useRouter)', globalRouter.length === 0, globalRouter.join(', '));
 
-  // 2026-11-19 user report: picking an earlier day snapped back to today about a second later, because live counts
+  // A user report: picking an earlier day snapped back to today about a second later, because live counts
   // refresh the buckets while something downloads. The pick is redone only when the range changes.
   {
     const scr = fs.readFileSync(path.join(__dirname, '..', 'app', 'stats.tsx'), 'utf8');

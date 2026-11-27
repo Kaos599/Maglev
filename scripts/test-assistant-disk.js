@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Disk-space advice rules R1-R12 and boundary tests (docs/ASSISTANT_DESIGN.md §6). No network.
+// Disk-space advice rules R1-R12 and boundary tests. No network.
 // Needs Node 22.18+ (runs the TypeScript source directly via type stripping).
 
 process.removeAllListeners('warning');
@@ -67,7 +67,7 @@ async function main() {
     check('both unknown: U1 is emitted once', rulesOf(out).filter((r) => r === 'U1').length === 1);
   }
 
-  // ---------------------------------------------------------------- §6.2 boundaries (Fits / Tight / DoesntFit)
+  // ---------------------------------------------------------------- boundaries (Fits / Tight / DoesntFit)
   console.log('admission boundaries');
   {
     const out = diskAdvice([cand('a', L1080, B10 - GB)], base());

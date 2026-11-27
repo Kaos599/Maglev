@@ -41,7 +41,7 @@ const MAP = {
   folder: 'folder',
   file: 'file',
   share: 'share',
-  // wave 4
+  // newer icons
   'speed-limit': 'speed-medium',
   move: 'move',
   rule: 'filter',
@@ -86,7 +86,7 @@ const MAP = {
   sun: 'sun',
   moon: 'moon',
   'power-off': 'power',
-  // wave 3
+  // older icons
   recheck: 'check-double',
   reannounce: 'radio',
   'priority-first': 'arrow-bar-up',
@@ -102,10 +102,10 @@ const MAP = {
   forward: 'arrow-right',
   // subtitles
   subtitles: 'badge-captions',
-  // edit the name a subtitle search uses (NATIVE_CONTRACT 42.3)
+  // edit the name a subtitle search uses
   pencil: 'pencil',
   undo: 'undo',
-  // download page density (NATIVE_CONTRACT 41.4)
+  // download page density
   'card-text': 'card-text',
   'grid-3x2': 'grid-3x2',
 };
