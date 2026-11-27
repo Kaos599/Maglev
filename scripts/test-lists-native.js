@@ -75,7 +75,7 @@ check('a conditional request is skipped when the stored list is missing', () => 
   must(/conditional && File\(dir\(context\), FILE\)\.isFile/.test(store), 'no check for the stored list');
 });
 check('an unchanged address is fetched in full when another changed', () => {
-  must(/fetch\(u, null\)/.test(store), 'no unconditional refetch');
+  must(/fetch(OrMirror)?\(u, null\)/.test(store), 'no unconditional refetch');
 });
 check('the TS binding passes the options and types the result', () => {
   const b = read('modules/maglev-engine/src/MaglevBrowser.tsx');

@@ -76,7 +76,7 @@ export interface VideoSiteInfo {
 }
 
 export type VideoSiteErrorCode =
-  | 'SITE_NOT_SUPPORTED' | 'SITE_NEEDS_LOGIN' | 'SITE_FAILED' | 'SITE_NO_VIDEO' | 'SITE_NO_FORMAT' | 'VIDEO_SITES_UNAVAILABLE';
+  | 'SITE_NOT_SUPPORTED' | 'SITE_NEEDS_LOGIN' | 'SITE_FAILED' | 'SITE_NO_VIDEO' | 'SITE_NO_FORMAT' | 'VIDEO_SITES_UNAVAILABLE' | 'VIDEO_SITES_OUTDATED';
 
 /** Plain-English messages. The native side sends the same ones; these cover a missing or unknown message. */
 export const VIDEO_SITE_MESSAGES: Record<VideoSiteErrorCode, string> = {
@@ -88,7 +88,18 @@ export const VIDEO_SITE_MESSAGES: Record<VideoSiteErrorCode, string> = {
   /** The page lists video, but none of it is a file Maglev can save. The browser may still find one. */
   SITE_NO_FORMAT: "Maglev can't find a video it can save on this page. Open it in the browser to find the video.",
   VIDEO_SITES_UNAVAILABLE: "Video sites aren't available in this build.",
+  /**
+   * The read failed while the copy that came with the app still runs (a fresh install that hasn't reached Wi-Fi yet).
+   * The screen offers Update now, which may use mobile data because the person asked for it.
+   */
+  VIDEO_SITES_OUTDATED:
+    'Video support still runs the version that came with the app, and sites refuse it. Maglev gets the new one by itself on Wi-Fi, or tap Update now.',
 };
+
+/** The read failed because video support still runs the copy that came with the app: offer Update now. */
+export function offersReaderUpdate(code: string | undefined): boolean {
+  return code === 'VIDEO_SITES_OUTDATED';
+}
 
 /** These two send the person to the browser instead of offering a retry. */
 export function errorOffersBrowser(code: string | undefined): boolean {

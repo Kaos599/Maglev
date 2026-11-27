@@ -26,7 +26,9 @@ import {
 } from '../../utils/update';
 import { useUpdatePrefs } from '../../utils/prefs/update';
 import { useListPrefs } from '../../utils/prefs/lists';
-import { checkListsNow, useListsState } from '../../utils/lists';
+import { checkListsNow, setListsAutoCheck, useListsState } from '../../utils/lists';
+import { getVideoSitesReport, type VideoSitesReport } from '../../utils/videoSitesStatus';
+import { adListTimeCopy, videoSitesCopy } from '../../constants/selfUpdateCopy';
 import { adBusy, sourcesBusy, type AdState, type SourcesState } from '../../utils/lists/machine';
 import { relativeTime } from '../../utils/feeds';
 import type { PixelIconName } from '../../components/PixelIcon';
@@ -83,12 +85,33 @@ function failureText(code: string): string {
 /** The library's version name already reads "yt-dlp 2026.11.23"; keep only the number so the copy says yt-dlp once. */
 const bareVersion = (v: string | null | undefined): string | null => (v ? v.replace(/^yt-dlp\s+/i, '') : null);
 
-/** Notice text for the video site reader's Check now button. */
-function readerNotice(status: string, rawVersion: string | null): string {
+/** Notice text for the video site reader's Check now button. A failure says which kind, from the updater's record. */
+function readerNotice(status: string, rawVersion: string | null, report: VideoSitesReport | null): string {
   const version = bareVersion(rawVersion);
-  if (status === 'updated') return `Updated yt-dlp to ${version ?? 'the newest version'}`;
-  if (status === 'current') return `yt-dlp is up to date${version ? ` (${version})` : ''}`;
-  return "Couldn't update yt-dlp. Check your connection.";
+  const n = videoSitesCopy.notices;
+  if (status === 'updated') return n.updated(version);
+  if (status === 'current') return n.current(version);
+  if (report?.result === 'rolledBack') return n.rolledBack;
+  if (report?.result === 'blocked') return n.blocked;
+  return n.failed;
+}
+
+/** The line under the reader row: why the last check didn't update, or that the built-in copy still runs. */
+function readerResult(report: VideoSitesReport | null): string | null {
+  if (!report) return null;
+  const r = videoSitesCopy.results;
+  if (report.result === 'rolledBack') return r.rolledBack;
+  if (report.result === 'blocked') return r.blocked;
+  if (report.result === 'failed') return r.failed(report.error);
+  return report.builtIn ? videoSitesCopy.builtIn : null;
+}
+
+/** The updater's own report; where it isn't there (an older native build), the version and check time alone. */
+async function readReport(): Promise<VideoSitesReport> {
+  const full = await getVideoSitesReport();
+  if (full) return full;
+  const r = await maglevEngine.videoSitesStatus();
+  return { version: r.version, lastCheckAt: r.lastCheckAt, result: null, error: null, builtIn: false };
 }
 
 const VIDEO_SITES_CAPTION = "The part that reads video links from YouTube, X, Instagram and more. Experimental: some sites may fail. It downloads yt-dlp's newest release from GitHub in the background.";
@@ -97,11 +120,11 @@ const VIDEO_SITES_CAPTION = "The part that reads video links from YouTube, X, In
 function VideoSitesSection() {
   const { showNotice } = useMaglevEngine();
   const [prefs, setPrefs] = useUpdatePrefs();
-  const [status, setStatus] = useState<{ version: string | null; lastCheckAt: number | null } | null>(null);
+  const [status, setStatus] = useState<VideoSitesReport | null>(null);
   const [checking, setChecking] = useState(false);
   useEffect(() => {
     let alive = true;
-    void maglevEngine.videoSitesStatus().then((r) => {
+    void readReport().then((r) => {
       if (alive) setStatus(r);
     });
     return () => {
@@ -111,13 +134,15 @@ function VideoSitesSection() {
   const check = useCallback(async () => {
     setChecking(true);
     const res = await maglevEngine.videoSitesUpdate();
-    const next = await maglevEngine.videoSitesStatus();
+    const next = await readReport();
     setChecking(false);
     setStatus(next);
-    showNotice({ message: readerNotice(res.ok ? res.status : 'failed', res.ok ? res.version : null) }, 3000);
+    showNotice({ message: readerNotice(res.ok ? res.status : 'failed', res.ok ? res.version : null, next) }, 3000);
   }, [showNotice]);
   const subtitle = status
-    ? `yt-dlp ${bareVersion(status.version) ?? 'built in'} · ${status.lastCheckAt ? `checked ${relativeTime(status.lastCheckAt)}` : 'not checked yet'}`
+    ? [videoSitesCopy.readerLine(bareVersion(status.version), status.lastCheckAt ? relativeTime(status.lastCheckAt) : null), readerResult(status)]
+        .filter(Boolean)
+        .join('\n')
     : ' ';
   return (
     <>
@@ -173,7 +198,7 @@ export default function UpdatesSettings() {
   const [prefs, setPrefs] = useUpdatePrefs();
   const managedBy = getManagedBy();
   const lists = useListsState();
-  const [listPrefs, setListPrefs] = useListPrefs();
+  const [listPrefs] = useListPrefs();
   const [adInfo, setAdInfo] = useState<BlocklistInfo | null>(null);
   const listsChecking = sourcesBusy(lists) || adBusy(lists);
 
@@ -191,7 +216,9 @@ export default function UpdatesSettings() {
   const adLine = adInfo
     ? adInfo.updatedAt != null
       ? listsCopy.adList.info(adInfo.domains.toLocaleString(), relativeTime(adInfo.updatedAt))
-      : listsCopy.adList.builtIn(adInfo.domains.toLocaleString())
+      : adInfo.source === 'downloaded'
+        ? adListTimeCopy.unknown(adInfo.domains.toLocaleString())
+        : listsCopy.adList.builtIn(adInfo.domains.toLocaleString())
     : null;
   const sourcesStamp = listPrefs.sourcesFile ? Date.parse(listPrefs.sourcesFile.generatedAt) || listPrefs.lastListCheckAt : null;
   const sourcesLine =
@@ -304,7 +331,7 @@ export default function UpdatesSettings() {
           accessory={
             <Toggle
               value={listPrefs.listsAutoCheck}
-              onValueChange={(listsAutoCheck) => setListPrefs({ listsAutoCheck })}
+              onValueChange={setListsAutoCheck}
               accessibilityLabel={listsCopy.autoUpdate}
             />
           }

@@ -5,7 +5,6 @@ import android.util.Log
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLRequest
 import java.io.BufferedInputStream
-import java.io.File
 import java.io.InputStream
 import java.util.zip.ZipInputStream
 import org.json.JSONArray
@@ -26,6 +25,10 @@ object VideoSites {
     const val NO_VIDEO = "SITE_NO_VIDEO"
     const val FAILED = "SITE_FAILED"
     const val UNAVAILABLE = "VIDEO_SITES_UNAVAILABLE"
+    /** A read failed while the library's built-in copy still runs: the sites refuse that copy. The screen offers Update now. */
+    const val OUTDATED = "VIDEO_SITES_OUTDATED"
+    private const val OUTDATED_MESSAGE =
+        "Video support still runs the version that came with the app, and sites refuse it. Maglev gets the new one by itself on Wi-Fi, or tap Update now."
 
     private val TOP_KEYS = listOf("id", "title", "thumbnail", "duration", "extractor_key", "webpage_url")
     private val FORMAT_KEYS = listOf(
@@ -36,45 +39,25 @@ object VideoSites {
     @Volatile
     private var ready = false
 
-    /** The yt-dlp version the library last downloaded itself, or null while the bundled one is in use. */
-    fun version(context: Context): String? = try {
-        YoutubeDL.version(context)
-    } catch (t: Throwable) {
-        null
-    }
-
-    /**
-     * What the Settings row shows: the version read from the yt-dlp file that actually runs. Before the library has put
-     * a file in place, the tag it saved, else null (the built-in yt-dlp). A file that can't be read shows "unknown",
-     * never the saved tag, which is what can be wrong.
-     */
-    fun versionLabel(context: Context): String? = try {
-        if (installedFile(context).isFile) {
-            installedVersion(context) ?: "unknown"
-        } else {
-            YoutubeDL.versionName(context) ?: YoutubeDL.version(context)
-        }
-    } catch (t: Throwable) {
-        null
-    }
-
-    // The library's own settings file and keys (youtubedl_common SharedPrefsHelper, YoutubeDLUpdater `dlpVersion`,
-    // `dlpVersionName`). They are private there, so they are named here. The backup rules exclude this file.
     private const val TAG = "MaglevVideoSites"
-    private const val LIB_PREFS = "youtubedl-android"
-    private const val LIB_KEY_TAG = "dlpVersion"
-    private const val LIB_KEY_NAME = "dlpVersionName"
 
     @Volatile
     private var installedCache: Triple<Long, Long, String?>? = null
 
-    /** The yt-dlp file the library runs (`noBackupFilesDir/youtubedl-android/yt-dlp/yt-dlp`). */
-    private fun installedFile(context: Context): File =
-        File(File(File(context.noBackupFilesDir, YoutubeDL.baseName), YoutubeDL.ytdlpDirName), YoutubeDL.ytdlpBin)
+    /**
+     * What the Settings row shows: the version read from the yt-dlp file that actually runs, null before the first read
+     * or update put one in place (the built-in copy), or "unknown" when the file can't be read. No saved tag is
+     * consulted, so nothing can say a version the file doesn't have.
+     */
+    fun versionLabel(context: Context): String? = try {
+        if (YtDlpInstall.file(context).isFile) installedVersion(context) ?: "unknown" else null
+    } catch (t: Throwable) {
+        null
+    }
 
     /** The version inside the yt-dlp file that runs, or null when there is no file yet or it can't be read. */
     fun installedVersion(context: Context): String? = try {
-        val f = installedFile(context)
+        val f = YtDlpInstall.file(context)
         if (!f.isFile) {
             null
         } else {
@@ -132,34 +115,12 @@ object VideoSites {
     }
 
     /**
-     * The library skips the download when its saved tag equals GitHub's newest, and never looks at the file that runs.
-     * The tag can outlive the file: a backup restore brings the library's settings back but never `no_backup`, where
-     * the file lives, and a kill between its delete and copy leaves the built-in copy behind. Then the old copy runs
-     * while every check says "up to date". A tag that the file's own version contradicts is forgotten, so the check
-     * downloads. A file that can't be read proves nothing, so it leaves the tag alone (no download loop).
-     */
-    private fun forgetStaleTag(context: Context) {
-        val tag = YoutubeDL.version(context) ?: return
-        val running = installedVersion(context) ?: return
-        if (running == tag) return
-        Log.i(TAG, "yt-dlp file is $running but the saved tag says $tag: downloading again")
-        context.getSharedPreferences(LIB_PREFS, Context.MODE_PRIVATE).edit()
-            .remove(LIB_KEY_TAG).remove(LIB_KEY_NAME).commit()
-    }
-
-    /**
-     * True when the yt-dlp that runs is not a verified download: nothing downloaded yet (the built-in copy, far behind
-     * the sites), or a saved tag the file contradicts. [VideoSitesUpdater] then asks for one update soon instead of
-     * waiting for the daily one.
+     * True while the yt-dlp that runs is not one this app checked and saw run: a fresh install still on the library's
+     * built-in copy (a year behind the sites), or a copy left by an older Maglev. [VideoSitesUpdater] then asks for one
+     * update soon instead of waiting for the daily one.
      */
     fun needsUpdateSoon(context: Context): Boolean = try {
-        val tag = YoutubeDL.version(context)
-        if (tag == null) {
-            true
-        } else {
-            val running = installedVersion(context)
-            running != null && running != tag
-        }
+        !YtDlpInstall.runsCheckedDownload(context)
     } catch (t: Throwable) {
         false
     }
@@ -169,49 +130,142 @@ object VideoSites {
     const val UPDATED = "updated"
     const val CURRENT = "current"
     const val UPDATE_FAILED = "failed"
-    private const val PREFS = "maglev_video_sites"
-    private const val KEY_LAST_CHECK = "last_check_ms"
+
+    /** What the Settings line and the debug log say about the last check (`result` in the status file). */
+    const val RESULT_UPDATED = "updated"
+    const val RESULT_CURRENT = "current"
+    const val RESULT_FAILED = "failed"
+    const val RESULT_BLOCKED = "blocked"
+    /** The newest release failed its test run on this phone's Python, so the previous copy stayed. */
+    const val RESULT_ROLLED_BACK = "rolledBack"
 
     private val updateLock = Any()
 
     /**
-     * Downloads the newest yt-dlp (youtubedl-android `updateYoutubeDL`, a blocking network call). Never throws: any
-     * failure is `failed`. Two calls never run at once; the second waits and then finds it up to date.
-     * Library API: https://github.com/yausername/youtubedl-android (YoutubeDL.kt `updateYoutubeDL`, `UpdateStatus`).
+     * Replaces yt-dlp with its newest stable release, or finds it already in place. Never throws: any failure is
+     * `failed`, and the copy in use stays. Two calls never run at once; the second waits and then finds it current.
+     *
+     * Steps (see the self-updating-parts model): check the newest release's SHA-256 against the file in use, download
+     * next to it, check the download's SHA-256, read its version, then swap and test-run under the write lock
+     * ([YtDlpInstall.install]), which rolls back when the run fails.
+     *
+     * [manual] is "Check now" or an Update button. It may use mobile data even with "Update on mobile data" off,
+     * because the person asked for it now. Both kinds honour Wi-Fi only and VPN only, as every other download does.
      */
-    fun update(context: Context, @Suppress("UNUSED_PARAMETER") force: Boolean): UpdateResult = synchronized(updateLock) {
-        try {
+    fun update(context: Context, manual: Boolean): UpdateResult = synchronized(updateLock) { updateLocked(context, manual) }
+
+    @Suppress("UNUSED_PARAMETER")
+    private fun updateLocked(context: Context, manual: Boolean): UpdateResult {
+        return try {
             ensureInit(context)
-            forgetStaleTag(context)
-            val status = YoutubeDL.updateYoutubeDL(context, YoutubeDL.UpdateChannel.STABLE)
-            recordCheck(context)
-            UpdateResult(if (status == YoutubeDL.UpdateStatus.DONE) UPDATED else CURRENT, versionLabel(context))
+            if (com.maglev.engine.browser.BrowserGovernance.blockedReason(context) != null) {
+                note(context, RESULT_BLOCKED, null, checked = false)
+                return UpdateResult(UPDATE_FAILED, versionLabel(context))
+            }
+            val latest = YtDlpRelease.latest()
+            val running = YtDlpInstall.runningSha256(context)
+            if (running == latest.sha256) {
+                // In place already, and its bytes are the published ones: from now on it counts as checked.
+                YtDlpInstall.writeStatus(context) { it.put("installedSha", running) }
+                note(context, RESULT_CURRENT, null, checked = true)
+                return UpdateResult(CURRENT, versionLabel(context))
+            }
+            if (latest.sha256 == YtDlpInstall.readStatus(context).optString("badSha", "")) {
+                // This release already failed its test run here. Keep the copy that works until a newer one is out.
+                note(context, RESULT_ROLLED_BACK, null, checked = true)
+                return UpdateResult(UPDATE_FAILED, versionLabel(context))
+            }
+            val tmp = YtDlpInstall.downloadFile(context)
+            val got = YtDlpRelease.download(latest.tag, tmp)
+            if (got != latest.sha256) {
+                tmp.delete()
+                Log.w(TAG, "yt-dlp ${latest.tag}: the download's SHA-256 doesn't match SHA2-256SUMS; deleted")
+                note(context, RESULT_FAILED, "The download didn't match its published checksum.", checked = true)
+                return UpdateResult(UPDATE_FAILED, versionLabel(context))
+            }
+            val version = try {
+                tmp.inputStream().use { zipVersion(it) }
+            } catch (t: Throwable) {
+                null
+            }
+            when (YtDlpInstall.install(context, version)) {
+                YtDlpInstall.Outcome.INSTALLED -> {
+                    YtDlpInstall.writeStatus(context) { it.put("installedSha", latest.sha256).remove("badSha") }
+                    Log.i(TAG, "yt-dlp ${version ?: latest.tag} installed and ran")
+                    note(context, RESULT_UPDATED, null, checked = true)
+                    UpdateResult(UPDATED, versionLabel(context))
+                }
+                YtDlpInstall.Outcome.ROLLED_BACK -> {
+                    YtDlpInstall.writeStatus(context) { it.put("badSha", latest.sha256) }
+                    note(context, RESULT_ROLLED_BACK, "yt-dlp ${version ?: latest.tag} didn't run on this phone.", checked = true)
+                    UpdateResult(UPDATE_FAILED, versionLabel(context))
+                }
+                YtDlpInstall.Outcome.BUSY -> {
+                    tmp.delete()
+                    note(context, RESULT_FAILED, "A video was being read the whole time. It tries again later.", checked = true)
+                    UpdateResult(UPDATE_FAILED, versionLabel(context))
+                }
+                YtDlpInstall.Outcome.FAILED -> {
+                    tmp.delete()
+                    note(context, RESULT_FAILED, "Couldn't save the new copy.", checked = true)
+                    UpdateResult(UPDATE_FAILED, versionLabel(context))
+                }
+            }
+        } catch (e: YtDlpRelease.ReleaseException) {
+            Log.w(TAG, "yt-dlp check failed: ${e.code} ${e.message}")
+            note(context, RESULT_FAILED, e.message, checked = false)
+            UpdateResult(UPDATE_FAILED, versionLabel(context))
         } catch (t: Throwable) {
+            Log.w(TAG, "yt-dlp update failed: ${t.message}")
+            note(context, RESULT_FAILED, t.message?.take(200), checked = false)
             UpdateResult(UPDATE_FAILED, versionLabel(context))
         }
     }
 
-    private fun recordCheck(context: Context) {
-        try {
-            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-                .putLong(KEY_LAST_CHECK, System.currentTimeMillis()).apply()
-        } catch (t: Throwable) {
-            // Only the Settings line ("checked …") depends on it.
+    /** Records the outcome; [checked] moves "checked …" only when GitHub was reached. Never throws. */
+    private fun note(context: Context, result: String, error: String?, checked: Boolean) {
+        YtDlpInstall.writeStatus(context) {
+            it.put("result", result)
+            if (error == null) it.remove("error") else it.put("error", error)
+            if (checked) it.put("checkedAt", System.currentTimeMillis())
         }
+        Log.i(TAG, "yt-dlp status: ${statusLine(context)}")
     }
 
-    /** Epoch ms of the last successful update check, or 0 when there was none. */
-    fun lastCheck(context: Context): Long = try {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong(KEY_LAST_CHECK, 0L)
-    } catch (t: Throwable) {
-        0L
+    /** Epoch ms of the last check that reached GitHub, or 0 when there was none on this phone. */
+    fun lastCheck(context: Context): Long = YtDlpInstall.readStatus(context).optLong("checkedAt", 0L)
+
+    /** One line for the debug log: version in use, last check, result and error. */
+    fun statusLine(context: Context): String {
+        val s = YtDlpInstall.readStatus(context)
+        return "running=${versionLabel(context) ?: "built-in"} checked=${YtDlpInstall.runsCheckedDownload(context)} " +
+            "lastCheckAt=${s.optLong("checkedAt", 0L)} result=${s.optString("result", "none")} error=${s.optString("error", "")}"
     }
 
+    /** `{ version, lastCheckAt, result, error, builtIn }` for Settings. */
+    fun report(context: Context): Map<String, Any?> {
+        val s = YtDlpInstall.readStatus(context)
+        val last = s.optLong("checkedAt", 0L)
+        return linkedMapOf(
+            "version" to versionLabel(context),
+            "lastCheckAt" to (if (last > 0L) last.toDouble() else null),
+            "result" to (if (s.has("result")) s.optString("result") else null),
+            "error" to (if (s.has("error")) s.optString("error") else null),
+            "builtIn" to !YtDlpInstall.runsCheckedDownload(context),
+        )
+    }
+
+    /**
+     * Starts the library once per process, never on the main thread. Before that, puts back a previous yt-dlp whose
+     * replacement never finished its test run ([YtDlpInstall.recover]); the library's init then copies its built-in
+     * copy in only if the path is still empty.
+     */
     private fun ensureInit(context: Context) {
         if (ready) return
         synchronized(this) {
             if (ready) return
             try {
+                YtDlpInstall.recover(context)
                 YoutubeDL.init(context)
             } catch (t: Throwable) {
                 throw VideoSitesException(UNAVAILABLE, "Video sites aren't available in this build.")
@@ -232,16 +286,20 @@ object VideoSites {
         if (host.isNullOrBlank()) {
             throw VideoSitesException(FAILED, "Couldn't read this video. Try again.")
         }
-        ensureInit(context) // never updates here: a resolve must not wait on a download (VideoSitesUpdater does it in the background)
+        ensureInit(context) // never downloads here: a read must not wait on yt-dlp's download (VideoSitesUpdater does that)
         val request = YoutubeDLRequest(clean)
         request.addOption("--dump-single-json")
         request.addOption("--no-playlist")
         request.addOption("--no-warnings")
         request.addOption("--socket-timeout", 20)
+        // The read lock keeps a swap of the yt-dlp file away while this runs.
         val out = try {
-            YoutubeDL.execute(request, null, null).out
+            YtDlpInstall.reading { YoutubeDL.execute(request, null, null).out }
         } catch (t: Throwable) {
-            throw classify(t.message)
+            val e = classify(t.message)
+            // A plain failure on the built-in copy is almost always that copy's age, so say so instead of "Try again".
+            if (e.code == FAILED && !YtDlpInstall.runsCheckedDownload(context)) throw VideoSitesException(OUTDATED, OUTDATED_MESSAGE)
+            throw e
         }
         val raw = try {
             JSONObject(out.trim())

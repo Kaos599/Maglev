@@ -27,10 +27,11 @@ import { fileKind } from '../utils/fileKind';
 import { SubtitlesAutoRow, useSubtitlesAuto } from '../components/search/SubtitlesAutoRow';
 import { askSubtitles, markNotThisOne } from '../utils/subtitles/requests';
 import { buildAsk } from '../utils/addedTray';
+import { videoSitesCopy } from '../constants/selfUpdateCopy';
 import { joinTrayIfShowing } from '../components/search/AddedTray';
 import {
-  baseNameProblem, buildVideoSiteInfo, engineHeaders, errorOffersBrowser, isNoVideoError, isVideoSiteUrl, partsOption, suggestedBaseName,
-  videoSiteErrorMessage,
+  baseNameProblem, buildVideoSiteInfo, engineHeaders, errorOffersBrowser, isNoVideoError, isVideoSiteUrl, offersReaderUpdate, partsOption,
+  suggestedBaseName, videoSiteErrorMessage,
   type VideoSiteInfo,
 } from '../utils/videoSites';
 
@@ -64,6 +65,8 @@ export default function AddDownloadScreen() {
   const [notAFile, setNotAFile] = useState(false);
   // The page has no video: the error shows its message with Back only.
   const [noVideo, setNoVideo] = useState(false);
+  // The read failed on the video support that came with the app: the error offers Update now.
+  const [readerOld, setReaderOld] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
   const [addStopped, setAddStopped] = useState(false);
   const [folderLabel, setFolderLabel] = useState<string | null>(null);
@@ -102,6 +105,7 @@ export default function AddDownloadScreen() {
     setBaseName('');
     setNotAFile(false);
     setNoVideo(false);
+    setReaderOld(false);
     setAddError(null);
     setAddStopped(false);
     setStreamItem(null);
@@ -142,6 +146,7 @@ export default function AddDownloadScreen() {
     if (quiet && (res.code === 'SITE_NOT_SUPPORTED' || res.code === 'VIDEO_SITES_UNAVAILABLE')) return false;
     setNoVideo(isNoVideoError(res.code));
     setNotAFile(errorOffersBrowser(res.code));
+    setReaderOld(offersReaderUpdate(res.code));
     setErrorView({ body: videoSiteErrorMessage(res.code, res.message), primary: 'retry' });
     setPhase('error');
     return true;
@@ -209,6 +214,21 @@ export default function AddDownloadScreen() {
     },
     [probeUrl, probeStream, router, readSite, resetState],
   );
+
+  // Update now: the person asked, so this may use mobile data even with "Update on mobile data" off. Then the same
+  // link is read again with the new copy.
+  const updateReaderAndRetry = useCallback(async () => {
+    const mine = ++token.current;
+    setPhase('reading');
+    const res = await maglevEngine.videoSitesUpdate();
+    if (mine !== token.current) return;
+    if (res.ok && res.status !== 'failed') {
+      void submit(urlRef.current);
+      return;
+    }
+    setErrorView({ body: videoSitesCopy.add.updateFailed, primary: 'retry' });
+    setPhase('error');
+  }, [submit]);
 
   // The `url` or `source` param (a share, a maglev:// link, or another screen) fills the field.
   // Only a share (`from=share`, set by app/+native-intent.tsx and stripped from every outside link)
@@ -440,6 +460,20 @@ export default function AddDownloadScreen() {
           title={empty.addDownload.deviceOnNetwork.title}
           body={errorView.body}
           primary={{ label: 'Allow this device', onPress: () => void submit(urlRef.current, true) }}
+          secondary={{ label: 'Back', onPress: () => setPhase('input') }}
+        />
+      </Screen>
+    );
+  }
+  if (phase === 'error' && readerOld) {
+    return (
+      <Screen title="Add a link" onBack={close}>
+        <EmptyBlock
+          icon="warning"
+          error
+          title={empty.addDownload.badLink.title}
+          body={errorView?.body}
+          primary={{ label: videoSitesCopy.add.updateNow, onPress: () => void updateReaderAndRetry() }}
           secondary={{ label: 'Back', onPress: () => setPhase('input') }}
         />
       </Screen>

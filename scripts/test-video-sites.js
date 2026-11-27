@@ -164,10 +164,14 @@ const fixture = (n) => JSON.parse(read(`scripts/fixtures/video-sites/${n}.json`)
   check('card: other sites keep Paste new link', DC.downloadActions(dl({ pageUrl: 'https://example.com/a' })).map((a) => a.label).join() === 'Paste new link');
 
   // ---- yt-dlp stays current
-  check('kotlin updates yt-dlp from the stable channel', /updateYoutubeDL\(context, YoutubeDL\.UpdateChannel\.STABLE\)/.test(kt));
+  // The library's updater trusted a saved tag, deleted the copy in use before the new one was in place and never
+  // checked a checksum. Maglev now fetches yt-dlp's stable release files itself and checks them against SHA2-256SUMS.
+  const rel = read('modules/maglev-engine/android/src/main/java/com/maglev/engine/videosites/YtDlpRelease.kt');
+  check('kotlin updates yt-dlp from the stable release files, checked against SHA2-256SUMS, never through the library',
+    rel.includes('https://github.com/yt-dlp/yt-dlp/releases/latest/download/SHA2-256SUMS') && /got != latest\.sha256/.test(kt) && !kt.includes('updateYoutubeDL'));
   const resolveBody = kt.slice(kt.indexOf('fun resolve'), kt.indexOf('fun classify'));
   check('kotlin: resolve never updates or waits on an update', !/update|autoUpdate/i.test(resolveBody.replace(/\/\/.*$/gm, '')) && !kt.includes('shouldAutoUpdate'));
-  check('kotlin: one update at a time', /synchronized\(updateLock\)/.test(kt) && kt.includes('last_check_ms'));
+  check('kotlin: one update at a time', /synchronized\(updateLock\)/.test(kt) && kt.includes('"checkedAt"'));
   const upd = read('modules/maglev-engine/android/src/main/java/com/maglev/engine/videosites/VideoSitesUpdater.kt');
   check('kotlin: daily unique periodic work, unmetered unless mobile data is allowed, cancelled when off',
     /PeriodicWorkRequest\.Builder\(VideoSitesUpdateWorker::class\.java, 1, TimeUnit\.DAYS\)/.test(upd) && upd.includes('ExistingPeriodicWorkPolicy.KEEP') && /if \(mobileData\) NetworkType\.CONNECTED else NetworkType\.UNMETERED/.test(upd) && upd.includes('cancelUniqueWork(UNIQUE_PERIODIC)'));

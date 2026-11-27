@@ -45,5 +45,6 @@ Start from [`_template/`](_template/). It is a working model, so `npm run models
 
 | Folder | Feature |
 |---|---|
+| [`self-updating-parts/`](self-updating-parts/) | yt-dlp and the ad block list updating themselves: checksum, swap under a lock, test run and rollback; the list in use and its update time. |
 | [`share-handoff/`](share-handoff/) | How a shared link, a magnet or a notification tap reaches the right screen when Android closes, rebuilds or updates Maglev in between. |
 | [`_template/`](_template/) | Pausable downloads. The example to copy, with one design that passes and one that was rejected. |
