@@ -14,7 +14,7 @@ Paths are shortened: `KT/` is `modules/maglev-engine/android/src/main/java/com/m
 
 | Feature | Screens | Main code | States | Model | Checks |
 |---|---|---|---|---|---|
-| Torrents | `app/(tabs)/index.tsx`, `app/torrent/[id].tsx` | `RS/scheduler.rs`, `RS/engine.rs`, `KT/EngineHost.kt` | `TorrentState`: `INITIALIZING`, `QUEUED`, `DOWNLOADING`, `SEEDING`, `PAUSED`, `CHECKING`, `ERROR`, `COMPLETED`, `MOVING` (TYPES, `RS/scheduler.rs`). Why it's paused: `PausedBy` and `HealthTag` (TYPES). Planner output `Action`: `Pause`, `Queue`, `Park`, `Resume` (`RS/scheduler.rs`). | none | `test-resume-held`, `test-peer-timeout`, `test-rules-override`, `test-p3-reality-contracts`, `cargo test`; `add-and-resume.yaml`, `pause-resume.yaml` |
+| Torrents | `app/(tabs)/index.tsx`, `app/torrent/[id].tsx` | `RS/scheduler.rs`, `RS/engine.rs`, `KT/EngineHost.kt` | `TorrentState`: `INITIALIZING`, `QUEUED`, `DOWNLOADING`, `SEEDING`, `PAUSED`, `CHECKING`, `ERROR`, `COMPLETED`, `MOVING` (TYPES, `RS/scheduler.rs`). Why it's paused: `PausedBy` and `HealthTag` (TYPES). Planner output `Action`: `Pause`, `Queue`, `Park`, `Resume` (`RS/scheduler.rs`). | [`specs/torrents/`](../specs/torrents/) (checked). | `test-resume-held`, `test-peer-timeout`, `test-rules-override`, `test-p3-reality-contracts`, `cargo test`, `npm run models`; `add-and-resume.yaml`, `pause-resume.yaml` |
 | Link downloads | `app/add-download.tsx`, `app/download/[id].tsx` | `RS/http_dl/machine.rs`, `RS/http_dl/driver.rs`, `KT/AutoRetryWorker.kt`, `utils/downloadCopy.ts` | `DownloadState`: `resolving`, `queued`, `downloading`, `paused`, `verifying`, `finished`, `needs_link`, `error` (TYPES). Pure Rust machine `State` with `None`, `Paused(PauseReason)`, `Error(DlError)` and `Gone`, driven by `step(state, event)` (`RS/http_dl/machine.rs`). | none | `test-url-download`, `test-auto-retry`, `test-link-refused`, `test-download-native`, `test-download-gaps`, `cargo test`; `transfers-link-download.yaml` |
 | Saving streams (HLS, DASH, video + audio parts) | `components/browser/StreamSheet.tsx` (sheet in the browser) | `RS/http_dl/stream/`, `KT/MuxJobs.kt`, `KT/storage/StreamMuxer.kt` | Uses the link-download states. Joining parts: `MuxOutcome`: `JOINED`, `FAILED_REPORTED`, `NOT_REPORTED` (`KT/MuxJobs.kt`). Sheet `Phase`: `probing`, `ready`, `error`, `adding`. | none | `test-stream-contract`, `test-stream-headers`, `test-download-parts` |
 | Video sites | `app/add-download.tsx`, `app/settings/updates.tsx` | `utils/videoSites.ts`, `utils/videoSiteRefresh.ts`, `KT/videosites/VideoSites.kt`, `KT/videosites/VideoSitesUpdater.kt` | No named states for a read; it ends in a `VideoSiteErrorCode` or a link download. yt-dlp update answers `updated`, `current` or `failed` (TYPES). | none | `test-video-sites` |
@@ -72,7 +72,7 @@ Paths are shortened: `KT/` is `modules/maglev-engine/android/src/main/java/com/m
 | What's new after an update | none (`components/HighlightSheet.tsx` in `app/_layout.tsx`), `app/settings/whats-new.tsx` | `utils/highlights.ts`, `constants/highlights.ts` | No named states. Shown once per version, only on a plain launch. | none | `test-highlights`, `test-whats-new-layout`, `test-release-notes` |
 | About, tips, bug report, logs, star prompt | `app/settings/about.tsx`, `app/settings/tips.tsx`, `app/settings/licenses.tsx` | `utils/crashLog.ts`, `utils/star.ts`, `components/tips/tipsLogic.ts` | No named states. The star prompt runs on counts and dates (`utils/star.ts`). | none | `test-about-extras`, `test-crash-safety`, `test-debug-log`, `test-star-prompt`; `tips-deck.yaml` |
 
-37 rows. One has a model.
+37 rows. Two have models.
 
 ## Models wanted
 
@@ -82,19 +82,18 @@ Ranked by risk: what breaks when Android kills the process, what two things can 
 |---|---|---|
 | 1 | Background service and restart | A headless restart, a Shut down tap and Pause all can race after Android kills the process; a wrong order brings back transfers the user stopped, or never restarts ones they wanted. |
 | 2 | Rules that hold transfers | Kotlin sets rule tags while the user pauses and resumes; the tags are plain strings in three languages, and one stuck tag leaves downloads paused for good or runs them on mobile data. |
-| 3 | Torrents | State comes from librqbit, the Rust planner and Kotlin tags at once; queue, seed limits and health tags interact, and a missed transition loses or stalls a download. |
-| 4 | Link downloads | Restarts drop cookies and signed links (`needs_link`), and Kotlin auto-retry runs beside user retries; the Rust machine is unit tested per row, but nothing checks every path through it. |
-| 5 | Free space and admission | Two adds at the same moment can both pass the check, and TS and Kotlin hold the same rule twice; a wrong answer fills the phone mid-download. |
-| 6 | In-app updates | It installs code: the checks on hash, package, version and signer must all hold on every path, including one restored after process death or started from a notification. |
-| 7 | Found files and the download handoff | Recent fixes were races between page loads, the https fallback and the found list; a wrong order starts a download the user didn't tap, or loses one they did. |
-| 8 | Lists that update themselves | It feeds search sources and trackers from the network; the signature and the rollback rule (`serial`) must hold for every order of checks and failures. |
-| 9 | Actions the assistant proposes | The assistant acts for the user; a card or plan must never run after it expired, was dismissed or lost its target. The reducers exist; the model would check them. |
-| 10 | Video sites | yt-dlp is code downloaded at runtime, and the link refresh lives in memory, so process death drops it. |
-| 11 | Watches | A background JS task with a time budget; a source outage must never read as "nothing new". |
-| 12 | Feeds and auto-download | The rule matcher and the "seen" sets exist in TS and Kotlin; drift adds an episode twice or never. |
-| 13 | Share into Maglev | Partly done: [`specs/share-handoff/`](../specs/share-handoff/) covers start-up routing. The in-memory queue of a multi-item share is still unmodelled and is lost on process death. |
-| 14 | Subtitles requests | Requests survive restarts by rewriting `searching` to `queued`; an epoch guard drops stale runs. Lower risk: a lost request costs a retry. |
-| 15 | Search sources | Source health is in memory and resets on restart. Lowest risk: the worst case is a slow search. |
+| 3 | Link downloads | Restarts drop cookies and signed links (`needs_link`), and Kotlin auto-retry runs beside user retries; the Rust machine is unit tested per row, but nothing checks every path through it. |
+| 4 | Free space and admission | Two adds at the same moment can both pass the check, and TS and Kotlin hold the same rule twice; a wrong answer fills the phone mid-download. |
+| 5 | In-app updates | It installs code: the checks on hash, package, version and signer must all hold on every path, including one restored after process death or started from a notification. |
+| 6 | Found files and the download handoff | Recent fixes were races between page loads, the https fallback and the found list; a wrong order starts a download the user didn't tap, or loses one they did. |
+| 7 | Lists that update themselves | It feeds search sources and trackers from the network; the signature and the rollback rule (`serial`) must hold for every order of checks and failures. |
+| 8 | Actions the assistant proposes | The assistant acts for the user; a card or plan must never run after it expired, was dismissed or lost its target. The reducers exist; the model would check them. |
+| 9 | Video sites | yt-dlp is code downloaded at runtime, and the link refresh lives in memory, so process death drops it. |
+| 10 | Watches | A background JS task with a time budget; a source outage must never read as "nothing new". |
+| 11 | Feeds and auto-download | The rule matcher and the "seen" sets exist in TS and Kotlin; drift adds an episode twice or never. |
+| 12 | Share into Maglev | Partly done: [`specs/share-handoff/`](../specs/share-handoff/) covers start-up routing. The in-memory queue of a multi-item share is still unmodelled and is lost on process death. |
+| 13 | Subtitles requests | Requests survive restarts by rewriting `searching` to `queued`; an epoch guard drops stale runs. Lower risk: a lost request costs a retry. |
+| 14 | Search sources | Source health is in memory and resets on restart. Lowest risk: the worst case is a slow search. |
 
 ## Keeping this page true
 
