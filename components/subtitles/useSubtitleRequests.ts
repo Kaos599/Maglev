@@ -63,7 +63,7 @@ import { toStored } from '../../utils/subtitles/season';
 import { downloadAndSave, downloadTarget, hashIfComplete, torrentTarget, type SubtitleTarget } from './flow';
 import { forgetAll, forgetOwnerState, forgetState, forgetVideoState, recallTarget, recordOwnerState, recordState, recordVideoState } from './stateStore';
 
-/** A "getting" card state lasts 2 minutes (39.1 S3); a waiting request writes it again this often. */
+/** A "getting" card state lasts 2 minutes; a waiting request writes it again this often. */
 const CARD_REFRESH_MS = 60_000;
 
 interface DetailInfo {
@@ -77,10 +77,10 @@ interface DetailInfo {
 type CardState = 'getting' | 'saved' | 'needs-look' | 'none' | 'clear';
 
 /**
- * NATIVE_CONTRACT 44.7, 44.12 and 44.15: works the subtitle requests off. Mounted once in app/_layout.tsx. It reads the
+ * Works the subtitle requests off. Mounted once in app/_layout.tsx. It reads the
  * torrent and download lists the engine context already holds (no polling of its own) and does nothing at all while
  * there are no requests and automatic mode is off. The rules it applies are pure functions in utils/subtitles/requests.ts.
- * It never shows a notice: the one-time privacy notice is shown where the user opts in (44.15 D10), and a request found
+ * It never shows a notice: the one-time privacy notice is shown where the user opts in, and a request found
  * without that OK waits.
  */
 export function useSubtitleRequests(): void {
@@ -95,7 +95,7 @@ export function useSubtitleRequests(): void {
   const wake = useCallback(() => setTick((t) => t + 1), []);
 
   const absentSince = useRef(new Map<string, number>());
-  /** Requests whose transfer came back inside the grace: once its file list is read fresh, lost files start it again (F10). */
+  /** Requests whose transfer came back inside the grace: once its file list is read fresh, lost files start it again. */
   const returned = useRef(new Map<string, number>());
   const details = useRef(new Map<string, DetailInfo>());
   const detailFail = useRef(new Map<string, { fails: number; at: number }>());
@@ -133,14 +133,14 @@ export function useSubtitleRequests(): void {
     const linkById = new Map(downloads.map((d) => [d.id, d]));
     const live = ready && listsLive;
 
-    // F3: the store never evicts a request whose transfer is still in the lists.
+    // The store never evicts a request whose transfer is still in the lists.
     const presentKeys = new Set<string>([...telemetry.torrents.map((t) => `t:${lid(t.id)}`), ...downloads.map((d) => `d:${d.id}`)]);
     setPresentKeys(live ? presentKeys : null);
 
-    // ---- D5: the baseline follows the switch; a transfer is new when its key is not in it.
+    // ---- The baseline follows the switch; a transfer is new when its key is not in it.
     syncAutoBaseline(sub.autoNewVideos, live ? [...presentKeys] : null);
 
-    // ---- Automatic mode: ask for every new transfer (44.12), only after the one-time OK (D10).
+    // ---- Automatic mode: ask for every new transfer, only after the one-time OK.
     if (live && sub.enabled && sub.autoNewVideos && sub.privacyAck) {
       const baseline = getAutoBaseline();
       const held = getRequests();
@@ -154,7 +154,7 @@ export function useSubtitleRequests(): void {
       }
       for (const d of downloads) {
         const key = `d:${d.id}`;
-        // N27: a name with no extension yet is not "no": it is asked again when the name changes.
+        // A name with no extension yet is not "no": it is asked again when the name changes.
         if (held[key] || linkNameKind(d.name) !== 'video' || !isNewTransfer(key, baseline)) continue;
         fresh.push({ key, title: parsedText(parseName(d.name)) || d.name, detail: '' });
       }
@@ -168,7 +168,7 @@ export function useSubtitleRequests(): void {
     const providers = enabledProviders(sub, listSubtitleEntries());
     const languages = effectiveLanguages(sub);
     const gate = { enabled: sub.enabled, providers: providers.length, autoOn: sub.autoNewVideos };
-    // F5: turning Subtitles off, every source off, or automatic mode off aborts the runs at once.
+    // Turning Subtitles off, every source off, or automatic mode off aborts the runs at once.
     abortWhere((k) => {
       const e = reqs[k];
       return !e || !shouldRun(e, gate);
@@ -203,7 +203,7 @@ export function useSubtitleRequests(): void {
     };
 
     /**
-     * F6 and D7: every state write checks the request still exists with the same epoch. A pack's episodes keep their own
+     * Every state write checks the request still exists with the same epoch. A pack's episodes keep their own
      * state under the video path; the card's state is the roll-up of all its episodes.
      */
     const writeCard = (ref: { key: string; epoch: number; pack: boolean }, t: SubtitleTarget, state: CardState, lang: string, file = '') => {
@@ -231,7 +231,7 @@ export function useSubtitleRequests(): void {
       const ctl = new AbortController();
       registerRun(key, fileKey, ctl);
       const base = { vp: target.videoPath, saved: prev.saved };
-      // 46.4: a pack's run that ends in needs-pick keeps its top candidate per language (at most 2) for "Use best match".
+      // A pack's run that ends in needs-pick keeps its top candidate per language (at most 2) for "Use best match".
       let cands: ReturnType<typeof toStored> = [];
       const finish = (phase: FileRun['phase'], tries: number, extra?: { otherLang?: string | null }) => {
         setRun(key, fileKey, { ...base, phase, tries, ...(phase === 'needs-pick' && pack && cands.length > 0 ? { cands } : {}) }, { ...extra, epoch });
@@ -243,7 +243,7 @@ export function useSubtitleRequests(): void {
         writeCard(ref, target, 'none', languages[0]);
       };
       try {
-        // Already has its subtitles in the user's language: nothing is fetched. D11: if Maglev saved one, it is `saved`.
+        // Already has its subtitles in the user's language: nothing is fetched. If Maglev saved one, it is `saved`.
         if (existingFiles && languages.some((l) => hasExistingSubtitle(target.existing?.videoPath ?? file.fileName, l, existingFiles))) {
           const res = resolveExisting(prev);
           finish(res, prev.tries);
@@ -256,7 +256,7 @@ export function useSubtitleRequests(): void {
           const h = await hashIfComplete({ ...target, complete: true }, maglevEngine);
           if (ctl.signal.aborted) return;
           if (h.missing) {
-            // F11: a video that is gone keeps an earlier needs-pick.
+            // A video that is gone keeps an earlier needs-pick.
             const keep = afterMissing(prev.phase);
             finish(keep, prev.tries + 1);
             if (keep === 'none') writeCard(ref, target, 'none', languages[0]);
@@ -290,7 +290,7 @@ export function useSubtitleRequests(): void {
             setRun(key, fileKey, { vp: target.videoPath, phase: 'saved', tries, saved: true }, { otherLang: null, epoch });
             writeCard(ref, target, 'saved', saved.language, saved.fileName);
           } else if (saved.status === 'name-taken' || saved.status === 'copies-full') {
-            // A subtitle of that name is already there; auto never replaces or keeps a second copy. D11: if Maglev saved
+            // A subtitle of that name is already there; auto never replaces or keeps a second copy. If Maglev saved
             // it, the video is `saved` and its card is left alone.
             const r = resolveExisting(prev);
             finish(r, tries);
@@ -330,13 +330,13 @@ export function useSubtitleRequests(): void {
       const d = isTorrent ? undefined : linkById.get(id);
       const present = !!(t || d);
 
-      // ---- Removal (44.7): gone from the list, so cancelled; after the undo window it is deleted for good. F2: absence
+      // ---- Removal: gone from the list, so cancelled; after the undo window it is deleted for good. Absence
       // counts only once the lists came live from the engine.
       const a = absence(absentSince.current.get(key), present, now, REMOVAL_GRACE_MS, live);
       if (a.state === 'present') {
         if (absentSince.current.has(key)) {
           absentSince.current.delete(key);
-          // F10: back within the grace; once its files are read, a request whose files are gone starts again.
+          // Back within the grace; once its files are read, a request whose files are gone starts again.
           if (isTorrent && present) {
             details.current.delete(lid(id));
             returned.current.set(key, now);
@@ -344,7 +344,7 @@ export function useSubtitleRequests(): void {
         }
       } else if (a.state === 'delete') {
         absentSince.current.delete(key);
-        // F6: clear every episode's stored state and target, not just the last one.
+        // Clear every episode's stored state and target, not just the last one.
         abortKey(key);
         const remembered = recallTarget(key)?.videoPath;
         const paths = new Set(statePathsToClear(entry, remembered));
@@ -385,7 +385,7 @@ export function useSubtitleRequests(): void {
         const finished = !!t.finished || t.state === 'COMPLETED' || t.state === 'SEEDING';
         const metaKnown = t.resolvingSecs == null && (t.totalSizeBytes > 0 || !!t.mainFile);
         if (metaKnown) {
-          // F1: a request whose runs are all settled reads no file list; failures back off; at most 3 calls at once.
+          // A request whose runs are all settled reads no file list; failures back off; at most 3 calls at once.
           const needed = !requestSettled(entry) || returned.current.has(key);
           const changed = !info || t.downloadedBytes > info.downloaded || (finished && !info.finished);
           const at = nextDetailAt({ lastOkAt: info?.at, fail: detailFail.current.get(k) });
@@ -393,7 +393,7 @@ export function useSubtitleRequests(): void {
           else if (needed && changed && at > now) soon(at);
         }
         if (!info) continue;
-        // F10: back within the grace: if the files are gone, the old request starts again.
+        // Back within the grace: if the files are gone, the old request starts again.
         const ret = returned.current.get(key);
         if (ret !== undefined && info.at >= ret) {
           returned.current.delete(key);
@@ -401,7 +401,7 @@ export function useSubtitleRequests(): void {
         }
         const videos = info.files.filter((f) => f.included && f.length > 0 && fileKind(f.path) === 'video');
         if (videos.length === 0) {
-          // 44.2: no video in this torrent, so no request. A mark stops automatic mode asking again.
+          // No video in this torrent, so no request. A mark stops automatic mode asking again.
           skipSubtitles(key);
           continue;
         }
@@ -417,19 +417,19 @@ export function useSubtitleRequests(): void {
           const complete = f.progressBytes >= f.length || (finished && videos.length === 1);
           const target = torrentTarget(t.id, info.folder, f, allPaths.map((path) => ({ path })));
           if (!target) {
-            // D9: a folder Maglev can't write to (a picked SAF folder) is `unavailable`, not `none`; nothing polls it.
+            // A folder Maglev can't write to (a picked SAF folder) is `unavailable`, not `none`; nothing polls it.
             if (!isSettledPhase(r.phase)) setRun(key, fileKey, { ...r, phase: 'unavailable' }, { epoch: ref.epoch });
             continue;
           }
-          // F4: each file run keeps its own retry time.
+          // Each file run keeps its own retry time.
           const retry = retryAt(r);
           if (retry !== null) soon(retry);
           refreshCard(ref, target, r);
           const kind = planRun(r, { started, complete, typed: typedOne && videos.length === 1, now, online: networkOnline });
           if (!kind || isRunning(key, fileKey)) continue;
-          // D10: without the one-time OK a request waits; the row says "Needs your OK".
+          // Without the one-time OK a request waits; the row says "Needs your OK".
           if (!runnable) continue;
-          // F10: a sidecar is never written while the transfer is being moved (the folder is stale).
+          // A sidecar is never written while the transfer is being moved (the folder is stale).
           if (!canWriteNow(t.state)) continue;
           if (!networkOnline) {
             if (r.phase !== 'offline') setRun(key, fileKey, { ...afterFailure('offline', r, now), vp: target.videoPath }, { epoch: ref.epoch });
@@ -444,7 +444,7 @@ export function useSubtitleRequests(): void {
       } else if (d) {
         // ---- Link download.
         const nameKind = linkNameKind(d.name);
-        // N27: a name with no extension yet is neither a video nor not one: wait for the name to settle.
+        // A name with no extension yet is neither a video nor not one: wait for the name to settle.
         if (nameKind === 'unknown') continue;
         if (nameKind === 'not-video') {
           if (d.downloaded > 0 || d.state === 'finished') skipSubtitles(key);
@@ -456,7 +456,7 @@ export function useSubtitleRequests(): void {
         const started = (d.state === 'finished' || d.downloaded > 0) && !joining;
         const ref = { key, epoch, pack: false };
         if (!target) {
-          // D9: nothing to write to: `unavailable`, and the runner stops looking at it.
+          // Nothing to write to: `unavailable`, and the runner stops looking at it.
           if (started && !isSettledPhase(r.phase)) setRun(key, null, { ...r, phase: 'unavailable' }, { epoch });
           continue;
         }

@@ -4,11 +4,11 @@ import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 
-/** A subtitle call failed with a contract error code (NATIVE_CONTRACT section 36.6). */
+/** A subtitle call failed with an error code the app maps to a message. */
 class SubtitleException(val code: String, message: String) : Exception(message)
 
 /**
- * The OpenSubtitles / BSPlayer "moviehash" (NATIVE_CONTRACT 36.6).
+ * The OpenSubtitles / BSPlayer "moviehash".
  * hash = file size + uint64 little-endian sum of the first 65536 bytes + the same sum of the last 65536 bytes,
  * all mod 2^64, printed as 16 lowercase hex digits. Reference: the OpenSubtitles "HashSourceCodes" wiki page
  * (https://trac.opensubtitles.org/projects/opensubtitles/wiki/HashSourceCodes) and the REST docs "moviehash".

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Scoring, size bands and shortlist (docs/ASSISTANT_DESIGN.md §3.3, §3.5, §3.6). No network.
+// Scoring, size bands and shortlist. No network.
 // Needs Node 22.18+ (runs the TypeScript source directly via type stripping).
 
 process.removeAllListeners('warning');
@@ -54,7 +54,7 @@ async function main() {
   const { scoreResults } = await import('../utils/assistant/scoring.ts');
   const { checkFileSafety } = await import('../utils/assistant/fileSafety.ts');
 
-  // ---------------------------------------------------------------- size bands (§3.3 table)
+  // ---------------------------------------------------------------- size bands
   const table = [
     [480, 'avc', 0.4, 1.5], [720, 'avc', 0.8, 2.5], [720, 'hevc', 0.4, 1.6], [1080, 'avc', 1.5, 5],
     [1080, 'hevc', 0.9, 3.5], [2160, 'hevc', 4, 15], [1080, 'remux', 15, 40], [2160, 'remux', 25, 80],
@@ -69,9 +69,9 @@ async function main() {
   check('band: 720 remux has no row', sizeBand(720, 'remux') === undefined);
   check('band: unknown resolution has no row', sizeBand(undefined, 'avc') === undefined);
   check('lowGbPerHour matches', lowGbPerHour(1080, 'avc') === 1.5);
-  check('too-small fraction is 0.25 and small fraction 0.5 (R1-13)', TOO_SMALL_FRACTION === 0.25 && SMALL_FRACTION === 0.5);
+  check('too-small fraction is 0.25 and small fraction 0.5', TOO_SMALL_FRACTION === 0.25 && SMALL_FRACTION === 0.5);
 
-  // ---------------------------------------------------------------- §3.6 item 1: 12-row fixture
+  // ---------------------------------------------------------------- 12-row shortlist fixture
   const rows = {
     webdl265: row('The.Last.Harbor.2023.1080p.WEB-DL.DDP5.1.x265-GRP', 2.1 * GB, 340),
     bluray264: row('The.Last.Harbor.2023.1080p.BluRay.x264-GRP', 7 * GB, 8),
@@ -89,7 +89,7 @@ async function main() {
   const list = Object.values(rows);
   check('fixture has 12 rows', list.length === 12);
   const out = scoreResults(list, baseCtx());
-  const idOf = (key) => rows[key].infoHash; // rows are keyed by info hash (R1-10)
+  const idOf = (key) => rows[key].infoHash; // rows are keyed by info hash
   const rankedIds = out.ranked.map((r) => r.id);
   const wantOrder = ['webdl265', 'bluray264', 'small720', 'tpbOnly', 'noSize', 'uhd', 'fake', 'remux'].map(idOf);
   check('ranking is as expected', JSON.stringify(rankedIds) === JSON.stringify(wantOrder), rankedIds.join(','));
@@ -102,7 +102,7 @@ async function main() {
   const top = out.ranked[0];
   check('top row is recommended', top.tier === 'recommended', top.tier);
 
-  // ---------------------------------------------------------------- item 2: CAM/TS never shortlisted
+  // ---------------------------------------------------------------- CAM/TS never shortlisted
   const exIds = out.excluded.map((e) => e.id);
   check('CAM row is in excluded as cam_source', out.excluded.some((e) => e.id === idOf('cam') && e.reason === 'cam_source'));
   check('TS row is in excluded as cam_source', out.excluded.some((e) => e.id === idOf('ts') && e.reason === 'cam_source'));
@@ -115,12 +115,12 @@ async function main() {
   const tc = scoreResults([row('The.Last.Harbor.2023.TC.x264-GRP', 1.4 * GB, 10), row('The.Last.Harbor.2023.DVDSCR.x264-GRP', 1.4 * GB, 10)], baseCtx());
   check('TC and SCR are excluded too', tc.excluded.length === 2 && tc.ranked.length === 0);
 
-  // ---------------------------------------------------------------- item 3: 150 MB "1080p"
+  // ---------------------------------------------------------------- 150 MB "1080p"
   const fake = out.ranked.find((r) => r.id === idOf('fake'));
   check('150 MB 1080p gets too_small_for_claim', fake.flags.includes('too_small_for_claim'), fake.flags.join(','));
   check('150 MB 1080p is "avoid" and never shortlisted', fake.tier === 'avoid' && !out.shortlist.includes(fake));
 
-  // ---------------------------------------------------------------- item 4: risky sources
+  // ---------------------------------------------------------------- risky sources
   const hash = '9'.repeat(40);
   const both = { ...row('The.Last.Harbor.2023.1080p.WEB-DL.x265-GRP', 2.1 * GB, 500, ['knaben', 'tpb']), infoHash: hash };
   const onlyTpb = row('The.Last.Harbor.2023.1080p.WEB-DL.x265-TPB', 2.1 * GB, 500, ['tpb']);
@@ -141,7 +141,7 @@ async function main() {
   const r4d = scoreResults([onlyTpb], baseCtx());
   check('only risky rows: still listed, never recommended', r4d.ranked.length === 1 && r4d.ranked[0].tier !== 'recommended');
 
-  // ---------------------------------------------------------------- item 5: DoesntFit and partial packs
+  // ---------------------------------------------------------------- DoesntFit and partial packs
   for (const k of ['uhd', 'remux']) {
     const r = out.ranked.find((x) => x.id === idOf(k));
     check(`${k}: DoesntFit and tier avoid`, r.admission.result === 'DoesntFit' && r.tier === 'avoid', `${r.admission.result}/${r.tier}`);
@@ -164,7 +164,7 @@ async function main() {
   const fitsPack = scoreResults([row('Harbor.Light.S01.1080p.WEB-DL.x265-GRP', 12 * GB, 100)], pctx).ranked[0];
   check('pack: a fitting pack has no partial flag', !fitsPack.flags.includes('partial_fits'));
 
-  // ---------------------------------------------------------------- item 6: reasons[0] template
+  // ---------------------------------------------------------------- reasons[0] template
   for (const r of out.ranked) {
     check(`reasons[0] matches template (${r.id})`, REASON_RE.test(r.reasons[0]), r.reasons[0]);
   }
@@ -196,7 +196,7 @@ async function main() {
   check('2160p resolution points: 10 on phone, 12 on tv', q('tv') - q('phone') === 2, `${q('phone')} ${q('tv')}`);
   const hc = scoreResults([row('The.Last.Harbor.2023.1080p.WEB-DL.x265.HC-GRP', 2 * GB, 50)], baseCtx()).ranked[0];
   check('hardcoded subs: -2 and flagged', hc.breakdown.playability === 9 && hc.flags.includes('hardcoded_subs'), JSON.stringify(hc.breakdown));
-  // Playback is the real PlaybackSupport shape and goes through playbackVerdict (R1 item 7).
+  // Playback is the real PlaybackSupport shape and goes through playbackVerdict.
   const PROBE = { avc: 'hardware', hevc: 'hardware', hevc10: 'hardware', av1: 'none', av1_10: 'none', vp9: 'hardware', dolbyVision: 'hardware', hdr10: true, hdr10plus: false, hlg: true };
   const hwHevc = scoreResults([rows.webdl265], baseCtx({ playback: PROBE })).ranked[0];
   check('probe says hardware HEVC: playability 18', hwHevc.breakdown.playability === 18 && !hwHevc.flags.includes('playback_unknown'), String(hwHevc.breakdown.playability));
@@ -218,7 +218,7 @@ async function main() {
   check('old and few seeders: health 4 - 3 = 1', old.breakdown.health === 1, String(old.breakdown.health));
   const big = scoreResults([row('The.Last.Harbor.2023.1080p.WEB-DL.x264-GRP', 12 * GB, 50)], baseCtx({ freeBytes: 50 * GB })).ranked[0];
   check('above the band: bigger_than_needed, sanity 6', big.flags.includes('bigger_than_needed') && big.breakdown.sanity === 6);
-  // R1-13: amber only below 0.5x the floor (1080p avc floor 1.5 GB/h x 1.83 h = 2.75 GB), red below 0.25x.
+  // Amber only below 0.5x the floor (1080p avc floor 1.5 GB/h x 1.83 h = 2.75 GB), red below 0.25x.
   const slim = scoreResults([row('The.Last.Harbor.2023.1080p.WEB-DL.x264-GRP', 1.2 * GB, 50)], baseCtx()).ranked[0];
   check('below 0.5x the floor: small_for_quality, sanity 5', slim.flags.includes('small_for_quality') && slim.breakdown.sanity === 5, JSON.stringify(slim.breakdown));
   const slimOk = scoreResults([row('The.Last.Harbor.2023.1080p.WEB-DL.x264-GRP', 2.5 * GB, 50)], baseCtx()).ranked[0];
@@ -267,7 +267,7 @@ async function main() {
   check('no Fits at all: shortlist can still hold a Tight best-quality row',
     (() => { const t = scoreResults([row('The.Last.Harbor.2023.1080p.WEB-DL.x265-GRP', 19 * GB, 50)], baseCtx()); return t.shortlist.length === 1 && t.shortlist[0].label === 'best-quality'; })());
 
-  // ---------------------------------------------------------------- item 7: fake-file fixtures
+  // ---------------------------------------------------------------- fake-file fixtures
   const movie = (files, name = 'The.Last.Harbor.2023.1080p.WEB-DL.x265') => checkFileSafety({ name, category: 'movie', files });
   const mkv = { path: 'Harbor/Harbor.2023.1080p.mkv', sizeBytes: 2.1 * GB };
   check('fake files: exe is red', movie([mkv, { path: 'Harbor/Setup.exe', sizeBytes: MB }]).level === 'red');
@@ -277,7 +277,7 @@ async function main() {
   check('fake files: apk in a movie is red', movie([mkv, { path: 'Harbor/player.apk', sizeBytes: 8 * MB }]).level === 'red');
   check('fake files: clean mkv plus srt is green', movie([mkv, { path: 'Harbor/Harbor.srt', sizeBytes: 50000 }]).level === 'green');
 
-  // ---------------------------------------------------------------- R1-9: title matching
+  // ---------------------------------------------------------------- title matching
   const { parseQuery, canPropose, SEEDER_NOTE } = await import('../utils/assistant/scoring.ts');
   const one = (title, name, extra = {}) => scoreResults([row(name, 2 * GB, 50)], baseCtx({ query: { title, ...extra } }));
   const kept = (o) => o.ranked.length === 1 && o.excluded.length === 0;
@@ -308,7 +308,7 @@ async function main() {
   check('parseQuery: a number-only title is a title', parseQuery('1917').title === '1917');
   check('parseQuery: empty text', parseQuery('').title === '');
 
-  // ---------------------------------------------------------------- R1-10: keys are info hashes, no r1 ids
+  // ---------------------------------------------------------------- keys are info hashes, no r1 ids
   check('every ranked id is the info hash', out.ranked.every((r) => r.id === r.result.infoHash));
   check('no handle-style ids anywhere', [...out.ranked, ...out.shortlist, ...out.excluded].every((r) => !/^r\d+$/.test(r.id)));
   check('excluded rows are keyed by info hash too', out.excluded.every((e) => e.id === e.result.infoHash));
@@ -337,7 +337,7 @@ async function main() {
   check('red file-list safety: avoid, flagged, not shortlisted', unsafeRow.tier === 'avoid' && unsafeRow.flags.includes('unsafe_files') && !unsafe.shortlist.includes(unsafeRow));
   check('the red row keeps its safety result for the runner', unsafeRow.safety && unsafeRow.safety.level === 'red');
 
-  // ---------------------------------------------------------------- R1-8: canPropose
+  // ---------------------------------------------------------------- canPropose
   check('canPropose: red safety is refused with a reason', (() => { const c = canPropose(unsafeRow); return c.ok === false && typeof c.reason === 'string' && c.reason.length > 0; })());
   check('canPropose: a stored level of red is refused', canPropose({ level: 'red' }).ok === false && canPropose({ safety: { level: 'red' } }).ok === false);
   check('canPropose: green and amber are allowed', canPropose({ safety: { level: 'green' } }).ok === true && canPropose({ safety: { level: 'amber' } }).ok === true);
@@ -346,7 +346,7 @@ async function main() {
   check('canPropose: an ordinary ranked row is allowed', canPropose(out.ranked[0]).ok === true);
   check('canPropose: nothing at all is allowed (no data, nothing red)', canPropose(undefined).ok === true);
 
-  // ---------------------------------------------------------------- R1-15: copy
+  // ---------------------------------------------------------------- copy
   const allReasons = [...out.ranked, tight].flatMap((r) => r.reasons);
   check('reasons say "sharing", never seeders or seeds', allReasons.every((x) => !/seed/i.test(x)), allReasons.find((x) => /seed/i.test(x)));
   check('the out-of-date note is list-level and appears once', out.notes.length === 1 && out.notes[0] === SEEDER_NOTE && !/seed/i.test(SEEDER_NOTE));

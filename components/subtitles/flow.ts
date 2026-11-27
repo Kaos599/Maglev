@@ -1,5 +1,5 @@
 /**
- * Subtitle flow helpers (docs/NATIVE_CONTRACT.md 36.5, 36.7, 36.8, 36.10). Pure: no React, no react-native, so Node
+ * Subtitle flow helpers. Pure: no React, no react-native, so Node
  * tests run them with fakes. The sheet's UI and the cards only call these.
  */
 import { fileKind } from '../../utils/fileKind.ts';
@@ -13,7 +13,7 @@ import { textToBase64 } from '../../utils/subtitles/payload.ts';
 import type { SubtitleCandidate, SubtitleProvider, SubtitleQuery } from '../../utils/subtitles/types.ts';
 import { stateVisible, type SubtitleCardState, type SubtitleState } from '../../utils/subtitles/prefs.ts';
 
-// ---------------------------------------------------------------- a file to path or URI (36.6)
+// ---------------------------------------------------------------- a file to path or URI
 
 /**
  * The location the native subtitle calls accept: an absolute POSIX path built from the item's output folder and the
@@ -34,9 +34,9 @@ export function baseName(path: string): string {
   return path.replace(/[?#].*$/, '').replace(/^.*[\\/]/, '');
 }
 
-// ---------------------------------------------------------------- entry points (36.10)
+// ---------------------------------------------------------------- entry points
 
-/** 'unavailable': a folder picked with the file picker (content://), where Find subtitles doesn't work yet (39.1 S6). */
+/** 'unavailable': a folder picked with the file picker (content://), where Find subtitles doesn't work yet. */
 export type EntryMode = 'hidden' | 'disabled' | 'enabled' | 'unavailable';
 
 /** The line under a row that isn't enabled; undefined when there is nothing to say. */
@@ -50,7 +50,6 @@ const isSafFolder = (folder: string | null | undefined): boolean => /^content:\/
  * A row that would show stays visible when its folder was picked with the file picker, but disabled with the
  * reason, never silently missing. Hidden stays hidden. Any other folder we can't turn into a path stays hidden.
  */
-// NATIVE_CONTRACT 39.1 S6
 function withLocation(mode: EntryMode, folder: string | null | undefined, relativePath: string): EntryMode {
   if (mode === 'hidden' || videoLocation(folder, relativePath) !== null) return mode;
   return isSafFolder(folder) ? 'unavailable' : 'hidden';
@@ -63,14 +62,13 @@ export interface EntryInput {
   sourcesOn: number;
   /** The file is a video. */
   isVideo: boolean;
-  /** Some of the file is on disk (NATIVE_CONTRACT 42.1). */
+  /** Some of the file is on disk. */
   started: boolean;
   /** A stream (HLS/DASH) that is still joining its parts. */
   joining?: boolean;
 }
 
 /** Hidden when off, no source is on, not a video, or still joining. Nothing on disk yet shows disabled. */
-// NATIVE_CONTRACT 42.1
 function entryMode(i: EntryInput): EntryMode {
   if (!i.master || i.sourcesOn < 1 || !i.isVideo || i.joining) return 'hidden';
   return i.started ? 'enabled' : 'disabled';
@@ -85,7 +83,7 @@ export interface FileLike extends MainFileCandidate {
 
 export const fileComplete = (f: { length: number; progressBytes: number }): boolean => f.length > 0 && f.progressBytes >= f.length;
 
-/** Any of the file is on disk (NATIVE_CONTRACT 42.1). */
+/** Any of the file is on disk. */
 export const fileStarted = (f: { progressBytes: number }): boolean => f.progressBytes > 0;
 
 /** One row of Detail → Files. */
@@ -93,7 +91,7 @@ export function fileEntryMode(f: FileLike, g: { master: boolean; sourcesOn: numb
   return withLocation(entryMode({ master: g.master, sourcesOn: g.sourcesOn, isVideo: fileKind(f.path) === 'video', started: fileStarted(f) }), g.folder, f.path);
 }
 
-/** Torrent-level entry (Torrent options): exactly one included video, with some of it on disk (42.1). */
+/** Torrent-level entry (Torrent options): exactly one included video, with some of it on disk. */
 export function torrentEntryMode(
   t: { finished?: boolean; folder: string | null | undefined },
   files: readonly FileLike[],
@@ -102,12 +100,12 @@ export function torrentEntryMode(
   const videos = pickMainFile(files).videos as FileLike[];
   if (videos.length !== 1) return { mode: 'hidden', file: null };
   const file = videos[0];
-  // NATIVE_CONTRACT 42.1: the single included video has bytes on disk (a finished torrent has them too).
+  // The single included video has bytes on disk (a finished torrent has them too).
   const mode = withLocation(entryMode({ master: g.master, sourcesOn: g.sourcesOn, isVideo: true, started: fileStarted(file) }), t.folder, file.path);
   return mode === 'hidden' ? { mode, file: null } : { mode, file };
 }
 
-/** A link-download card: a video by its name with some of it on disk, not a stream still being joined (42.1). */
+/** A link-download card: a video by its name with some of it on disk, not a stream still being joined. */
 export function downloadEntryMode(
   d: { state: string; name: string; folder: string; downloaded?: number; muxNeeded?: boolean },
   g: { master: boolean; sourcesOn: number },
@@ -117,7 +115,7 @@ export function downloadEntryMode(
       master: g.master,
       sourcesOn: g.sourcesOn,
       isVideo: fileKind(d.name) === 'video',
-      // NATIVE_CONTRACT 42.1
+      // Any bytes on disk count, so a video still downloading can already be subtitled.
       started: d.state === 'finished' || (d.downloaded ?? 0) > 0,
       joining: d.state === 'verifying' || !!d.muxNeeded,
     }),
@@ -156,7 +154,7 @@ export function downloadTarget(d: { id: string; name: string; folder: string; si
   return { videoPath, fileName: baseName(d.name), videoBytes: d.size ?? d.downloaded, complete: d.state === 'finished', ownerKey: `d:${d.id}` };
 }
 
-// ---------------------------------------------------------------- hash (36.6)
+// ---------------------------------------------------------------- hash
 
 export interface HashDeps {
   subtitleHash(pathOrUri: string): Promise<{ hash: string; bytes: number }>;
@@ -186,7 +184,7 @@ function errorCodeOf(e: unknown): string {
   return m ? m[1] : '';
 }
 
-// ---------------------------------------------------------------- errors (36.10)
+// ---------------------------------------------------------------- errors
 
 export type ErrorActionKind = 'keep-both' | 'retry' | 'other-language' | 'close' | 'open-folder' | 'pick-another' | 'other-source';
 
@@ -259,7 +257,7 @@ export function didntRespondLine(sources: readonly SubtitleSourceStatus[]): stri
   return n === 1 ? "1 source didn't respond" : `${n} sources didn't respond`;
 }
 
-// ---------------------------------------------------------------- card icon (36.10)
+// ---------------------------------------------------------------- card icon
 
 export interface CardIconModel {
   state: SubtitleCardState;
@@ -277,7 +275,7 @@ export function sameCardIcon(a: CardIconModel | null | undefined, b: CardIconMod
   return a.state === b.state && a.lang === b.lang;
 }
 
-/** What TalkBack says: the state in words (NATIVE_CONTRACT 44.8). */
+/** What TalkBack says: the state in words. */
 export function cardIconLabel(m: CardIconModel): string {
   return `${CARD_ICON_WORDS[m.state] ?? CARD_ICON_WORDS['needs-look']}. Opens subtitles.`;
 }
@@ -285,7 +283,7 @@ export function cardIconLabel(m: CardIconModel): string {
 /** The saved toast, e.g. "English subtitles saved". */
 export const savedToast = (lang: string): string => `${languageName(lang)} subtitles saved`;
 
-// ---------------------------------------------------------------- download and save (36.7, 36.8)
+// ---------------------------------------------------------------- download and save
 
 export interface SaveRunDeps {
   unzip(base64: string): Promise<{ name: string; base64: string }[]>;
@@ -301,7 +299,7 @@ export type SaveRunResult =
 /**
  * Downloads the chosen candidate (or reuses `prepared` when the user came back from "name taken"), then saves it next
  * to the video. A taken name comes back as `name-taken` so the sheet can ask Replace / Keep both / Cancel; every
- * other failure is one sentence and one action (36.10).
+ * other failure is one sentence and one action.
  */
 export async function downloadAndSave(
   a: {

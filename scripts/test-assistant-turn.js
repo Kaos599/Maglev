@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// SM-31 Assistant chat turn (with review round 1). One test per row of the transition table, plus caps, retry-once,
+// Assistant chat turn. One test per row of the transition table, plus caps, retry-once,
 // card lifecycle, abort of running tools, the send gate and the RangeError path.
 // Needs Node 22.18+ (runs the TypeScript sources directly via type stripping).
 process.removeAllListeners('warning');
@@ -70,7 +70,7 @@ async function main() {
     return st;
   }
 
-  // ---- SM-31 table rows, in order ----------------------------------------------------------------
+  // ---- table rows, in order ----------------------------------------------------------------
   {
     const r = step(mk(), send('find a film'));
     check('idle + Send (key) -> requesting, AppendUser + Request', r.state.kind === 'requesting' && types(r.effects).join() === 'appendUser,request', types(r.effects));
@@ -262,7 +262,7 @@ async function main() {
     const late = run(at8.state, FIRST, { type: 'TextDelta', text: 'Here is what I found.' }, { type: 'ToolCallsDone', calls: [searchCall('late')] });
     check('a call after the 8th ends the turn with the note and keeps the text', late.state.kind === 'idle' && late.effects.some((e) => e.type === 'note') && late.state.history.at(-1).content === 'Here is what I found.', late.state.history.at(-1));
   }
-  check('SM-31 caps match context.ts', ctx.MAX_ROUND_TRIPS === 6 && ctx.MAX_TOOL_CALLS_PER_TURN === 8 && ctx.MAX_TOOL_CALLS_PER_ROUND_TRIP === 3);
+  check('caps match context.ts', ctx.MAX_ROUND_TRIPS === 6 && ctx.MAX_TOOL_CALLS_PER_TURN === 8 && ctx.MAX_TOOL_CALLS_PER_ROUND_TRIP === 3);
   {
     const st = toRequestingRounds(6);
     check('the 6th request is issued, rounds = 6', st.kind === 'requesting' && st.rounds === 6);
@@ -321,11 +321,11 @@ async function main() {
     check('other 4xx -> idle with a plain error, not retried', r.state.kind === 'idle' && r.effects[0].type === 'errorCard');
   }
 
-  // ---- expire cards and session interplay (SM-42) ------------------------------------------------------------------
+  // ---- expire cards and session interplay ------------------------------------------------------------------
   {
     const a = toAwaitingConfirmation();
     const r = step(a.state, { type: 'Clear' });
-    check('Clear (SM-42) -> idle, empty history, expire cards, drop handles', r.state.kind === 'idle' && r.state.history.length === 0 && r.state.pendingCards.length === 0 && types(r.effects).join() === 'expireCards,clearHandles', types(r.effects));
+    check('Clear -> idle, empty history, expire cards, drop handles', r.state.kind === 'idle' && r.state.history.length === 0 && r.state.pendingCards.length === 0 && types(r.effects).join() === 'expireCards,clearHandles', types(r.effects));
     const s = step(toStreaming(), { type: 'Clear' });
     check('Clear while streaming aborts the request first', types(s.effects).join() === 'abortFetch,expireCards,clearHandles' && s.state.kind === 'idle');
     check('after Clear, tool results arriving late are ignored', step(s.state, { type: 'ToolsDone', results: [] }).effects.length === 0);
@@ -335,7 +335,7 @@ async function main() {
     check('Abort in awaitingConfirmation is a no-op (cards kept)', step(a.state, { type: 'Abort' }).state === a.state);
     let s = run(mk(), send('pause it'), FIRST, { type: 'ToolCallsDone', calls: [proposePause()] });
     s = run(s.state, FIRST, { type: 'Abort' });
-    check('Abort keeps pending cards and history (SM-42 "keep history and cards"); rests at awaitingConfirmation', s.state.kind === 'awaitingConfirmation' && s.state.pendingCards.length === 1 && s.state.history.length >= 3);
+    check('Abort keeps pending cards and history; rests at awaitingConfirmation', s.state.kind === 'awaitingConfirmation' && s.state.pendingCards.length === 1 && s.state.history.length >= 3);
     const c = step(s.state, { type: 'Confirm', cardId: s.state.pendingCards[0] });
     check('a kept card can still be confirmed after Abort', c.effects[0].type === 'confirmCard' && c.state.pendingCards.length === 1);
     const n = step(s.state, send('next'));
@@ -376,7 +376,7 @@ async function main() {
     check('RangeError on a follow-up request ends the turn with an error card', !threw && r.state.kind === 'idle' && r.effects.some((e) => e.type === 'errorCard'));
   }
 
-  // ---- send gate (R1-6) --------------------------------------------------------------------------------------------
+  // ---- send gate --------------------------------------------------------------------------------------------
   {
     const gate = (over) => step(mk(), { type: 'Send', text: 'hi', enabled: true, warningAccepted: true, hasKey: true, ...over });
     const notice = (r) => (r.effects[0] && r.effects[0].type === 'showNotice' ? r.effects[0].text : null);
@@ -390,7 +390,7 @@ async function main() {
     check('all three present -> request goes out', gate({}).state.kind === 'requesting');
   }
 
-  // ---- caps (R1-4) --------------------------------------------------------------------------------------------------
+  // ---- caps --------------------------------------------------------------------------------------------------
   {
     const st = toStreaming();
     st.config.registry.issue('transfer', 8); // t2
@@ -420,7 +420,7 @@ async function main() {
     check('the details cap holds across rounds of one turn', !again.effects.some((e) => e.type === 'runTool'));
   }
 
-  // ---- retry: per turn, backoff, Retry-After, truncation (R1-4) -----------------------------------------------------
+  // ---- retry: per turn, backoff, Retry-After, truncation -----------------------------------------------------
   {
     const r = step(toRequesting(), { type: 'HttpErr', status: 503 });
     check('retryOnce carries 1000 ms with jitter by default', r.effects[0].delayMs === 1000 && r.effects[0].jitter === true, r.effects[0]);
@@ -440,7 +440,7 @@ async function main() {
     check('a truncated tool call is never run', c.state.kind === 'idle' && !types(c.effects).includes('runTool'));
   }
 
-  // ---- abort of running tools (R1-5) --------------------------------------------------------------------------------
+  // ---- abort of running tools --------------------------------------------------------------------------------
   {
     const two = [searchCall('s1'), searchCall('s2')];
     const running = run(mk(), send(), FIRST, { type: 'ToolCallsDone', calls: two }).state;
@@ -554,7 +554,7 @@ async function main() {
     check('a stop with no usage adds nothing', !run(toStreaming(), { type: 'TextDelta', text: 'x' }, { type: 'Stop' }).effects.some((e) => e.type === 'addUsage'));
   }
 
-  // ---- card expiry (R1-3) -------------------------------------------------------------------------------------------
+  // ---- card expiry -------------------------------------------------------------------------------------------
   {
     const a = toAwaitingConfirmation();
     const cardId = a.state.pendingCards[0];

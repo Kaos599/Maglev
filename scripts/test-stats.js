@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Local stats (NATIVE_CONTRACT 34.2): schema, store over node:sqlite, recorder, insights, prefs, backup section.
+// Local stats: schema, store over node:sqlite, recorder, insights, prefs, backup section.
 // Needs Node 22.18+ (runs the TypeScript source directly).
 process.removeAllListeners('warning');
 const { DatabaseSync } = require('node:sqlite');

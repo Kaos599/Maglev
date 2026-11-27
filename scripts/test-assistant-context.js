@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Context builder: caps, token budget, tool pairing, summarise-before-drop (SM-31, ASSISTANT_DESIGN §8.4).
+// Context builder: caps, token budget, tool pairing, summarise-before-drop.
 // Random histories use a seeded PRNG (mulberry32), so every run checks the same cases.
 // Pure TS, no network. Needs Node 22.18+ (runs the TypeScript source directly via type stripping).
 
@@ -63,7 +63,7 @@ async function main() {
     digestToolResult,
     toolsTokenEstimate,
   } = ctx;
-  // These older tests budget messages only, so they pass toolsTokens = 0 (R1-12 tests cover the default).
+  // These older tests budget messages only, so they pass toolsTokens = 0 (later tests cover the default).
   const buildContext = (system, history, budget, toolsTokens = 0) => ctx.buildContext(system, history, budget, toolsTokens);
   const SUMMARY_OK = 'f ok'; // digest of {"ok":true,"data":{...}} from a tool named f
 
@@ -307,7 +307,7 @@ async function main() {
     check('newest turn never dropped under pressure', r.messages.length === 5, r.messages.length);
   }
 
-  console.log('R1-11: digest');
+  console.log('digest');
   {
     const RES = {
       ok: true,
@@ -345,7 +345,7 @@ async function main() {
     check('digest never contains a 40-hex hash', !/[0-9a-f]{40}/.test(digestToolResult('t', JSON.stringify({ ok: true, data: { results: [{ id: 'r1', label: 'a'.repeat(5) + '0123456789abcdef0123456789abcdef01234567' }] } }))));
   }
 
-  console.log('R1-11: "add #1?" then "yes" keeps r1');
+  console.log('"add #1?" then "yes" keeps r1');
   {
     const search = JSON.stringify({ ok: true, data: { results: [{ id: 'r1', source: 'WEB-DL', resolution: 1080, codec: 'x265', size_gb: 2.1, seeders: 340 }, { id: 'r2', source: 'WEB-DL', resolution: 720, codec: 'x265', size_gb: 1.1, seeders: 210 }] } });
     const history = [
@@ -365,7 +365,7 @@ async function main() {
     check('no "summarised":true marker remains', !JSON.stringify(r.messages).includes('summarised'));
   }
 
-  console.log('R1-11: newest turn digest under pressure comes from the full result');
+  console.log('newest turn digest under pressure comes from the full result');
   {
     const search = JSON.stringify({ ok: true, data: { results: Array.from({ length: 6 }, (_, i) => ({ id: `r${i + 1}`, source: 'WEB-DL', resolution: 1080, size_gb: 2.1, seeders: 10, name: 'n'.repeat(900) })) } });
     const history = [
@@ -380,7 +380,7 @@ async function main() {
     check('and fits the budget', r.tokens <= tight, { tokens: r.tokens, tight });
   }
 
-  console.log('R1-12: token estimate for wide scripts, tools cost, completion cap');
+  console.log('token estimate for wide scripts, tools cost, completion cap');
   {
     const cjk = '日本語のテキスト'.repeat(40).slice(0, 300);
     check('300 CJK characters estimate at 250 tokens or more', estimateTokens(cjk) >= 250, estimateTokens(cjk));

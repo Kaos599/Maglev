@@ -1,7 +1,7 @@
 //! File priority ("Download first") and the reannounce rate limit.
 //!
 //! Everything here is pure or touches only a JSON sidecar, so it is unit tested on any host.
-//! The engine glue lives in `engine.rs`; see `docs/NATIVE_CONTRACT.md` section 10.
+//! The engine glue lives in `engine.rs`.
 //!
 //! The sidecar `<sessionDir>/maglev-priorities.json` stores only the "first" files per info-hash.
 //! "Skip" is the same as "not included", and librqbit already persists the included set, so it is
@@ -145,7 +145,7 @@ pub fn include_set_changed(
     current_set != *new
 }
 
-/// Validates a "remove these files' data" request (`NATIVE_CONTRACT.md` section 14) and returns the
+/// Validates a "remove these files' data" request and returns the
 /// set of file indices to remove.
 ///
 /// `valid` holds the indices of the real (non-padding) files; `current` is `ManagedTorrent::only_files()`

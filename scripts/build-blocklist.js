@@ -1,5 +1,5 @@
 /**
- * Regenerates modules/maglev-engine/android/src/main/assets/blocklist.txt (docs/NATIVE_CONTRACT.md section 24.4).
+ * Regenerates modules/maglev-engine/android/src/main/assets/blocklist.txt.
  *
  *   node scripts/build-blocklist.js            fetch the upstream list once and write the asset
  *   node scripts/build-blocklist.js <file>     build from a local copy of the hosts file instead

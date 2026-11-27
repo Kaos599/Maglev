@@ -8,7 +8,7 @@ import { reasonFor, type BlockContext } from '../../utils/blocks/reasons';
 
 export { buildMagnet };
 
-/** Plain-language state label. Paused copy follows the paused_by table in STATE_MACHINES section 2.1. */
+/** Plain-language state label. Paused copy follows the `paused_by` reason the engine reports. */
 export function stateLabel(
   state: TorrentState,
   pausedBy: PausedBy | null | undefined,
@@ -22,7 +22,7 @@ export function stateLabel(
     case 'QUEUED':
       return reasonFor('queued', extra?.blocks)!.short;
     case 'DOWNLOADING':
-      // Torrents never carry `offline`; the engine's block list says why one is stalled (NATIVE_CONTRACT 35.4).
+      // Torrents never carry `offline`; the engine's block list says why one is stalled.
       return extra?.blocks?.blocks?.some((b) => b.tag === 'offline') ? reasonFor('offline')!.short : 'Downloading';
     case 'SEEDING':
       return 'Done · Seeding';
@@ -79,7 +79,7 @@ export interface MoveFailure {
   pickAgain: boolean;
 }
 
-/** Plain-English text for a failed move (NATIVE_CONTRACT 11.3), with the recovery action. */
+/** Plain-English text for a failed move, with the recovery action. */
 export function moveFailure(code: string, message?: string): MoveFailure {
   switch (code) {
     case 'PERMISSION':
@@ -95,7 +95,7 @@ export function moveFailure(code: string, message?: string): MoveFailure {
   }
 }
 
-/** Whether a file can be offered for streaming: video and audio only (NATIVE_CONTRACT 11.4). */
+/** Whether a file can be offered for streaming: video and audio only. */
 export function isStreamable(path: string): boolean {
   const k = fileKind(path);
   return k === 'video' || k === 'audio';

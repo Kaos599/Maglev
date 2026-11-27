@@ -22,7 +22,7 @@ export type ProviderInfo = Pick<
   'id' | 'name' | 'abbr' | 'method' | 'categories' | 'nsfw' | 'unsafeReason' | 'mirrors' | 'enabledByDefault' | 'cloudflare'
 > & {
   custom?: boolean;
-  /** Turned off by the source list (contract 31.1): `note` is shown with the row, and the toggle can't be used. */
+  /** Turned off by the source list: `note` is shown with the row, and the toggle can't be used. */
   turnedOff?: { note: string | null };
 };
 

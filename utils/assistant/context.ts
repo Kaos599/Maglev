@@ -1,15 +1,15 @@
-// Context builder for the assistant (SM-31, ASSISTANT_DESIGN §8.4, build step 10).
+// Context builder for the assistant.
 // Decides which chat messages go to the model on each request. Pure TypeScript: no React, no IO.
-// Chat history lives in memory only (SM-42), so this module never persists anything.
+// This module never persists anything: the caller owns where the chat is kept.
 //
 // Rules, in order of what is kept:
 //   1. The system message and the newest user message always survive.
 //   2. An assistant message with tool_calls and its tool results are one unit. Providers reject orphans,
 //      so a unit is kept whole or dropped whole. Incomplete units in the input are dropped.
 //   3. Tool results longer than MAX_TOOL_RESULT_TOKENS are truncated with a note.
-//   4. Tool results from earlier turns are replaced by an app-written digest (R1-11), always: handles,
+//   4. Tool results from earlier turns are replaced by an app-written digest, always: handles,
 //      labels and numbers only, at most 300 characters, every string through sanitizeText. This keeps old
-//      (possibly hostile) text out of the prompt, as §7.3 layer "segregate by turn" asks, and it keeps
+//      (possibly hostile) text out of the prompt, so one poisoned tool result cannot steer later turns, and it keeps
 //      "r1" meaning the same result when the user says "yes" in a later turn.
 //      The digest stays the tool message content, so the assistant/tool_calls pairing stays valid.
 //   5. If the request is still over budget, whole old turns are dropped, oldest first.
@@ -36,24 +36,24 @@ export type ChatMessage =
   | { role: 'assistant'; content: string | null; tool_calls?: ToolCall[] }
   | { role: 'tool'; tool_call_id: string; content: string };
 
-// ---- Caps (SM-31 and ASSISTANT_DESIGN §8.4) ---------------------------------------------------
+// ---- Caps ---------------------------------------------------
 
-/** Model round-trips per user turn (SM-31). */
+/** Model round-trips per user turn. */
 export const MAX_ROUND_TRIPS = 6;
-/** Tool calls per user turn (SM-31). */
+/** Tool calls per user turn. */
 export const MAX_TOOL_CALLS_PER_TURN = 8;
-/** Tool calls per round-trip (SM-31). */
+/** Tool calls per round-trip. */
 export const MAX_TOOL_CALLS_PER_ROUND_TRIP = 3;
-/** `max_completion_tokens` per round-trip (§8.4). */
-export const MAX_COMPLETION_TOKENS = 2048; // R1-12: reasoning models spend part of this on thinking
-/** Each tool result, after truncation (§8.4). */
+/** `max_completion_tokens` per round-trip. */
+export const MAX_COMPLETION_TOKENS = 2048; // reasoning models spend part of this on thinking
+/** Each tool result, after truncation. */
 export const MAX_TOOL_RESULT_TOKENS = 1500;
 /**
- * Turns kept in the request, the current one included (§8.4 says "last ~6 turns").
+ * Turns kept in the request, the current one included (about the last 6 turns).
  * Older turns are dropped even when the budget has room, so the request stays small.
  */
 export const MAX_HISTORY_TURNS = 6;
-/** Input budget for the messages of one request (§8.4 "Request cap 12,000 input tokens"). */
+/** Input budget for the messages of one request: 12,000 input tokens. */
 export const DEFAULT_INPUT_BUDGET = 12000;
 /**
  * Per-message cost for role and framing. Chosen here; the design gives no number.
@@ -61,7 +61,7 @@ export const DEFAULT_INPUT_BUDGET = 12000;
  */
 const MESSAGE_OVERHEAD_TOKENS = 4;
 
-/** Longest digest of one tool result (R1-11). */
+/** Longest digest of one tool result. */
 const MAX_DIGEST_CHARS = 300;
 
 function isWideCodePoint(cp: number): boolean {
@@ -278,7 +278,7 @@ function truncateIfLarge(content: string): string {
   }
 }
 
-// ---- digest (R1-11) ---------------------------------------------------------------------------
+// ---- digest ---------------------------------------------------------------------------
 
 const LABEL_KEYS = ['label', 'source', 'resolution', 'codec', 'hdr', 'state', 'status', 'fit', 'verdict', 'kind'] as const;
 const SHARING_KEYS = ['seeders', 'sharing'] as const;
@@ -345,7 +345,7 @@ function cutAtEntry(text: string, max: number): string {
 }
 
 /**
- * App-written digest of one tool result, kept in later turns instead of the raw JSON (R1-11).
+ * App-written digest of one tool result, kept in later turns instead of the raw JSON.
  * Example for a search: `r1 WEB-DL 1080p x265 2.1 GB 340 sharing; r2 ...`.
  * Only handles (r1, t2), short labels and numbers are used, never names, paths or free text, and every string
  * goes through sanitizeText. At most MAX_DIGEST_CHARS characters. Rows are read from `data.results`,

@@ -5,7 +5,7 @@ import java.security.KeyFactory
 import java.security.Signature
 import java.security.spec.X509EncodedKeySpec
 
-/** Checks the signature on the source list file (docs/NATIVE_CONTRACT.md section 31.1). Same on every API level. */
+/** Checks the signature on the source list file. Same on every API level. */
 object ListSignature {
     /**
      * True only when [sigB64] (base64 of the DER signature) is a valid `SHA256withECDSA` signature of the UTF-8 bytes

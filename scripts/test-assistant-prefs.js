@@ -84,13 +84,13 @@ async function main() {
   check('http LAN allowed', m.checkBaseUrl('http://192.168.1.50:11434/v1/').ok === true);
   check('http localhost allowed', m.checkBaseUrl('http://localhost:11434/v1/').ok === true);
   check('http IPv6 loopback allowed', m.checkBaseUrl('http://[::1]:11434/v1').ok === true);
-  // R1-14: Android can't resolve mDNS names, so .local is refused with its own plain reason.
+  // Android can't resolve mDNS names, so .local is refused with its own plain reason.
   for (const u of ['http://nas.local:11434/v1', 'https://nas.local/v1', 'http://PRINTER.LOCAL./v1']) {
     const r = m.checkBaseUrl(u);
     check(`.local refused: ${u}`, r.ok === false && r.reason === m.LOCAL_NAME_COPY, JSON.stringify(r));
   }
   check('local-name copy is plain', /192\.168/.test(m.LOCAL_NAME_COPY) && /\.local/.test(m.LOCAL_NAME_COPY));
-  // R1-14: no localhost default for Ollama/custom; the user types the computer's address.
+  // No localhost default for Ollama/custom; the user types the computer's address.
   check('custom preset has no default address', m.presetById('custom').baseUrl === '');
   check('selecting custom clears the address', m.selectPreset(m.defaultAssistantPrefs(), 'custom').baseUrl === '');
   check('stored custom with no address stays empty', m.normalizeAssistantPrefs({ presetId: 'custom' }).baseUrl === '');
@@ -291,7 +291,7 @@ async function main() {
     check('and leaves the old key alone', secrets.data.get('assistant.openai') === 'k1');
   }
   {
-    // Save and Remove run one after the other. Remove during a save's write cannot be overtaken (wave 3, item 2).
+    // Save and Remove run one after the other. Remove during a save's write cannot be overtaken.
     const secrets = memorySecrets();
     const log = [];
     let finishSet;

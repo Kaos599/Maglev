@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- docs/contracts-0.19/quick-share.md: a see-through window; the card draws its own dim. -->
+    <!-- A see-through window; the card draws its own dim. -->
     <style name="MaglevQuickShare" parent="@android:style/Theme.Translucent.NoTitleBar">
         <item name="android:windowIsTranslucent">true</item>
         <item name="android:windowBackground">@android:color/transparent</item>

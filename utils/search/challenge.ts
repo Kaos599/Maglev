@@ -1,5 +1,6 @@
-// Cloudflare challenge detection. Contract: docs/SEARCH_CONTRACT.md section 8.
-// Pure: no network, no React Native imports. Maglev never solves a challenge itself.
+// Cloudflare challenge detection: a 403 or 503 whose headers or body show Cloudflare is a challenge, anything else
+// is a plain block. Pure: no network, no React Native imports. Maglev never solves a challenge itself: the user passes
+// it once in a real WebView.
 
 export interface HeaderReader {
   get(name: string): string | null | undefined;

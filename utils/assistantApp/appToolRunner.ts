@@ -1,5 +1,5 @@
 /**
- * Binds the real search, prefs and engine modules into the pure tool runner (build step 12).
+ * Binds the real search, prefs and engine modules into the pure tool runner.
  * This is the only assistant file that imports the engine and the search stack.
  */
 import { maglevEngine } from 'maglev-engine';
@@ -21,7 +21,7 @@ export function createAppToolRunner(): ToolRunner {
       const extraProviders = await loadExtraProviders(prefs.torznab);
       return searchAll(query, category, {
         ...prefs,
-        // D2: the assistant never searches adult content, whatever the Search tab is set to.
+        // The assistant never searches adult content, whatever the Search tab is set to.
         adult: false,
         enabled: prefs.enabled.filter((id) => !providers.get(id)?.nsfw),
         extraProviders,
@@ -32,7 +32,7 @@ export function createAppToolRunner(): ToolRunner {
     async browse(kind, order, period, opts) {
       const prefs = getSearchPrefs();
       const providers = providerMap(prefs);
-      // Same prefs as search: enabled sources, per-source kinds, mirrors and wait. Never adult (D2).
+      // Same prefs as search: enabled sources, per-source kinds, mirrors and wait. Never adult.
       return browseAll(kind, order, period, {
         ...prefs,
         adult: false,

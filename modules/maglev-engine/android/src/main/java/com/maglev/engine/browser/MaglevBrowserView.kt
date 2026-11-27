@@ -59,9 +59,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * The in-app browser view (docs/NATIVE_CONTRACT.md section 24): an ExpoView that hosts one android.webkit.WebView,
- * blocks ad hosts in `shouldInterceptRequest`, lists the media and files the page loads, and refuses what
- * section 24.5 refuses. One page at a time; the WebView lives only while the view is mounted.
+ * The in-app browser view: an ExpoView that hosts one android.webkit.WebView,
+ * blocks ad hosts in `shouldInterceptRequest`, lists the media and files the page loads, and refuses what the browser rules refuse
+ * (off-site app links, local-network hosts and the like). One page at a time; the WebView lives only while the view is mounted.
  */
 @SuppressLint("ViewConstructor", "SetJavaScriptEnabled", "ClickableViewAccessibility")
 class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(context, appContext) {
@@ -92,9 +92,9 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     private val blockedTotal = AtomicInteger(0)
     private val flushScheduled = AtomicBoolean(false)
     private val flushRunnable = Runnable { flush() }
-    // Delayed page scan after a same-document navigation (24.6a). Main thread only.
+    // Delayed page scan after a same-document navigation. Main thread only.
     private val scanRunnable = Runnable { if (!destroyed) scan() }
-    // resetFound() arrived while the page was loading: scan once the load ends (24.6a).
+    // resetFound() arrived while the page was loading: scan once the load ends.
     private var scanAfterLoad = false
 
     private var webView: WebView
@@ -128,10 +128,10 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     private var popupBlockHosts: List<String> = emptyList()
     // The current document has finished loading at least once. Redirects during its first load are part of the page.
     private var loadedOnce = false
-    // Section 30: a view mounted hidden finishes its first load before it is paused (a paused WebView may not load).
+    // A view mounted hidden finishes its first load before it is paused (a paused WebView may not load).
     private var firstLoadDone = false
     private var pausePending = false
-    // Section 30: pop-up capture WebViews that exist right now. Main thread only.
+    // Pop-up capture WebViews that exist right now. Main thread only.
     private val captures = HashSet<WebView>()
     // The last main-frame navigation was a server redirect: it continues the load, so it does not start a new document.
     private var redirectInFlight = false
@@ -141,7 +141,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     private var tapAt = 0L
     // Windows and cross-site navigations already let through for the current tap. A second one in one tap is not the user's.
     private var tapUses = 0
-    // 24.11 Back-button hijacking: what made each history entry, whether the navigation in flight is the user's, and
+    // Back-button hijacking: what made each history entry, whether the navigation in flight is the user's, and
     // how many entries and downloads the current tap has already vouched for.
     private val history = HistoryFlags()
     private var pendingUserNav = false
@@ -166,11 +166,11 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     private var fallbackHttpPending: String? = null
     // One timer per try, so a server that never answers https still falls back to http.
     private val upgradeTimeout = Runnable { onUpgradeTimeout() }
-    // NATIVE_CONTRACT 39.2 B1: which main-frame document the last tap vouches for. docEpoch changes with every new document.
+    // Which main-frame document the last tap vouches for. docEpoch changes with every new document.
     private var docEpoch = 0
     private var vouchEpoch = -1
     private var vouchCarry = false
-    // NATIVE_CONTRACT 39.2 B2 and B5: when the last key press happened, and user activation since the previous history entry.
+    // When the last key press happened, and user activation since the previous history entry.
     private var keyAt = 0L
     private val activation = ActivationLatch()
 
@@ -207,20 +207,20 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
 
     private val bridge = PageScanBridge { json -> onScanReport(json) }
 
-    // 24.10a: pull to reload. The WebView sits inside this layout (https://developer.android.com/reference/androidx/swiperefreshlayout/widget/SwipeRefreshLayout).
+    // Pull to reload. The WebView sits inside this layout (https://developer.android.com/reference/androidx/swiperefreshlayout/widget/SwipeRefreshLayout).
     // The stock progress circle is shown and follows the finger on the UI thread; colours come from the refreshColor / refreshBackground props.
     private val refresh = SwipeRefreshLayout(context)
     private val density = context.resources.displayMetrics.density
     // SwipeRefreshLayout's trigger distance (72 dp), in px. Progress 1 is a drag of exactly this distance.
     private val pullTriggerPx = PULL_TRIGGER_DP * density
-    // 24.10a: a text selection or the find bar is active, so a downward drag must not reload. Main thread.
+    // A text selection or the find bar is active, so a downward drag must not reload. Main thread.
     private var selectionHold = false
     private var findActive = false
     // One reload from start to end: `start` is sent once and `end` once per start. Main thread.
     private var reloadActive = false
     // The page has been seen loading during this reload; its end (loading false) then ends the reload.
     private var reloadSeenLoading = false
-    // 24.10a: the injected script that finds media under a long press (prop mediaHitScript), and the dark pages switch.
+    // The injected script that finds media under a long press (prop mediaHitScript), and the dark pages switch.
     private var mediaHitJs = ""
     private var darkPages = false
     // Safety: a reload that never reports loaded ends after PULL_SAFETY_MS.
@@ -306,7 +306,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         if (!destroyed) webView.settings.cacheMode = if (value) WebSettings.LOAD_NO_CACHE else WebSettings.LOAD_DEFAULT
     }
 
-    /** 24.10a: pull to reload on or off. */
+    /** Pull to reload on or off. */
     fun setPullToRefresh(value: Boolean) {
         refresh.isEnabled = value
         if (!value) refresh.isRefreshing = false
@@ -324,12 +324,12 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         refresh.setProgressBackgroundColorSchemeColor(color)
     }
 
-    /** 24.10a: the script from utils/browser/mediaHitScript.ts, injected next to the page scan. */
+    /** The script from utils/browser/mediaHitScript.ts, injected next to the page scan. */
     fun setMediaHitScript(value: String) {
         mediaHitJs = value
     }
 
-    /** 24.10a: allow algorithmic darkening of pages that have no dark look. Takes effect on the next page load. */
+    /** Allow algorithmic darkening of pages that have no dark look. Takes effect on the next page load. */
     fun setDarkPages(value: Boolean) {
         darkPages = value
         if (!destroyed) applyDarkPages(webView)
@@ -346,7 +346,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         }
     }
 
-    /** 24.10a: forget this site's localStorage and sessionStorage (main frame only). The screen reloads afterwards. */
+    /** Forget this site's localStorage and sessionStorage (main frame only). The screen reloads afterwards. */
     fun clearSiteStorage() {
         if (destroyed || webView.url == null) return
         webView.evaluateJavascript("try{localStorage.clear();sessionStorage.clear()}catch(e){}", null)
@@ -652,7 +652,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     }
 
     /**
-     * 24.10: opens an intent:, market:, tel:, mailto: or custom-scheme URL in another app. Only called after the user
+     * Opens an intent:, market:, tel:, mailto: or custom-scheme URL in another app. Only called after the user
      * said yes (or the policy allows). Never throws: a failure is `opened:false`.
      */
     fun openApp(raw: String, promise: Promise) {
@@ -684,7 +684,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
                 intent.selector = null
                 intent.clipData = null
                 intent.removeExtra("browser_fallback_url")
-                // Section 30: never aim a page's intent at Maglev itself.
+                // Never aim a page's intent at Maglev itself.
                 if (intent.`package` == context.packageName) return Pair(false, fallback)
                 val dataScheme = intent.data?.scheme?.lowercase()
                 if (dataScheme != null && (dataScheme in DANGEROUS_SCHEMES || dataScheme == "maglev")) return Pair(false, fallback)
@@ -692,7 +692,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
                 intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
                 intent.addCategory(Intent.CATEGORY_BROWSABLE)
             }
-            // Section 30: the page chose the flags. Clear them all (every FLAG_GRANT_*, CLEAR_TASK...) and keep only NEW_TASK.
+            // The page chose the flags. Clear them all (every FLAG_GRANT_*, CLEAR_TASK...) and keep only NEW_TASK.
             intent.flags = 0
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             context.startActivity(intent)
@@ -717,7 +717,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     }
 
     /**
-     * 24.6a: forget what this document reported and scan again. Idempotent. A page still loading is scanned
+     * Forget what this document reported and scan again. Idempotent. A page still loading is scanned
      * when the load ends. A destroyed view rejects with VIEW_GONE.
      */
     fun resetFound(promise: Promise) {
@@ -779,7 +779,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     // region WebView setup
 
     private fun createWebView(): WebView {
-        // NATIVE_CONTRACT 39.2 B2/B5: hardware key presses (dispatchKeyEvent) and IME actions or keys (InputConnection) count as user input.
+        // Hardware key presses (dispatchKeyEvent) and IME actions or keys (InputConnection) count as user input.
         // https://developer.android.com/reference/android/view/View#dispatchKeyEvent(android.view.KeyEvent)
         // https://developer.android.com/reference/android/view/inputmethod/InputConnectionWrapper
         val w = object : WebView(context) {
@@ -811,7 +811,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         s.allowFileAccess = false
         s.allowContentAccess = false
         s.setSupportMultipleWindows(true)
-        // 24.10: untapped window.open must reach onCreateWindow so the view can decide (ask, block or allow).
+        // Untapped window.open must reach onCreateWindow so the view can decide (ask, block or allow).
         s.javaScriptCanOpenWindowsAutomatically = true
         s.mediaPlaybackRequiresUserGesture = true
         s.setSupportZoom(true)
@@ -839,12 +839,12 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         w.setDownloadListener { url, userAgent, contentDisposition, mimeType, contentLength ->
             onDownload(url, userAgent, contentDisposition, mimeType, contentLength)
         }
-        // 24.10: long press on a link or image opens the screen's menu instead of the system one.
+        // Long press on a link or image opens the screen's menu instead of the system one.
         w.setOnLongClickListener { v -> onLongPressed(v as WebView) }
         // Let the page scroll inside React Native parents.
         w.setOnTouchListener { _, ev ->
             requestDisallowInterceptTouchEvent(true)
-            // 24.10a: a new touch ends the hold a long press put on pull to reload (the selection is gone or being edited with handles).
+            // A new touch ends the hold a long press put on pull to reload (the selection is gone or being edited with handles).
             if (ev.actionMasked == MotionEvent.ACTION_DOWN) selectionHold = false
             noteTouch(ev.actionMasked)
             false
@@ -1015,8 +1015,8 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
             loading = false
             emitPage()
         }
-        // 24.11: a download counts as asked for when the user typed or tapped to get it. Otherwise it only joins the Files list.
-        // NATIVE_CONTRACT 39.2 B1: the tap vouches for the same document for 30 s (and while its load is in flight).
+        // A download counts as asked for when the user typed or tapped to get it. Otherwise it only joins the Files list.
+        // The tap vouches for the same document for 30 s (and while its load is in flight).
         val tapped = DownloadRules.tapped(tapAge(), dlTapUses, pendingUserNav, vouchEpoch == docEpoch, loading)
         dlTapUses++
         pendingUserNav = false
@@ -1047,7 +1047,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
 
     // endregion
 
-    // region Navigation rules (section 24.5)
+    // region Navigation rules
 
     private fun isTyped(uri: Uri): Boolean {
         val t = typedUrl ?: return false
@@ -1078,18 +1078,18 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
             tapAt = 0L
         } else if (action == android.view.MotionEvent.ACTION_UP) {
             tapAt = SystemClock.uptimeMillis()
-            vouchEpoch = docEpoch // NATIVE_CONTRACT 39.2 B1
-            activation.arm() // NATIVE_CONTRACT 39.2 B5
+            vouchEpoch = docEpoch // the tap vouches for this document
+            activation.arm() // counts as user activation for Back history
         }
     }
 
-    /** A key press reached the page (hardware key or IME). Enter and D-pad centre are user activation (39.2 B5) and input for B2. */
+    /** A key press reached the page (hardware key or IME). Enter and D-pad centre are user activation and count as input for the 1 s gesture rule for main-frame jumps. */
     private fun noteKey(keyCode: Int) {
         keyAt = SystemClock.uptimeMillis()
         if (ActivationLatch.isActivationKey(keyCode)) {
-            activation.arm() // NATIVE_CONTRACT 39.2 B5
-            vouchEpoch = docEpoch // NATIVE_CONTRACT 39.2 B1
-            tapUses = 0 // a new key press is a new input for B2
+            activation.arm() // counts as user activation for Back history
+            vouchEpoch = docEpoch // the tap vouches for this document
+            tapUses = 0 // a new key press is a new input for the 1 s gesture rule for main-frame jumps
         }
     }
 
@@ -1105,7 +1105,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
 
     private fun recentTap(): Boolean = tapAge()?.let { it in 0..PopupRules.TAP_MS } == true
 
-    /** Writes the history entry WebView just made, with whether the user made it (24.11). */
+    /** Writes the history entry WebView just made, with whether the user made it. */
     private fun recordHistory(url: String) {
         val index = webView.copyBackForwardList().currentIndex
         val key = HttpsFirst.historyKey(url)
@@ -1121,7 +1121,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
             fallbackHttpPending = null
             failedHttpsPending.clear()
         }
-        // NATIVE_CONTRACT 39.2 B5: user-made when any user activation happened since the previous entry, not only within 3 s.
+        // User-made when any user activation happened since the previous entry, not only within 3 s.
         val activated = activation.take()
         val userMade = pendingUserNav || activated
         pendingUserNav = false
@@ -1203,7 +1203,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
 
     /** Tap trust for a window or a jump to [host]; counts it so a second one from the same tap is not trusted. */
     private fun trustTap(gesture: Boolean, host: String?, jump: Boolean = false): Boolean {
-        // NATIVE_CONTRACT 39.2 B2: a main-frame jump with a gesture within 1 s of a touch or key press is trusted off-link too.
+        // A main-frame jump with a gesture within 1 s of a touch or key press is trusted off-link too.
         val ok = PopupRules.trusted(gesture, RegistrableHost.same(host, currentHost()), tappedLinkTo(host), tapUses) ||
             (jump && NavRules.trustedJump(gesture, tapUses, inputAge()))
         if (gesture) tapUses++
@@ -1233,12 +1233,12 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         onPopupRequest(mapOf("url" to url, "kind" to kind, "sourceUrl" to sourceUrl()))
     }
 
-    /** True for a scheme that hands the URL to another app (24.10), as opposed to web, magnet and the always-refused ones. */
+    /** True for a scheme that hands the URL to another app, as opposed to web, magnet and the always-refused ones. */
     private fun isAppScheme(scheme: String?): Boolean =
         scheme != null && scheme != "http" && scheme != "https" && scheme != "about" && scheme != "magnet" &&
             scheme !in DANGEROUS_SCHEMES
 
-    /** A main-frame navigation to another app's scheme (24.10 "Other apps"). */
+    /** A main-frame navigation to another app's scheme. */
     private fun handleAppNavigation(url: String, gesture: Boolean) {
         when (decide(gesture, "app")) {
             PopupRules.OPEN -> {
@@ -1255,7 +1255,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         }
     }
 
-    /** A new window the page asked for (24.10 onCreateWindow rules). Main thread. */
+    /** A new window the page asked for. Main thread. */
     private fun handleNewWindow(raw: String, gesture: Boolean) {
         val url = raw.trim()
         if (url.isEmpty() || url.equals("about:blank", ignoreCase = true)) return
@@ -1277,7 +1277,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         }
     }
 
-    /** Long press on a link or image (24.10). Returns true only when it emits, which suppresses the system menu. */
+    /** Long press on a link or image. Returns true only when it emits, which suppresses the system menu. */
     private fun onLongPressed(w: WebView): Boolean {
         if (destroyed || !active || w !== webView) return false
         val hit = w.hitTestResult
@@ -1299,7 +1299,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
                 return true
             }
             else -> {
-                // 24.10a: usually UNKNOWN_TYPE over a <video>. The listener must answer now, so it answers false (a text
+                // Usually UNKNOWN_TYPE over a <video>. The listener must answer now, so it answers false (a text
                 // selection starts as usual) and asks the page script, which cached the hit on touch start. The page
                 // script also cancels its own contextmenu event on a hit, so no system menu opens over the video.
                 selectionHold = true
@@ -1383,7 +1383,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
                 scheduleFlush()
                 return emptyResponse()
             }
-            // NATIVE_CONTRACT 39.2 B4: the miner list is its own check, whatever the ad-block setting or the site's ad allowance.
+            // The miner list is its own check, whatever the ad-block setting or the site's ad allowance.
             if (!request.isForMainFrame && host != null && !host.equals(page, ignoreCase = true) && BlocklistStore.minerMatcher().matches(host)) {
                 blockedPage.incrementAndGet()
                 blockedTotal.incrementAndGet()
@@ -1406,10 +1406,10 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
                 return scheme != "http" && scheme != "https" && uri.toString() != "about:blank"
             }
             redirectInFlight = request.isRedirect
-            // 24.11: a link the user tapped (or a navigation with a gesture) is theirs; a script's jump is not.
+            // A link the user tapped (or a navigation with a gesture) is theirs; a script's jump is not.
             if (!request.isRedirect) {
                 pendingUserNav = request.hasGesture() || (recentTap() && entryTapUses++ == 0)
-                if (pendingUserNav) vouchCarry = true // NATIVE_CONTRACT 39.2 B1
+                if (pendingUserNav) vouchCarry = true // the new document inherits the tap vouch
             }
             if (isAppScheme(scheme)) {
                 redirectInFlight = false
@@ -1422,7 +1422,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
                 refuse(uri.toString(), reason)
                 return true
             }
-            // 24.10 held redirect: untapped, not a server redirect, after the document finished once, to another site.
+            // Held redirect: untapped, not a server redirect, after the document finished once, to another site.
             val allowedOnce = followAllowUrl != null && followAllowUrl == uri.toString()
             if (allowedOnce) followAllowUrl = null
             // Also held: a tap that is not on a link to that site (an invisible overlay, an onclick on a blank area).
@@ -1500,7 +1500,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
             if (!redirectInFlight) loadedOnce = false
             if (!redirectInFlight) {
                 docEpoch++
-                // NATIVE_CONTRACT 39.2 B1: a navigation the tap started carries the vouch to the new document.
+                // A navigation the tap started carries the vouch to the new document.
                 if (vouchCarry) vouchEpoch = docEpoch
                 vouchCarry = false
             }
@@ -1544,7 +1544,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
             if (destroyed) return
             if (url != null && !isReload) recordHistory(url)
             pageHost = url?.let { Uri.parse(it).host?.lowercase() } ?: pageHost
-            // 24.6a: pushState/replaceState to another document URL never fires onPageStarted. Treat it as a new
+            // PushState/replaceState to another document URL never fires onPageStarted. Treat it as a new
             // document. A fragment-only change, a reload, or a URL we have already seen does nothing here.
             val prev = docUrl
             // While a load is in flight this is a server redirect or the load committing, not an SPA navigation:
@@ -1606,7 +1606,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
         override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: Message): Boolean {
             val transport = resultMsg.obj as? WebView.WebViewTransport ?: return false
             if (destroyed) return false
-            // Section 30: at most MAX_CAPTURES at once. Returning false without sending resultMsg is valid
+            // At most MAX_CAPTURES at once. Returning false without sending resultMsg is valid
             // (WebChromeClient.onCreateWindow: "Otherwise, return false"; window.open then returns null).
             if (captures.size >= MAX_CAPTURES) {
                 // The address is not known yet, so this only counts the blocked pop-up.
@@ -1624,7 +1624,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
                     if (!destroyed) handleNewWindow(url, isUserGesture)
                 }
             }
-            // Section 30: a capture that never reports a target is destroyed after CAPTURE_TIMEOUT_MS.
+            // A capture that never reports a target is destroyed after CAPTURE_TIMEOUT_MS.
             mainHandler.postDelayed({
                 handled.set(true)
                 destroyCapture(capture)
@@ -1695,7 +1695,7 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     private fun emptyResponse() =
         WebResourceResponse("text/plain", "utf-8", 204, "No Content", emptyMap(), ByteArrayInputStream(ByteArray(0)))
 
-    /** A sub-resource or main request the page made (section 24.3 rule 1). Background thread. */
+    /** A sub-resource or main request the page made. Background thread. */
     private fun noteNetwork(url: String, headers: Map<String, String>?) {
         var accept: String? = null
         var hasRange = false
@@ -1765,10 +1765,10 @@ class MaglevBrowserView(context: Context, appContext: AppContext) : ExpoView(con
     // endregion
 
     companion object {
-        /** Found items and the blocked count go out at most this often (docs/NATIVE_CONTRACT.md section 24.2). */
+        /** Found items and the blocked count go out at most this often. */
         const val FLUSH_MS = 250L
 
-        /** Never handed to another app by openApp (24.10); web pages and about: are not "apps" either. */
+        /** Never handed to another app by openApp; web pages and about: are not "apps" either. */
         private val DANGEROUS_SCHEMES = setOf("file", "content", "javascript", "data", "blob")
         private val NEVER_START_SCHEMES = DANGEROUS_SCHEMES + setOf("http", "https", "about")
 

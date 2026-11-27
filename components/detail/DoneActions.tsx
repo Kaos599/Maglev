@@ -18,7 +18,7 @@ interface DoneActionsProps {
 
 type Result = { ok: boolean; message?: string };
 
-/** SM-17: Open, Share and Open folder at the top of a finished torrent. Several videos (a season pack) ask which one. */
+/** Open, Share and Open folder at the top of a finished torrent. Several videos (a season pack) ask which one. */
 export function DoneActions({ id, files, onNotice }: DoneActionsProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);

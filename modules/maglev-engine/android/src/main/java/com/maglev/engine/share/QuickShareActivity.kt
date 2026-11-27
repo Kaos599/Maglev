@@ -10,6 +10,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import android.view.View
 import android.widget.Toast
@@ -21,9 +22,11 @@ import kotlin.math.ln
 import kotlin.math.pow
 
 /**
- * The quick share card (docs/contracts-0.19/quick-share.md). A translucent activity that floats over the app the user
+ * The quick share card. A translucent activity that floats over the app the user
  * shared from. It receives magnet, .torrent, text and http(s) file links, shows what they are, and adds them to the
- * engine without opening Maglev's own window. "Open in Maglev" hands the original intent to MainActivity.
+ * engine without opening Maglev's own window. "Open in Maglev" leaves the link in [ShareHandoff] and starts MainActivity
+ * plainly. The same activity is the way in for Maglev's own notification and tile taps ([ShareHandoff.routeIntent]), so
+ * that no page link is ever the start intent of the task.
  */
 class QuickShareActivity : Activity() {
     private val ui = Handler(Looper.getMainLooper())
@@ -44,12 +47,37 @@ class QuickShareActivity : Activity() {
     @Volatile private var addError = false
     @Volatile private var displayName: String? = null
     private var shape: String = ""
+    /** True while the card asks the server what a link is ([askServer]). Main thread only. */
+    private var checking = false
+    /** After [ASK_MS] with no answer, the card stops waiting and shows the page card. */
+    private val giveUp = Runnable {
+        if (checking) {
+            checking = false
+            Log.i(TAG, "no answer in time, showing the page card")
+            render()
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         EngineHost.attach(applicationContext)
         original = intent ?: Intent()
+        // Maglev's own notification and tile taps: no card, straight to the app through the one-shot store. The card is
+        // exported, so only an allowlisted route is accepted; a rejected one just closes. Reading an extra unpacks the
+        // whole extras bundle, and a caller can put a class we do not have in it, which throws. An uncaught throw here
+        // would take the engine's process down with the card, so the read is guarded like every other one in this file.
+        val route = try { original.getStringExtra(ShareHandoff.EXTRA_OPEN_ROUTE) } catch (e: Exception) { null }
+        if (route != null) {
+            if (ShareHandoff.allowedRoute(route)) launchApp(route) else rejectRoute()
+            return
+        }
+        // Maglev's own route intents carry data and no action. Data with no action and no readable route is a route we
+        // could not accept, not a share, so it must not fall through to the "No link" card.
+        if (original.action == null && original.data != null) {
+            rejectRoute()
+            return
+        }
         if (original.action == Intent.ACTION_SEND_MULTIPLE) {
             // Several torrent files: MainActivity queues them (utils/shareQueue.ts).
             openMaglev(null)
@@ -62,31 +90,37 @@ class QuickShareActivity : Activity() {
             Log.i(TAG, "No link in a hand-off:\n$shape")
         }
         if (original.action == Intent.ACTION_VIEW) cls = ShareClassify.withHandOffName(cls, handOffName(original))
+        // A web page can start a BROWSABLE VIEW, so that one always shows the card and never earns the trusted mark below.
+        val fromBrowser = original.action == Intent.ACTION_VIEW && original.hasCategory(Intent.CATEGORY_BROWSABLE)
         // Video sites (prototype): a shared YouTube, X or Instagram page goes straight to the add sheet, which
         // reads the video and lists qualities. Same host list as utils/videoSites.ts VIDEO_SITE_HOSTS.
-        if (cls.kind == ShareKind.WEB_PAGE && isVideoSite(host(cls.source))) {
-            // Mark this exact link as ours, so the add screen reads it at once. A maglev:// link from a web page or
-            // another app never gets a mark and still waits for a tap.
-            cls.source?.let { TrustedShare.record(it) }
-            openMaglev(Uri.parse("maglev://add-download?url=" + Uri.encode(cls.source ?: "")))
+        if (!fromBrowser && cls.kind == ShareKind.WEB_PAGE && isVideoSite(host(cls.source))) {
+            // The stored entry carries this exact link as trusted, so the add screen reads it at once. A maglev:// link
+            // from a web page or another app never gets a mark and still waits for a tap.
+            launchApp("maglev://add-download?url=" + Uri.encode(cls.source ?: ""), cls.source)
             return
         }
         val addable = cls.kind == ShareKind.MAGNET || cls.kind == ShareKind.TORRENT_FILE || cls.kind == ShareKind.FILE_LINK
-        // A web page can start a BROWSABLE VIEW, so that one always shows the card.
-        val fromBrowser = original.action == Intent.ACTION_VIEW && original.hasCategory(Intent.CATEGORY_BROWSABLE)
         if (addable && !fromBrowser && QuickSharePrefs.addWithoutAsking(applicationContext)) {
             setContentView(View(this))
             addWithoutCard()
             return
         }
+        // A link whose name doesn't say what it is (10Mb.dat, /get?id=5) may still be a file: ask its server before
+        // calling it a page. A BROWSABLE VIEW can come from a web page, which must not make Maglev send requests.
+        checking = cls.kind == ShareKind.WEB_PAGE && !fromBrowser
         val c = QuickShareCard(this, QuickShareCard.palette(this, QuickSharePrefs.appearanceMode(applicationContext)), ::onAction, ::finish)
         card = c
         setContentView(c.view)
         render()
-        if (addable) inspect()
+        if (addable) inspect() else if (checking) askServer()
     }
 
     override fun onDestroy() {
+        // Stop waiting for the server. The request itself can't be interrupted, so it ends on its own timeout and its
+        // answer is dropped: a closed card never changes and never starts a download.
+        checking = false
+        ui.removeCallbacks(giveUp)
         worker.shutdown()
         super.onDestroy()
     }
@@ -141,7 +175,7 @@ class QuickShareActivity : Activity() {
         return ShareClassify.describeHandOff(i.action, i.type, i.data?.scheme, extras, items)
     }
 
-    /** The file name a browser sends with a download hand-off (contract 8.1): ADM's extra first, then the generic one. */
+    /** The file name a browser sends with a download hand-off: ADM's extra first, then the generic one. */
     private fun handOffName(i: Intent): String? = try {
         i.getStringExtra("com.android.extra.filename") ?: i.getStringExtra("filename")
     } catch (e: Exception) {
@@ -150,28 +184,82 @@ class QuickShareActivity : Activity() {
 
     /** MainActivity with the original intent, or with [uri] when given. Then this card goes away. */
     private fun openMaglev(uri: Uri?) {
-        val main = packageManager.getLaunchIntentForPackage(packageName)?.component
-        if (main == null) { finish(); return }
         val link = if (::cls.isInitialized) cls.source else null
         val isLocalUri = link != null && (link.startsWith("content://", true) || link.startsWith("file://", true))
-        val i = when {
-            uri != null -> Intent(Intent.ACTION_VIEW, uri)
+        when {
+            uri != null -> launchApp(uri.toString())
             // MainActivity does not read PROCESS_TEXT: hand it the link that was found in the selection.
-            original.action == Intent.ACTION_PROCESS_TEXT && link != null -> Intent(Intent.ACTION_VIEW, Uri.parse(link))
+            original.action == Intent.ACTION_PROCESS_TEXT && link != null -> launchApp(link)
+            // Several torrent files, or one local file: copy each while this card still holds the read grant.
+            original.action == Intent.ACTION_SEND_MULTIPLE -> keepLocalTorrents(streamUris(original), true)
+            link != null && isLocalUri -> keepLocalTorrents(listOf(link), false)
             // Hand over the extracted link directly (e.g. from SpannableString, clipData, EXTRA_SUBJECT, LINK_EXTRAS,
             // or EXTRA_TEXT alongside a preview image EXTRA_STREAM) so MainActivity does not re-parse and lose it.
-            // Keep Intent(original) for content:// and file:// URIs so stream/clipData URI grants stay intact.
-            link != null && !isLocalUri -> Intent(Intent.ACTION_VIEW, Uri.parse(link))
-            else -> Intent(original)
+            link != null -> launchApp(link)
+            else -> launchApp(null)
         }
+    }
+
+    private fun rejectRoute() {
+        Log.w(TAG, "route rejected")
+        finish()
+    }
+
+    /** The link waits in the one-shot store and the app starts with no data. Null starts the app with nothing waiting. */
+    private fun launchApp(link: String?, trustedUrl: String? = null) {
+        val launcher = packageManager.getLaunchIntentForPackage(packageName)
+        val main = launcher?.component
+        if (launcher == null || main == null) { finish(); return }
+        // A link carried as the start intent would come back whenever Android rebuilt the task. Kept in the store, it is
+        // read once and gone, so a later start from the launcher icon is never mistaken for this share.
+        if (link != null) ShareHandoff.put(applicationContext, link, trustedUrl)
+        val i = Intent(launcher)
         i.component = main
-        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         try {
             startActivity(i)
         } catch (e: Exception) {
             // Nothing to show: the card still closes.
         }
         finish()
+    }
+
+    /**
+     * Copies each local .torrent into the cache (off the main thread) and hands over the copies, because the read grant
+     * of the original dies with this card. Several files travel as one packed maglev://share link. A file that cannot be
+     * kept is skipped and a toast says how many were kept; if none can, the card says so and nothing opens.
+     */
+    private fun keepLocalTorrents(sources: List<String>, packed: Boolean) {
+        val app = applicationContext
+        worker.execute {
+            val kept = sources.take(ShareHandoff.MAX_FILES).mapNotNull { ShareHandoff.keepLocalTorrent(app, it, original.type) }
+            ui.post {
+                if (isDestroyed) return@post
+                when {
+                    kept.isEmpty() -> { toast(QuickShareText.COULD_NOT_ADD); finish() }
+                    !packed && kept.size == 1 -> launchApp(kept[0])
+                    else -> {
+                        if (kept.size < sources.size) toast(QuickShareText.someKept(kept.size, sources.size))
+                        launchApp("maglev://share?" + kept.joinToString("&") { "u=" + Uri.encode(it) })
+                    }
+                }
+            }
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun streamUris(i: Intent): List<String> {
+        val out = ArrayList<String>()
+        try {
+            val list: List<Uri>? = if (Build.VERSION.SDK_INT >= 33) i.getParcelableArrayListExtra(Intent.EXTRA_STREAM, Uri::class.java)
+            else i.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM)
+            list?.forEach { out += it.toString() }
+        } catch (e: Exception) {
+            // A sender can put any type under the key: fall through to the clip.
+        }
+        val clip = i.clipData
+        if (out.isEmpty() && clip != null) for (n in 0 until clip.itemCount) clip.getItemAt(n).uri?.let { out += it.toString() }
+        return out
     }
 
     // endregion
@@ -223,10 +311,14 @@ class QuickShareActivity : Activity() {
                 Glyph.WARNING, QuickShareText.NO_LINK, null, null, null, close,
                 CardButton(CardAction.COPY_DETAILS, QuickShareText.COPY_DETAILS),
             )
-            ShareKind.WEB_PAGE -> CardState(
-                Glyph.PAGE, QuickShareText.WEB_PAGE, host(cls.source), null, null,
-                CardButton(CardAction.FIND_VIDEOS, QuickShareText.FIND_VIDEOS), close,
-            )
+            ShareKind.WEB_PAGE -> if (checking) {
+                CardState(Glyph.PAGE, QuickShareText.CHECKING, host(cls.source), null, null, close, null)
+            } else {
+                CardState(
+                    Glyph.PAGE, QuickShareText.WEB_PAGE, host(cls.source), null, null,
+                    CardButton(CardAction.FIND_VIDEOS, QuickShareText.FIND_VIDEOS), close,
+                )
+            }
             else -> {
                 val glyph = if (cls.kind == ShareKind.FILE_LINK) Glyph.FILE else Glyph.MAGNET
                 val title = info.name ?: displayName ?: cls.name ?: when (cls.kind) {
@@ -284,13 +376,53 @@ class QuickShareActivity : Activity() {
                 ui.post { render() }
                 return@execute
             }
-            val got = QuickShareAdd.inspect(cls, localTorrent)
-            info = got
-            existing = QuickShareAdd.findExisting(cls, got)
-            lowSpace = if (existing == null) got.sizeBytes?.let { QuickShareAdd.lowSpace(it) } else null
-            loaded = true
+            settle(cls, QuickShareAdd.inspect(cls, localTorrent))
             ui.post { render() }
         }
+    }
+
+    /** What the card knows once the source is read, plus the duplicate and space checks. Worker thread. */
+    private fun settle(c: ShareClass, got: QuickShareAdd.Info) {
+        info = got
+        existing = QuickShareAdd.findExisting(c, got)
+        lowSpace = if (existing == null) got.sizeBytes?.let { QuickShareAdd.lowSpace(it) } else null
+        loaded = true
+    }
+
+    /**
+     * Asks the server what the link is, with the request Add a link makes, and waits at most [ASK_MS] for engine start
+     * and answer together. A file answer turns the card into the file card, with the name and size the server gave. A
+     * page, an error or no answer in time leaves the page card. Download is offered, never started: this is a link the
+     * user may have meant as a page, so "Add without asking" does not apply.
+     */
+    private fun askServer() {
+        val url = cls.source
+        if (url == null) { checking = false; render(); return }
+        val app = applicationContext
+        val deadline = SystemClock.elapsedRealtime() + ASK_MS
+        ui.postDelayed(giveUp, ASK_MS)
+        worker.execute {
+            val answer = if (QuickShareAdd.startEngine(app)) QuickShareAdd.askServer(url, deadline - SystemClock.elapsedRealtime()) else null
+            ui.post { onServerAnswer(url, answer) }
+        }
+    }
+
+    /** Main thread. Ignored once the card closed or stopped waiting, so a late answer changes nothing. */
+    private fun onServerAnswer(url: String, answer: QuickShareAdd.Info?) {
+        if (!checking || isDestroyed) return
+        checking = false
+        ui.removeCallbacks(giveUp)
+        Log.i(TAG, if (answer != null) "the server says the link is a file" else "the server says the link is a page, or failed")
+        if (answer != null) {
+            val c = ShareClass(ShareKind.FILE_LINK, url, answer.name, null)
+            cls = c
+            info = answer
+            worker.execute {
+                settle(c, answer)
+                ui.post { if (!isDestroyed) render() }
+            }
+        }
+        render()
     }
 
     private fun onAction(a: CardAction) {
@@ -322,7 +454,7 @@ class QuickShareActivity : Activity() {
         render()
         val app = applicationContext
         worker.execute {
-            // A magnet still being read must stop first, or the add would wait for it (NATIVE_CONTRACT 10.4).
+            // A magnet still being read must stop first, or the add would wait for it.
             cls.infoHash?.let { if (!loaded) EngineHost.cancelResolve(it) }
             if (cls.kind == ShareKind.TORRENT_FILE && localTorrent == null && cls.source?.startsWith("content://", true) == true) {
                 localTorrent = QuickShareAdd.localize(app, cls.source!!)
@@ -383,6 +515,9 @@ class QuickShareActivity : Activity() {
         val VIDEO_SITE_HOSTS = listOf("youtube.com", "youtu.be", "x.com", "twitter.com", "instagram.com", "reddit.com", "vimeo.com", "tiktok.com")
 
         const val TAG = "MaglevShare"
+
+        /** How long the card asks a server what a link is before it shows the page card. */
+        const val ASK_MS = 5_000L
 
         /** Extras download managers (1DM, ADM) and some browsers use for the link (issue #162). Read only as text. */
         val LINK_EXTRAS = listOf("url", "link", "uri", "android.intent.extra.URL", "com.android.browser.application_id_url")

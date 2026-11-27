@@ -6,7 +6,7 @@ export const ID = 'librivox';
 
 /**
  * LibriVox's JSON API. Free public-domain audiobooks. The API gives a ZIP of MP3s (`url_zip_file`) and no info hash,
- * so every result is a direct file (SEARCH_CONTRACT section 9): `magnet` empty, `infoHash` `librivox:<book id>`.
+ * so every result is a direct file: `magnet` empty, `infoHash` `librivox:<book id>`.
  * Books without a zip yet (still being recorded) are skipped. A search with no hits answers HTTP 404: see search().
  */
 export function parse(body: string, ctx: ParseContext): SearchResult[] {

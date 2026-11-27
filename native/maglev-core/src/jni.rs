@@ -501,7 +501,7 @@ pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeSetTransfersAllow
     reply(&mut env, &out)
 }
 
-/// Contract section 34.1: whether the active network is metered. Splits the bytes an item moved; never pauses anything.
+/// Whether the active network is metered. Splits the bytes an item moved; never pauses anything.
 #[no_mangle]
 pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeSetNetworkMetered(
     mut env: JNIEnv,
@@ -517,7 +517,7 @@ pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeSetNetworkMetered
     reply(&mut env, &out)
 }
 
-/// Contract section 41 (B5): the next `nativeInit` builds the session without DHT, the listening socket, local
+/// The next `nativeInit` builds the session without DHT, the listening socket, local
 /// discovery and trackers (the VPN rule blocks transfers). Needs no engine: Kotlin sets it before it starts one.
 #[no_mangle]
 pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeSetNetworkOff(
@@ -532,7 +532,7 @@ pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeSetNetworkOff(
     reply(&mut env, &out)
 }
 
-/// Contract section 17.x: the default network changed to another live network. Link downloads reconnect.
+/// The default network changed to another live network. Link downloads reconnect.
 #[no_mangle]
 pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeNetworkChanged(mut env: JNIEnv, _class: JClass) -> jstring {
     let out = guarded(|| {
@@ -604,7 +604,7 @@ pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeVersion(
     reply(&mut env, &out)
 }
 
-// ---- URL downloads (docs/NATIVE_CONTRACT.md section 17) ----------------------------------------------------
+// ---- URL downloads ----------------------------------------------------
 
 #[no_mangle]
 pub extern "system" fn Java_com_maglev_engine_NativeCore_nativeProbeUrl(

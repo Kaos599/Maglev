@@ -1,7 +1,10 @@
 /** When the new-feature highlight shows. Pure: no React Native imports. */
 import { HIGHLIGHTS, type Highlight } from '../constants/highlights.ts';
 
-/** "0.28" or "0.28.0" as [major, minor], or null when it isn't a version. */
+/**
+ * "0.28" or "1.0.1" as [major, minor], or null when it isn't a version. The patch is ignored on purpose: highlights
+ * belong to feature releases, so a fix release (1.0.1) compares equal to its feature release (1.0) and shows no card.
+ */
 export function parseVersion(v: string | null | undefined): [number, number] | null {
   const m = /^(\d+)\.(\d+)(?:\.\d+)?/.exec((v ?? '').trim());
   return m ? [Number(m[1]), Number(m[2])] : null;

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// NATIVE_CONTRACT 44.14: the Subtitles row on the download page. The phase to line/button table, the season-pack
+// The Subtitles row on the download page. The phase to line/button table, the season-pack
 // count, when the row shows, the sheet's initial event, and the wiring on both pages. Pure: no rendering.
 process.removeAllListeners('warning');
 const fs = require('fs');
@@ -23,7 +23,7 @@ function check(name, cond) {
   const row = (o) => M.rowModel({ ...base, ...o });
   const btn = (m) => (m.button ? `${m.button.label}/${m.button.action}` : null);
 
-  console.log('[44.14 table]');
+  console.log('[table]');
   let m = row({ started: false });
   check('no request, no bytes: muted "When this file starts", no button', m.line === 'When this file starts' && m.muted && m.button === null);
   m = row({});
@@ -108,7 +108,7 @@ function check(name, cond) {
   console.log('[wiring]');
   const row_ = read('components/subtitles/SubtitlesRow.tsx');
   check('row reads useRequestPhases, skipSubtitles for Cancel, and the stored state', /useRequestPhases\(/.test(row_) && /skipSubtitles\(requestKey\)/.test(row_) && /stateFor\(/.test(row_));
-  check('row: 1 px border, 44 dp button, whole row pressable, shared 44.8 badge', /borderWidth: 1/.test(row_) && /minWidth: (?:44|touch\.min), minHeight: (?:44|touch\.min)/.test(row_) && /<PressableScale onPress=\{act\}/.test(row_) && /SubtitleBadge/.test(row_));
+  check('row: 1 px border, 44 dp button, whole row pressable, shared state badge', /borderWidth: 1/.test(row_) && /minWidth: (?:44|touch\.min), minHeight: (?:44|touch\.min)/.test(row_) && /<PressableScale onPress=\{act\}/.test(row_) && /SubtitleBadge/.test(row_));
   check('row: theme roles only, no hex, no warning colour', !/#[0-9A-Fa-f]{3,6}\b/.test(row_) && !/colors\.warning/.test(row_));
   check('card icon exports the badge the row reuses', /export function SubtitleBadge/.test(read('components/subtitles/SubtitleCardIcon.tsx')));
   const tp = read('app/torrent/[id].tsx');

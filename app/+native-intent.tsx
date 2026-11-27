@@ -5,6 +5,8 @@
  * returns `string | Promise<string | null> | null`; a falsy value means no redirect).
  */
 
+import { takeStartLink } from '../utils/shareHandoff';
+import { settingsStore } from '../modules/maglev-engine/src/MaglevSettingsStore';
 import { parsePackedShare, setShareQueue } from '../utils/shareQueue';
 import { appPath, browserIntentRoute } from '../utils/browserUrl';
 import { visibleTabs } from '../components/tabs/tabPrefs';
@@ -23,8 +25,15 @@ function isTorrentLocation(url: string): boolean {
   return /\.torrent$/i.test(pathPart);
 }
 
-export function redirectSystemPath({ path }: { path: string; initial: boolean }): string {
+export function redirectSystemPath({ path, initial }: { path: string; initial: boolean }): string {
   try {
+    // At start-up a link waiting in the store is routed as if it had come in as the start intent, and it wins over the
+    // start URL: a restored task reports the intent it was first started with, which may be long stale. Before onboarding
+    // is done the store is left alone; the main screens take it when they mount.
+    if (initial && settingsStore.getSettings().onboarded) {
+      const shared = takeStartLink();
+      if (shared) return redirectSystemPath({ path: shared, initial: false });
+    }
     const raw = (path ?? '').trim();
     // maglev://browser?url= opens that page in a new tab, through the link-tap refusals.
     const browser = browserIntentRoute(raw);

@@ -1,5 +1,5 @@
 /**
- * Which rules hold transfers right now (NATIVE_CONTRACT 35.3). Loads `getActiveBlocks` once, follows
+ * Which rules hold transfers right now. Loads `getActiveBlocks` once, follows
  * `addBlocksListener`, and lets go on unmount. Safe before the engine is ready: the list stays empty.
  */
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';

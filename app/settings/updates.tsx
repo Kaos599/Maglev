@@ -36,7 +36,7 @@ const LISTS_CAPTION = 'Ad block list, search sources and trackers. Updated witho
 
 const MODE_ICONS: Record<'ask' | 'download' | 'auto', PixelIconName> = { ask: 'bell', download: 'download', auto: 'retry' };
 
-/** The result line under the "Search sources and trackers" row (contract 31.3), or null before any check. */
+/** The result line under the "Search sources and trackers" row, or null before any check. */
 function sourcesResult(st: SourcesState): string | null {
   switch (st.kind) {
     case 'checking':

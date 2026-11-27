@@ -10,7 +10,7 @@ import { zeroDay } from './types.ts';
 import type { LiveCounts } from './recorder.ts';
 
 /**
- * The "Longest streak" card. The owner has not decided, so it is built and switched off: one constant, default false.
+ * The "Longest streak" card. It is built and switched off until the design is settled: one constant, default false.
  * Turning it on needs nothing else.
  */
 export const SHOW_STREAK_CARD = false;

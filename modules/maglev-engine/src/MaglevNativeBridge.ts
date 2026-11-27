@@ -14,6 +14,7 @@ import type {
   FileHealthEntry,
   FilePriorityEntry,
   FreeSpace,
+  NetworkChangeEvent,
   NetworkState,
   HealthTag,
   ResolveFilesAction,
@@ -184,6 +185,9 @@ export class MaglevEngineBridge implements MaglevEngineApi {
   private actionListeners = new Set<(e: NotificationActionEvent) => void>();
   private storageListeners = new Set<(e: StorageStatus) => void>();
   private blocksListeners = new Set<(blocks: ActiveBlock[]) => void>();
+  private networkListeners = new Set<(e: NetworkChangeEvent) => void>();
+  /** Held only while someone listens, so the native side watches the network only then. */
+  private networkSub: { remove(): void } | null = null;
   private detach: Unsubscribe[] = [];
 
   // ---- state surface for the UI ------------------------------------------------
@@ -347,7 +351,10 @@ export class MaglevEngineBridge implements MaglevEngineApi {
   private bind(sim: MaglevEngineApi | null, native: boolean): void {
     this.detach.forEach((d) => d());
     this.detach = [];
+    this.networkSub?.remove();
+    this.networkSub = null;
     this.usingNative = native;
+    this.syncNetworkSub();
     if (native) {
       this.impl = null; // native calls go through callNative
       // `camelize` is false only for events Kotlin already ran through Json.camelize (EngineHost.kt: onTelemetry).
@@ -903,6 +910,30 @@ export class MaglevEngineBridge implements MaglevEngineApi {
       this.actionListeners.delete(listener);
     };
   }
+  public onNetworkChanged(listener: (e: NetworkChangeEvent) => void): Unsubscribe {
+    this.networkListeners.add(listener);
+    this.syncNetworkSub();
+    return () => {
+      this.networkListeners.delete(listener);
+      this.syncNetworkSub();
+    };
+  }
+
+  /** Attaches the native listener while there are JS listeners and the native engine is bound, and detaches it after. */
+  private syncNetworkSub(): void {
+    const want = this.usingNative && !!NativeModule && this.networkListeners.size > 0;
+    if (want && !this.networkSub) {
+      this.networkSub = NativeModule.addListener('onNetworkChanged', (p: any) => {
+        if (typeof p?.connected !== 'boolean' || typeof p?.metered !== 'boolean') return;
+        const event: NetworkChangeEvent = { connected: p.connected, metered: p.metered };
+        this.networkListeners.forEach((l) => l(event));
+      });
+    } else if (!want && this.networkSub) {
+      this.networkSub.remove();
+      this.networkSub = null;
+    }
+  }
+
   public onStorageStatus(listener: (e: StorageStatus) => void): Unsubscribe {
     this.storageListeners.add(listener);
     return () => {

@@ -1,4 +1,4 @@
-//! Saving HLS and DASH streams (`docs/NATIVE_CONTRACT.md` section 24.8).
+//! Saving HLS and DASH streams.
 //!
 //! - `hls`: the m3u8 parser (hand written, line based).
 //! - `dash`: the MPD reader (`roxmltree`).

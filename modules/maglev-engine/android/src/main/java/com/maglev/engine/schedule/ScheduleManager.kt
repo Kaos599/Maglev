@@ -12,7 +12,7 @@ import com.maglev.engine.service.Notifications
 import com.maglev.engine.util.Json
 import java.util.Calendar
 
-/** Android side of the scheduler (contract section 11.5): persistence, wall-clock adapter, alarm, resume request. */
+/** Android side of the scheduler: persistence, wall-clock adapter, alarm, resume request. */
 object ScheduleManager {
     private const val TAG = "MaglevSchedule"
     const val PREFS = "maglev_schedule"
@@ -124,7 +124,7 @@ object ScheduleManager {
 
     /**
      * Called by the alarm receiver and by the per-minute tick. When the schedule allows transfers again and they
-     * were held, starts the service headless (contract 8 path). A refused start becomes a notification.
+     * were held, starts the service headless. A refused start becomes a notification.
      */
     fun requestResumeIfAllowed(c: Context) {
         if (!isHeld(c) || state(c).paused) return

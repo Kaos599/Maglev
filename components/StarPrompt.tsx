@@ -12,7 +12,7 @@ import { ensureFirstSeen, getStarState, updateStarState } from '../utils/prefs/s
 import { STAR_DELAY_MS, afterCompleted, afterNever, afterNotNow, afterStarred, shouldAskForStar } from '../utils/star';
 
 /**
- * Asks happy people for a GitHub star (docs/NATIVE_CONTRACT.md section 33). Mounted once at the app root.
+ * Asks happy people for a GitHub star. Mounted once at the app root.
  * A finished transfer starts a 2 s wait (so its notice shows first); the card then appears if every gate holds,
  * at most once per app session.
  */

@@ -1,5 +1,5 @@
 /**
- * Play while downloading (docs/contracts-0.19/play-and-storage.md section 1). Pure: no React, no react-native.
+ * Play while downloading. Pure: no React, no react-native.
  */
 import { fileKind } from '../../utils/fileKind.ts';
 

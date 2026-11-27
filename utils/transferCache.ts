@@ -1,5 +1,5 @@
 /**
- * Last-known Transfers list (docs/UI_SPEC_PHASE2.md S10.3). Written while the
+ * Last-known Transfers list. Written while the
  * app runs and read at boot so the list paints before the engine answers.
  * Only facts the engine reported are stored; speeds and peers are never cached.
  */

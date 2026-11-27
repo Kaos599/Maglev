@@ -123,7 +123,7 @@ export interface FoundTrayProps {
   onRemove: (item: FoundItem) => void;
   /** Empties the list. */
   onClear: () => void;
-  /** Forgets the list and scans the page again (NATIVE_CONTRACT 24.6a). */
+  /** Forgets the list and scans the page again. */
   onScanAgain: () => void;
   /** The picked rows go to the batch sheet. */
   onDownloadSelected: (items: FoundItem[]) => void;

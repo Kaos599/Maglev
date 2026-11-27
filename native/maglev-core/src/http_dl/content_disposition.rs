@@ -1,7 +1,7 @@
 //! File names for URL downloads: a small RFC 6266 `Content-Disposition` reader, the URL path fallback and a
 //! sanitiser that makes any name safe to create inside the download folder.
 //!
-//! Precedence (contract section 17): `filename*` > `filename` > last URL path segment > `download`.
+//! Precedence: `filename*` > `filename` > last URL path segment > `download`.
 
 /// Longest file name we create, in bytes. Android file systems allow 255; `.part` and the sidecar suffix are added on top.
 pub const MAX_NAME_BYTES: usize = 200;

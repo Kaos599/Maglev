@@ -1,5 +1,5 @@
 /**
- * Everything the Stats page shows, computed from the stats tables (docs/NATIVE_CONTRACT.md section 34.2).
+ * Everything the Stats page shows, computed from the stats tables.
  * Pure. Every number comes from rows; with nothing recorded the values are null, empty or zero. No estimates, no money.
  */
 import { dayKey, dayNumber, dayOfDate, localParts, mondayOf, monthOfDay, partsOf, weekdayOf } from './time.ts';
@@ -448,7 +448,7 @@ const finishDay = (r: StatsRecord, tz?: number) => dayNumber(dayKey(r.finishedAt
 const recordsIn = (records: readonly StatsRecord[], r: StatsRange, tz?: number) => records.filter((x) => x.finishedAt > 0 && rangeHolds(r, finishDay(x, tz)));
 
 /**
- * Seconds spent downloading in a range (NATIVE_CONTRACT 34.3, 0.27). Each day's figure comes from stats_daily, which counts live;
+ * Seconds spent downloading in a range. Each day's figure comes from stats_daily, which counts live;
  * each day counts the larger of that and the time of the items that finished that day (covers time in the background and days
  * before 0.27). No backfill beyond that.
  */

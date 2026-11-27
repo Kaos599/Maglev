@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Assistant tool runner (build step 12, docs/ASSISTANT_DESIGN.md §3.5, §4, §6, §7.3, R1-2, R1-8, R1-9, R1-10).
+// Assistant tool runner (tool calls, plan cards, safety, disk advice).
 // Fake dependencies only: no network, no engine. Needs Node 22.18+ (runs the TypeScript sources directly).
 process.removeAllListeners('warning');
 
@@ -180,7 +180,7 @@ async function main() {
     check('content holds no device path', !out.content.includes('/storage/'));
     check('every row carries only its own fit, no free-space hash', j.data.results.every((r) => ['fits', 'tight', 'too_big', 'unknown'].includes(r.fit)));
 
-    // A second search keeps the handles it already issued (R1-10).
+    // A second search keeps the handles it already issued.
     const out2 = await call(runner, 'search_torrents', { query: 'The Last Harbor 2023' });
     const j2 = parse(out2);
     const a1 = j.data.results.find((r) => r.name_untrusted === HARBOR_A).id;
@@ -191,7 +191,7 @@ async function main() {
     check('sourceFor of an unknown handle is undefined', runner.sourceFor('r99') === undefined);
   }
 
-  console.log('search: R1-9 query parsing');
+  console.log('search: query parsing');
   {
     const w = world({
       rows: [
@@ -631,7 +631,7 @@ async function main() {
     check('a clean list says nothing suspicious in the step detail', /Nothing suspicious in the file list/.test(out.detail ?? '') || /files?, /.test(out.detail ?? ''), out.detail);
   }
 
-  // ---------------------------------------------------------------- red is enforced (R1-8)
+  // ---------------------------------------------------------------- red is enforced
 
   console.log('propose_add');
   {
@@ -691,7 +691,7 @@ async function main() {
     check('executing a finished card again does not add twice', w.calls.filter((c) => c[0] === 'addTorrent').length === 1);
   }
   {
-    // A timed-out action keeps running in the engine. Retry must join it, never start a second one (wave 3, item 4).
+    // A timed-out action keeps running in the engine. Retry must join it, never start a second one.
     const { w, runner } = await openedRunner();
     await call(runner, 'get_result_details', resolveArgs(runner, 'get_result_details', { result_id: 'r1' }));
     await runner.prepareCard('c1', 'propose_add', resolveArgs(runner, 'propose_add', { result_id: 'r1', reason: 'x' }));
@@ -917,7 +917,7 @@ async function main() {
     const prio = w.calls.find((c) => c[0] === 'setFilePriorities');
     check('select_files skips every file not listed', prio && prio[2].find((e) => e.index === 0).priority === 'skip' && prio[2].find((e) => e.index === 1).priority !== 'skip', prio);
     const rr = await runner.prepareCard('p3', 'propose_change', arg('propose_change', { transfer_id: 't1', action: 'remove_files', file_indices: [0], reason: 'Watched.' }));
-    check('remove_files is a danger card with the contract copy', rr.danger === true && rr.title === 'Remove 1 file?', rr);
+    check('remove_files is a danger card with the exact copy', rr.danger === true && rr.title === 'Remove 1 file?', rr);
     const rd = await runner.prepareCard('p4', 'propose_change', arg('propose_change', { transfer_id: 't3', action: 'delete', reason: 'Done.' }));
     check('delete keeps files by default and is danger', rd.danger === true && rd.facts.includes('The files stay on your phone.'), rd);
     const rdf = await runner.prepareCard('p5', 'propose_change', arg('propose_change', { transfer_id: 't3', action: 'delete', delete_files: true, reason: 'Done.' }));
@@ -978,7 +978,7 @@ async function main() {
     check('skipping every file is refused', 'error' in none, none);
 
     const rm = await runner.prepareCard('c7', 'propose_remove_files', arg('propose_remove_files', { transfer_id: 't1', file_indices: [0], reason: 'Watched.' }));
-    check('remove_files card is danger with the contract copy', rm.danger === true && rm.title === 'Remove 1 file?' && rm.confirmLabel === 'Remove 1 file' && rm.facts.some((f) => f === 'Deletes 1.0 GB from your phone and stops downloading it. Other files keep going.'), rm);
+    check('remove_files card is danger with the exact copy', rm.danger === true && rm.title === 'Remove 1 file?' && rm.confirmLabel === 'Remove 1 file' && rm.facts.some((f) => f === 'Deletes 1.0 GB from your phone and stops downloading it. Other files keep going.'), rm);
     const rmr = await runner.execute('c7');
     check('remove_files reports freed space', rmr.ok && rmr.summary === 'Freed 1.9 GB.', rmr);
     const rmAll = await runner.prepareCard('c8', 'propose_remove_files', arg('propose_remove_files', { transfer_id: 't1', file_indices: [0, 1, 2], reason: 'x' }));
@@ -1038,12 +1038,12 @@ async function main() {
     const exAll = await runner.execute('c1');
     check('the whole plan then skips the step that already ran', exAll.ok && exAll.summary === 'Done: 2 steps.' && w.calls.filter((c) => c[0] === 'addTorrent').length === 1 && w.calls.some((c) => c[0] === 'pause'), exAll);
 
-    // R1-2: destructive or nested steps are refused even if the validator was bypassed.
+    // Destructive or nested steps are refused even if the validator was bypassed.
     for (const tool of ['propose_delete', 'propose_remove_files', 'propose_plan']) {
       const res = await runner.prepareCard('c2', 'propose_plan', {
         reason: 'x', steps: [{ tool: 'propose_pause_resume', args: { transfer_id: 'tor1', action: 'pause', reason: 'x' } }, { tool, args: { transfer_id: 'tor1', reason: 'x' } }],
       });
-      check(`plan with a ${tool} step is refused (R1-2)`, 'error' in res && /can only add, select files or pause/.test(res.error), res);
+      check(`plan with a ${tool} step is refused`, 'error' in res && /can only add, select files or pause/.test(res.error), res);
     }
     const dup = await runner.prepareCard('c3', 'propose_plan', {
       reason: 'x', steps: [{ tool: 'propose_pause_resume', args: { transfer_id: 'tor1', action: 'pause', reason: 'x' } }, { tool: 'propose_select_files', args: { transfer_id: 'tor1', skip: [0], reason: 'x' } }],

@@ -1,4 +1,4 @@
-// Search contract types. See docs/SEARCH_CONTRACT.md sections 1, 2 and 4.
+// Search types: categories, the provider interface and the merged result.
 
 export type Category = 'all' | 'movies' | 'tv' | 'anime' | 'music' | 'apps' | 'games' | 'books' | 'other' | 'adult';
 
@@ -15,7 +15,10 @@ export interface SearchResult {
   publishedAt?: number;
   category?: Category;
   detailUrl?: string;
-  /** SEARCH_CONTRACT section 9: a plain https file. Then `magnet` is '' and `infoHash` is a `<providerId>:<id>` stand-in. */
+  /**
+   * A plain https file instead of a torrent. A result has a magnet or a `directUrl`, never neither. Then `magnet` is ''
+   * and `infoHash` is a `<providerId>:<id>` stand-in.
+   */
   directUrl?: string;
 }
 

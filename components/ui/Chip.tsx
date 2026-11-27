@@ -65,8 +65,8 @@ const makeStyles = (c: ThemeColors) =>
     label: { ...type.bodyStrong, fontSize: type.size.md, flexShrink: 1 },
     count: {
       minWidth: 20,
-      height: 20,
-      paddingHorizontal: 5, // design-exception: small chip tuned to its fixed height; side padding 5
+      minHeight: 20, // grows with the text at a large font scale, so the number is never clipped
+      paddingHorizontal: 5, // design-exception: small chip tuned to its 20 dp minimum; side padding 5
       borderRadius: 4, // design-exception: small chip radius 4 sits under half its height
       backgroundColor: c.surfaceRaised,
       alignItems: 'center',

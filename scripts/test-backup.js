@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Backup and restore (docs/contracts-0.19/backup.md). Pure modules under utils/backup run directly.
+// Backup and restore. Pure modules under utils/backup run directly.
 // Needs Node 22.18+ (runs the TypeScript source directly via type stripping).
 process.removeAllListeners('warning');
 const fs = require('fs');
@@ -210,7 +210,7 @@ async function main() {
   check('screen reads copy from constants/copy.ts', /backupCopy/.test(screen));
   check('screen has no raw colours', !/#[0-9a-fA-F]{3,8}\b/.test(screen));
   check('copy says secrets are never saved', /never saved/.test(read('constants/copy.ts')));
-  if (require('./lib/privateDocs').readPrivateDoc('contracts-0.19/backup.md') !== null) check('contract doc exists', true);
+  if (require('./lib/privateDocs').readPrivateDoc('contracts-0.19/backup.md') !== null) check('private backup notes exist', true);
 
   if (failed) {
     console.error(`\n${failed} check(s) failed`);

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Search contract tests (docs/SEARCH_CONTRACT.md section 6). No network: fetch is mocked from fixtures.
+// Search contract tests. No network: fetch is mocked from fixtures.
 // Needs Node 22.18+ (runs the TypeScript sources directly via type stripping).
 
 // Silence Node's typeless-package ESM reparse notice for the .ts sources.
@@ -318,7 +318,7 @@ async function main() {
   check('normalizeInfoHash: base32 round trip, zero hash rejected', magnet.normalizeInfoHash(b32(A)) === A && magnet.normalizeInfoHash('0'.repeat(40)) === null);
   check('infoHashFromMagnet reads btih', magnet.infoHashFromMagnet(`magnet:?dn=x&xt=urn:btih:${A.toUpperCase()}`) === A);
 
-  // Unsafe-source warnings (SEARCH_CONTRACT section 7).
+  // Unsafe-source warnings.
   console.log('\n[safety]');
   const { riskySources } = await import('../utils/search/safety.ts');
   const validBase = () => ({ providerId: 'tpb', name: 'x', infoHash: A, magnet: `magnet:?xt=urn:btih:${A}` });
@@ -350,7 +350,7 @@ async function main() {
   check('prefs: missing warnUnsafe migrates to true', prefsMod.normalizeSearchPrefs({ adult: true }, []).warnUnsafe === true);
   check('prefs: warnUnsafe false is kept', prefsMod.normalizeSearchPrefs({ warnUnsafe: false }, []).warnUnsafe === false);
 
-  // Cloudflare check (SEARCH_CONTRACT section 8).
+  // Cloudflare check.
   console.log('\n[cloudflare]');
   const ch = await import('../utils/search/challenge.ts');
   const clr = await import('../utils/search/clearance.ts');

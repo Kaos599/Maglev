@@ -57,7 +57,7 @@ const exists = (p) => fs.existsSync(path.join(root, p));
   check('whats-new renders parsed sections', /parseReleaseNotes/.test(wn));
   const rn = await import('../constants/releaseNotes.generated.ts');
   check('bundled notes include the installed version or an older one', typeof rn.RELEASE_NOTES === 'object' && Object.keys(rn.RELEASE_NOTES).length > 5);
-  check('bundled notes match release-notes/*.md', fs.readdirSync(path.join(root, 'release-notes')).filter((f) => /^\d+\.\d+\.md$/.test(f)).every((f) => rn.RELEASE_NOTES[f.replace('.md', '')]));
+  check('bundled notes match release-notes/*.md', fs.readdirSync(path.join(root, 'release-notes')).filter((f) => /^\d+\.\d+(\.\d+)?\.md$/.test(f)).every((f) => rn.RELEASE_NOTES[f.replace('.md', '')]));
   check('footer still opens Updates', about.includes("openUpdates") && /Opens Updates/.test(about));
 
   if (failed) {

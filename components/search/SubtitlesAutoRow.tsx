@@ -8,16 +8,16 @@ import { useSubtitleAvailability } from '../subtitles/useSubtitleEntry';
 import { useSubtitleConsent } from '../subtitles/useSubtitleConsent';
 
 /**
- * The Subtitles row on the Add screens (docs/NATIVE_CONTRACT.md 44.5 and 44.12). Shown only for a video, with the Subtitles
+ * The Subtitles row on the Add screens. Shown only for a video, with the Subtitles
  * master switch on and at least one source on. It starts at the Settings switch and changes for this add only.
  */
 export function useSubtitlesAuto(isVideo: boolean): {
   show: boolean;
   on: boolean;
   setOn: (v: boolean) => void;
-  /** The Settings switch is on (44.15 D4: an Add screen with its switch off then writes a "not this one" mark). */
+  /** The Settings switch is on (an Add screen with its switch off then writes a "not this one" mark). */
   settingsOn: boolean;
-  /** The one-time notice sheet (44.15 D10); render it once on the screen. */
+  /** The one-time notice sheet; render it once on the screen. */
   node: ReactNode;
 } {
   const { settings } = useSettings();
@@ -28,7 +28,7 @@ export function useSubtitlesAuto(isVideo: boolean): {
   const settingsOn = settings.subtitles.autoNewVideos;
   // Without the one-time OK nothing is on by default (old data with the switch on but never accepted).
   const on = override ?? (settingsOn && !consent.needsOk);
-  // 44.15 D10: turning Auto on asks for the OK first; it stays off until Continue.
+  // Turning Auto on asks for the OK first; it stays off until Continue.
   const setOn = (v: boolean) => {
     if (v) consent.require(() => setOverride(true));
     else setOverride(false);

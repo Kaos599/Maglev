@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Subtitle sources, batch 2 (docs/NATIVE_CONTRACT.md 36.3, 36.12): subf2m, yifysubtitles, subtitlecat, moviesubtitles,
+// Subtitle sources, batch 2: subf2m, yifysubtitles, subtitlecat, moviesubtitles,
 // tvsubtitles. Each source's parse functions run on saved real responses (scripts/fixtures/subtitles/<id>/), and
 // search and download run end to end against a fake fetch that serves those files. No network.
 // Needs Node 22.18+ (runs the TypeScript source directly).

@@ -30,7 +30,7 @@ export function middleTruncate(s: string, max = 52): string {
   return `${s.slice(0, head)}…${s.slice(s.length - (keep - head))}`;
 }
 
-/** T3: the long-press menu. Rows per kind (contract 24.10). Every action closes the menu first. */
+/** The long-press menu. Rows per kind. Every action closes the menu first. */
 export function LinkMenu({ target, onClose, openInTab, download, addTorrent, notify }: LinkMenuProps) {
   const last = useRef<LinkMenuTarget | null>(target);
   if (target) last.current = target;

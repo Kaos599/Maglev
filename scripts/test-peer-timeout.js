@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// "Stop waiting for peers after" (NATIVE_CONTRACT 20.1): the setting round trip, migration, the Settings row,
+// "Stop waiting for peers after": the setting round trip, migration, the Settings row,
 // the search entry, and the Rust wiring. Rust behaviour itself is covered by the unit tests in scheduler.rs.
 // Needs Node 22.18+ (runs the TypeScript source directly).
 process.removeAllListeners('warning');

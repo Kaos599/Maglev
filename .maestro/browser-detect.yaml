@@ -5,7 +5,7 @@ appId: com.maglev
 name: browser-detect
 ---
 - runFlow: subflows/onboard-if-needed.yaml
-# maglev://browser?url= loads the page (utils/browserUrl.ts browserIntentRoute; NATIVE_CONTRACT 24.7).
+# maglev://browser?url= loads the page (utils/browserUrl.ts browserIntentRoute).
 - openLink: "maglev://browser?url=https%3A%2F%2Ftest-videos.co.uk%2Fbigbuckbunny%2Fmp4-h264"
 - extendedWaitUntil:
     visible: "Address" # app/browser.tsx:268 TextInput accessibilityLabel="Address"

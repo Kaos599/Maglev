@@ -1,5 +1,5 @@
 /**
- * Pure helpers behind Settings > Subtitles (docs/NATIVE_CONTRACT.md section 36.10). No React Native imports, so
+ * Pure helpers behind Settings > Subtitles. No React Native imports, so
  * scripts/test-subtitles-settings.js runs them in Node. The subtitle core itself lives in utils/subtitles/*.
  */
 import { LANGUAGES, defaultLanguages, languageName, phoneLocale, type LanguageInfo } from './subtitles/languages.ts';
@@ -9,9 +9,9 @@ import type { SubtitleProvider } from './subtitles/types.ts';
 import type { SubtitleSettings } from '../modules/maglev-engine/src/MaglevSettings.types.ts';
 
 /**
- * Whether this build carries an OpenSubtitles.com app key (`OPENSUBTITLES_API_KEY`, section 36.1). The app has no
+ * Whether this build carries an OpenSubtitles.com app key (`OPENSUBTITLES_API_KEY`). The app has no
  * build-time config channel yet (no expo `extra`), so this is false and the account row stays hidden. When the
- * owner registers the key, read it here and add the account screen.
+ * maintainers register the key, read it here and add the account screen.
  */
 export function hasOpenSubtitlesKey(): boolean {
   return false;

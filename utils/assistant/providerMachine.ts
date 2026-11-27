@@ -1,5 +1,6 @@
 /**
- * SM-40 Provider setup (docs/STATE_MACHINES_AND_SCREENS.md §6, amended by review round 1 R1-14).
+ * Provider setup state machine. Signing in with OpenRouter is the main path and is reachable from noKey, invalid and
+ * editing; awaitingCode and exchanging can be cancelled.
  * Pure reducer, no React. Anything not in the table is a no-op (same state, no effects).
  * The caller runs effects: probe (one tool "Test model" request), storeKey (expo-secure-store, only after
  * PROBE_OK), openAuth (OpenRouter PKCE page), exchangeCode, cancelAuth, removeKey, expireCards.
@@ -54,7 +55,7 @@ export type ProviderEffect =
   | { type: 'removeKey' }
   | { type: 'expireCards' };
 
-/** Sign-in gives up after 10 minutes (R1-14). */
+/** Sign-in gives up after 10 minutes. */
 export const PROVIDER_TIMEOUT_MS = 10 * 60 * 1000;
 
 /** Copy. `{provider}` is replaced with the provider name by `fillProvider` when the reason is set. */
@@ -101,7 +102,7 @@ export function fillProvider(copy: string, preset: string): string {
   return copy.replace('{provider}', providerName(preset));
 }
 
-/** The machine starts with no key. SM-40 does not name an initial state; the screen starts here. */
+/** The machine starts with no key. The screen starts here. */
 export const INITIAL_PROVIDER_STATE: ProviderState = { kind: 'noKey' };
 
 /** SAVE field checks, in order: key, base URL, model. The custom (Ollama) preset needs no key but needs an address. */

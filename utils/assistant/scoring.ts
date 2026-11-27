@@ -1,14 +1,13 @@
 /**
- * Quality scoring and shortlist for the assistant (docs/ASSISTANT_DESIGN.md §3, review round 1).
+ * Quality scoring and shortlist for the assistant. A result scores 0 to 100: quality 40, playability 20, health 20,
+ * size sanity 10 and fit 10, minus penalties. Hard rules (wrong title, early sources, adult content, a size too small for a video) run before any score.
  *
  * Pure: no React, no react-native, no engine, no clock unless the caller omits
  * `ctx.now`. Free space and pending need come in as arguments. The model never
  * ranks anything; this code does, and the model only words the result.
  *
  * Rows are keyed by info hash. This module assigns no handles; the runner issues
- * r1, r2, ... through HandleRegistry (R1-10).
- *
- * Section numbers in comments point at docs/ASSISTANT_DESIGN.md.
+ * r1, r2, ... through HandleRegistry.
  */
 import { formatBytes } from '../../constants/format.ts';
 import { admit } from '../admission.ts';
@@ -33,7 +32,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 export type Profile = 'phone' | 'tv' | 'archive';
 
-/** §3.1. Fields marked "extra" are additions the design leaves open. */
+/** What a scoring run needs to know about the user, the phone and the query. */
 export interface ScoreContext {
   profile: Profile;
   runtimeMin?: number;
@@ -52,9 +51,9 @@ export interface ScoreContext {
   query: { title: string; year?: number; season?: number; episode?: number; raw?: string };
   /** Extra. The category searched. apps, games, books, music and other are matched on the raw name, not as films. */
   category?: Category;
-  /** Extra. §3.2: CAM/TS/TC/SCR show only if the user says "earliest possible". */
+  /** Extra. CAM/TS/TC/SCR show only if the user says "earliest possible". */
   allowEarlySources?: boolean;
-  /** Extra. §3.3 playability "+1 multiAudio when the user asked for a language the name lists". */
+  /** Extra. The user asked for dual or multi audio; a multi-audio name then gets +1 playability. */
   wantsMultiAudio?: boolean;
   /**
    * Extra. The audio language the user asked for, from normalizeLanguage ("hindi", "multi" for dual audio, or a plain
@@ -80,7 +79,7 @@ export interface Ranked {
   id: string;
   score: number;
   tier: Tier;
-  /** First of `labels`, kept for the §3.5 shape. */
+  /** First of `labels`, kept for callers that want one label. */
   label?: Label;
   labels: Label[];
   reasons: string[];
@@ -110,37 +109,37 @@ export interface Excluded {
 export interface ScoreOutput {
   /** Every non-excluded result, best first. */
   ranked: Ranked[];
-  /** At most three, labelled by code (§3.5). */
+  /** At most three, labelled by code, not by the model. */
   shortlist: Ranked[];
   excluded: Excluded[];
   /** Notes about the whole list. Shown once, not on every row. */
   notes: string[];
 }
 
-/** Said once per list, not on every row (R1-15). */
+/** Said once per list, not on every row. */
 export const SEEDER_NOTE = 'Sharing counts come from the sites and can be out of date.';
 
 // ---------------------------------------------------------------- tables
 
-/** §3.3 Quality: source points as [phone/tv, archive]. */
+/** Quality: source points as [phone/tv, archive]. Remux scores lower on phone and tv because its size is the cost, not the picture. */
 const SOURCE_POINTS: Record<SourceKind, [number, number]> = {
-  bluray: [24, 24], // §3.3 source table "bluray encode | 24 | 24"
-  webdl: [24, 22], // "webdl | 24 | 22"
-  remux: [16, 24], // "remux | 16 | 24"
-  webrip: [19, 17], // "webrip | 19 | 17"
-  web: [17, 15], // "web (unspecified) | 17 | 15"
-  hdtv: [13, 11], // "hdtv | 13 | 11"
-  hdrip: [10, 8], // "hdrip | 10 | 8"
-  dvdrip: [7, 7], // "dvdrip | 7 | 7"
-  unknown: [8, 8], // "unknown | 8 | 8"
-  // Early sources are open in §3. They only appear when the user asked for them; they rank below dvdrip.
+  bluray: [24, 24],
+  webdl: [24, 22],
+  remux: [16, 24],
+  webrip: [19, 17],
+  web: [17, 15],
+  hdtv: [13, 11],
+  hdrip: [10, 8],
+  dvdrip: [7, 7],
+  unknown: [8, 8],
+  // Early sources only appear when the user asked for them; they rank below dvdrip.
   cam: [2, 2],
   ts: [3, 3],
   tc: [4, 4],
   scr: [5, 5],
 };
 
-/** Glossary-consistent labels. 'unknown' is omitted from headlines (R1-15). */
+/** Glossary-consistent labels. 'unknown' is omitted from headlines. */
 const SOURCE_LABEL: Record<SourceKind, string | undefined> = {
   bluray: 'BluRay', webdl: 'WEB-DL', remux: 'REMUX', webrip: 'WEBRip', web: 'WEB', hdtv: 'HDTV',
   hdrip: 'HDRip', dvdrip: 'DVDRip', cam: 'CAM', ts: 'TS', tc: 'TC', scr: 'SCR', unknown: undefined,
@@ -169,12 +168,12 @@ function brokenSize(r: MergedResult, parsed: ParsedRelease): boolean {
 
 const EARLY_SOURCES: ReadonlySet<SourceKind> = new Set(['cam', 'ts', 'tc', 'scr']);
 
-/** Tier thresholds. Open in §3; chosen here. */
+/** Tier thresholds. Heuristic; tune on fixtures. */
 const RECOMMENDED_MIN_SCORE = 70;
 const AVOID_BELOW_SCORE = 40;
-/** §3.3 Penalties: "risky source -15". */
+/** Penalty for a result whose every source is flagged risky. */
 const RISKY_PENALTY = 15;
-/** §3.5: "smaller: ... size is at most 60 % of best-fit". */
+/** The "smaller" pick must be at most this fraction of the best-fit size. */
 const SMALLER_FRACTION = 0.6;
 /** A copy this much smaller than the group's median size is an outlier (likely a fake). */
 const OUTLIER_FRACTION = 0.5;
@@ -332,7 +331,7 @@ function wrongRawName(name: string, q: ScoreContext['query']): TitleVerdict {
 interface TitleVerdict { reason: string | null; partial: boolean }
 
 /**
- * Returns a plain-English reason when the result is the wrong title, else null. §3.2 row 2, R1-9.
+ * Returns a plain-English reason when the result is the wrong title, else null. A wrong title is excluded outright.
  * `browse`: the query names no title (see `isBrowseQuery`), so only the year, season and episode are checked.
  */
 function wrongTitle(parsed: ParsedRelease, q: ScoreContext['query'], browse = false): TitleVerdict {
@@ -342,8 +341,8 @@ function wrongTitle(parsed: ParsedRelease, q: ScoreContext['query'], browse = fa
     const have = titleTokens(parsed.title ?? '');
     if (have.length === 0) return { reason: 'The name does not show a title.', partial };
     const missing = missingTokens(want, have);
-    // Exclude when more than one word is missing. One missing word is a partial match only in a title of 3+ words
-    // (an existing contract): in a two-word one it is the other film ("Prime Suspect" is not "Prime Time").
+    // Exclude when more than one word is missing. One missing word is a partial match only in a title of 3+ words:
+    // in a two-word one it is the other film ("Prime Suspect" is not "Prime Time").
     if (missing.length > 1 || (missing.length === 1 && want.length < 3)) {
       return { reason: `The title does not match "${q.title}".`, partial };
     }
@@ -353,7 +352,7 @@ function wrongTitle(parsed: ParsedRelease, q: ScoreContext['query'], browse = fa
     const extra = have.find((t) => !wantSet.has(t) && (/^\d+$/.test(t) || SEQUEL_WORDS.has(t)));
     if (extra !== undefined) return { reason: `This looks like a different film or part than "${q.title}".`, partial };
   }
-  // §3.2: "the year differs by more than 1".
+  // A year that differs by more than 1 is a different film.
   if (q.year !== undefined && parsed.year !== undefined && Math.abs(parsed.year - q.year) > 1) {
     return { reason: `It is from ${parsed.year}, but you asked for ${q.year}.`, partial };
   }
@@ -385,34 +384,34 @@ function bandCodecOf(parsed: ParsedRelease): BandCodec {
     case 'vc1':
       return 'avc';
     default:
-      // hevc, av1, vp9, and unknown: the lenient choice, same as fileSafety (§3.3 "hevc/av1" rows).
+      // hevc, av1, vp9, and unknown: the lenient choice, same as fileSafety (the hevc/av1 band rows).
       return 'hevc';
   }
 }
 
-/** §3.3 resolution points. Unknown resolution gets 3 (open in §3). */
+/** Resolution points: 480 gets 2, 720 gets 6, 1080 gets 10, 2160 gets 10 on phone and 12 on tv or archive. Unknown gets 3. */
 function resolutionPoints(res: ParsedRelease['resolution'], profile: Profile): number {
   switch (res) {
-    case 480: case 576: return 2; // §3.3 "480 -> 2"
-    case 720: return 6; // "720 -> 6"
-    case 1080: return 10; // "1080 -> 10"
-    case 2160: case 4320: return profile === 'phone' ? 10 : 12; // "2160 -> 10 on phone and 12 on tv/archive"
+    case 480: case 576: return 2;
+    case 720: return 6;
+    case 1080: return 10;
+    case 2160: case 4320: return profile === 'phone' ? 10 : 12;
     default: return 3;
   }
 }
 
-/** What the codec scores when the phone decodes it well. §3.3 "avc 10-bit 8", "avc 8-bit 20", "hevc 18", "av1 16". */
+/** What the codec scores when the phone decodes it well: avc 8-bit 20, hevc 18, av1 16, avc 10-bit 8. */
 function codecPotential(parsed: ParsedRelease): number {
   switch (parsed.codec) {
     case 'avc': return parsed.bitDepth === 10 ? 8 : 20;
     case 'hevc': return 18;
     case 'av1': return 16;
-    default: return 10; // "xvid / mpeg2 / vc1 10". vp9 and unknown codecs get the same (open in §3).
+    default: return 10; // xvid, mpeg2, vc1, vp9 and unknown codecs
   }
 }
 
 /**
- * §3.3 playability through `playbackVerdict`, so the codec probe decides (R1 item 7):
+ * Playability goes through `playbackVerdict`, so the codec probe decides:
  * smooth keeps the codec's points, "may stutter" is capped at 10, "needs another player" at 4,
  * and unknown scores 60 % of them. Unknown is never treated as playable.
  */
@@ -430,33 +429,32 @@ function playabilityOf(parsed: ParsedRelease, ctx: ScoreContext, flags: string[]
   }
   if (parsed.hdr.includes('dv') && parsed.dvFallback !== true) {
     flags.push('dv_no_fallback');
-    // "Subtract 8: dv without confirmed fallback and probe says no DV" (the verdict already caps a confirmed no-fallback case).
+    // Dolby Vision with no confirmed fallback, on a phone that reports no DV support, loses 8 points (the verdict already caps a confirmed no-fallback case).
     if (ctx.playback?.dolbyVision === 'none' && advice.verdict !== 'needs_other_player') pts -= 8;
   }
   const audio = parsed.audio;
   if (ctx.profile === 'phone' && audio.length > 0 && audio.every((a) => a.codec === 'truehd' || a.codec === 'dtshd')) {
-    pts -= 3; // "Subtract 3: lossless audio only on phone"
+    pts -= 3; // lossless audio only (TrueHD, DTS-HD MA) on a phone: wasted size
     flags.push('lossless_audio_only');
   }
   if (parsed.hardcodedSubs) {
-    pts -= 2; // "Subtract 2: hardcoded subs"
+    pts -= 2; // hardcoded subtitles
     flags.push('hardcoded_subs');
   }
-  if (parsed.multiAudio && (ctx.wantsMultiAudio || ctx.audioLanguage !== undefined)) pts += 1; // "Add 1 (cap 20): multiAudio ..."
+  if (parsed.multiAudio && (ctx.wantsMultiAudio || ctx.audioLanguage !== undefined)) pts += 1; // a multi-audio release, and the user asked for dual audio or a language
   return Math.max(0, Math.min(20, pts));
 }
 
 function healthOf(r: MergedResult, now: number): number {
   const s = r.seeders;
   let pts: number;
-  if (s === undefined) pts = 8; // §3.3 health "undefined 8"
-  else if (s <= 0) pts = 0; // "0 -> 0"
-  else if (s < 5) pts = 4; // "1-4 -> 4"
-  else if (s < 20) pts = 10; // "5-19 -> 10"
-  else if (s < 100) pts = 15; // "20-99 -> 15"
-  else pts = 20; // "100+ -> 20"
-  // "Subtract 3 when publishedAt is older than 2 years and seeders < 5."
-  if (s !== undefined && s < 5 && r.publishedAt !== undefined && now - r.publishedAt > 2 * 365 * DAY_MS) pts -= 3;
+  if (s === undefined) pts = 8;
+  else if (s <= 0) pts = 0;
+  else if (s < 5) pts = 4;
+  else if (s < 20) pts = 10;
+  else if (s < 100) pts = 15;
+  else pts = 20;
+  if (s !== undefined && s < 5 && r.publishedAt !== undefined && now - r.publishedAt > 2 * 365 * DAY_MS) pts -= 3; // old and barely shared: the counts are probably stale
   return Math.max(0, pts);
 }
 
@@ -466,13 +464,13 @@ function isEpisodic(parsed: ParsedRelease, q: ScoreContext['query']): boolean {
 
 /** Total runtime the size is spread over, or undefined when it cannot be known (pack with no episode count). */
 function totalRuntimeMin(r: MergedResult, parsed: ParsedRelease, ctx: ScoreContext, q: ScoreContext['query']): number | undefined {
-  // R1-13: an anime episode runs 24 minutes, other episodes 45, films 110.
+  // An anime episode runs 24 minutes, other episodes 45, films 110.
   const episodic = isEpisodic(parsed, q) || r.category === 'anime';
   const episodeMin = r.category === 'anime' ? DEFAULT_ANIME_EPISODE_RUNTIME_MIN : DEFAULT_EPISODE_RUNTIME_MIN;
   const per = ctx.runtimeMin ?? (episodic ? episodeMin : DEFAULT_FILM_RUNTIME_MIN);
   if (parsed.seasonPack) {
     const n = ctx.packEpisodeCounts?.get(r.infoHash);
-    return n !== undefined && n > 0 ? n * per : undefined; // §3.3: "skip when the episode count is unknown"
+    return n !== undefined && n > 0 ? n * per : undefined; // no episode count, no runtime
   }
   if ((parsed.episodes?.length ?? 0) > 1) return parsed.episodes!.length * per;
   return per;
@@ -481,22 +479,22 @@ function totalRuntimeMin(r: MergedResult, parsed: ParsedRelease, ctx: ScoreConte
 interface SizeScore { sanity: number; bitrate: number }
 
 function sizeScore(r: MergedResult, parsed: ParsedRelease, runtimeMin: number | undefined, flags: string[]): SizeScore {
-  if (r.sizeBytes === undefined || r.sizeBytes <= 0) return { sanity: 5, bitrate: 0 }; // §3.2 "sanity 5 of 10"
+  if (r.sizeBytes === undefined || r.sizeBytes <= 0) return { sanity: 5, bitrate: 0 }; // size unknown: the neutral middle of 10
   const band = sizeBand(parsed.resolution, bandCodecOf(parsed));
   // No band or no runtime: the check cannot run, so give the neutral 5 and no bitrate points.
   if (!band || !runtimeMin) return { sanity: 5, bitrate: 0 };
   const perHour = r.sizeBytes / GB / (runtimeMin / 60);
   if (perHour < band.low * TOO_SMALL_FRACTION) {
-    flags.push('too_small_for_claim'); // R1-13: below 0.25x the floor: probably not what the name says
+    flags.push('too_small_for_claim'); // below 0.25x the floor: probably not what the name says
     return { sanity: 0, bitrate: 0 };
   }
   if (perHour < band.low * SMALL_FRACTION) {
-    flags.push('small_for_quality'); // R1-13: only below 0.5x the floor is "smaller than usual"
+    flags.push('small_for_quality'); // only below 0.5x the floor is "smaller than usual"
     return { sanity: 5, bitrate: 0 };
   }
   if (perHour < band.low) return { sanity: 8, bitrate: 0 }; // a slim encode, no warning
   if (perHour > band.high) {
-    flags.push('bigger_than_needed'); // "Above high: 6 and flag bigger_than_needed"
+    flags.push('bigger_than_needed'); // above the band: a smaller copy would look the same
     return { sanity: 6, bitrate: 0 };
   }
   // In band: sanity 10; bitrate position 6 in the upper half, 3 in the lower half.
@@ -519,7 +517,7 @@ function codecLabel(parsed: ParsedRelease): string | undefined {
   }
 }
 
-/** §3.5 template: "{SOURCE} {RES}p {CODEC}{ 10-bit}, {SIZE}, {N} sharing, {FIT}". Unknown parts are left out. */
+/** Reason template: "{SOURCE} {RES}p {CODEC}{ 10-bit}, {SIZE}, {N} sharing, {FIT}". Unknown parts are left out. */
 function headline(r: MergedResult, parsed: ParsedRelease, adm: Ranked['admission']): string {
   const parts: string[] = [];
   const source = SOURCE_LABEL[parsed.source];
@@ -657,14 +655,14 @@ function scoreOne(
 
   let admission: Ranked['admission'] = null;
   let budget = 0;
-  let fit = 5; // size unknown: nothing to admit, so the neutral middle (open in §3)
+  let fit = 5; // size unknown: nothing to admit, so the neutral middle
   if (sizeKnown) {
     const out = admit({
       freeBytes: ctx.freeBytes, pendingNeed: ctx.pendingNeed, stagingFactor: ctx.stagingFactor, selectionBytes: r.sizeBytes!,
     });
     admission = { result: out.result, leftAfter: out.leftAfter };
     budget = out.budget;
-    fit = out.result === 'Fits' ? 10 : out.result === 'Tight' ? 5 : 0; // §3.3 fit
+    fit = out.result === 'Fits' ? 10 : out.result === 'Tight' ? 5 : 0; // Fits 10, Tight 5, DoesntFit 0
   } else {
     flags.push('size_unknown');
   }
@@ -683,7 +681,7 @@ function scoreOne(
   const overCap = sizeKnown && ctx.maxBytes !== undefined && r.sizeBytes! > ctx.maxBytes;
   if (overCap) flags.push('over_size_cap');
 
-  // §3.2 row 3: a pack that does not fit whole may still fit in part.
+  // A pack that does not fit whole may still fit in part.
   let partialEpisodes: number | undefined;
   if (admission?.result === 'DoesntFit' && parsed.seasonPack) {
     const count = ctx.packEpisodeCounts?.get(r.infoHash);
@@ -760,7 +758,7 @@ function pickShortlist(sorted: Scored[]): Ranked[] {
   // never hides one that can. Dead and unsafe rows are already tier "avoid" and so not eligible.
   const eligible = sorted.filter((s) => s.eligible);
 
-  // §3.5: one row per release. The group is ranked as a whole (best score first), but a copy far smaller
+  // One row per release. The group is ranked as a whole (best score first), but a copy far smaller
   // than its siblings is a likely fake and only wins when nothing else is left in the group.
   const groups = new Map<string, Scored[]>();
   for (const s of eligible) {
@@ -821,7 +819,7 @@ export interface ProposeCheck {
 }
 
 /**
- * Whether the assistant may propose adding this row (R1-8). Red is enforced: a row whose file-list safety
+ * Whether the assistant may propose adding this row. Red is enforced in code, not in the prompt: a row whose file-list safety
  * is red, or whose size says it is not what the name claims, is refused. Accepts a Ranked row or any object
  * carrying the stored `safety` result (or just its `level`).
  */
@@ -859,7 +857,7 @@ export function scoreResults(results: readonly MergedResult[], ctx: ScoreContext
     if (seen.has(hash)) continue;
     seen.add(hash);
     const parsed = parseRelease(r.name);
-    // §3.2 and decision D2: adult content is never recommended, and never goes into a shortlist.
+    // Adult content is never recommended, and never goes into a shortlist.
     if (r.category === 'adult') {
       excluded.push({ id: hash, result: r, reason: 'adult', detail: 'Adult content is never suggested.' });
       continue;
@@ -905,7 +903,7 @@ export function scoreResults(results: readonly MergedResult[], ctx: ScoreContext
       || a.i - b.i)
     .map((x) => x.s);
 
-  // §3.2 last row: a risky source never ranks first while a clean, usable result exists.
+  // A risky source never ranks first while a clean, usable result exists.
   if (sorted.length > 0 && sorted[0].ranked.flags.includes('risky_source')) {
     const j = sorted.findIndex((s) => !s.ranked.flags.includes('risky_source') && s.ranked.tier !== 'avoid');
     if (j > 0) sorted.unshift(sorted.splice(j, 1)[0]);

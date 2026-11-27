@@ -1,6 +1,6 @@
 //! A small, line based reader for HLS playlists (RFC 8216). No crate: the format is a list of tags and links.
 //!
-//! What it refuses (contract section 24.8):
+//! What it refuses:
 //! - `STREAM_PROTECTED`: any `#EXT-X-KEY` that is not `METHOD=NONE` or plain `METHOD=AES-128` (`SAMPLE-AES`,
 //!   `SAMPLE-AES-CTR`, a `KEYFORMAT` other than `identity`, a key link that is not http(s)).
 //! - `STREAM_LIVE`: a media playlist without `#EXT-X-ENDLIST`.

@@ -1,5 +1,5 @@
 /**
- * Pure helpers for the browser screens (docs/NATIVE_CONTRACT.md section 24). No React, no native modules,
+ * Pure helpers for the browser screens. No React, no native modules,
  * so scripts/test-browser-ui.js runs them directly.
  */
 

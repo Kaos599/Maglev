@@ -1,5 +1,5 @@
 /**
- * Stats in a backup file: an optional section, only when the user ticks it (docs/NATIVE_CONTRACT.md section 34.2).
+ * Stats in a backup file: an optional section, only when the user ticks it.
  * Pure. Reading is strict: anything that is not a well-formed row is dropped.
  */
 import { isPlainObject } from '../backup/format.ts';

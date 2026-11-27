@@ -15,7 +15,7 @@ interface Props {
   /** "Download first" priority. */
   first: boolean;
   onToggle: (index: number, next: boolean) => void;
-  /** Long-press opens the priority sheet (UI_SPEC S9.3). */
+  /** Long-press opens the priority sheet. */
   onLongPress: (index: number) => void;
 }
 

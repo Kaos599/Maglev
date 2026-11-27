@@ -1,5 +1,5 @@
 /**
- * NATIVE_CONTRACT 47.4: what Resume does for a torrent that a file health tag holds. Pure, so
+ * What Resume does for a torrent that a file health tag holds. Pure, so
  * scripts/test-resume-held.js can check it.
  *
  * A torrent held by `files_changed` or `files_missing` needs Recheck (on its page), not Resume. Resume is not

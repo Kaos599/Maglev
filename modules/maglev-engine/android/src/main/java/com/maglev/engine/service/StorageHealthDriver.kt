@@ -13,7 +13,7 @@ import kotlinx.coroutines.launch
 import java.io.File
 
 /**
- * Android side of SM-33 and the background half of SM-36 (contract 18.5).
+ * Android side of the storage health decisions and the background error notice.
  * [onTelemetry] runs on every poll. The media receiver is registered only while the service runs.
  * Decisions live in [StorageHealth] and [ErrorNotice].
  */
@@ -86,7 +86,7 @@ object StorageHealthDriver {
     private var lastGuardAt = 0L
 
     /**
-     * Proactive low-storage protection (docs/contracts-0.19/play-and-storage.md section 2). Every 15 s reads free and
+     * Proactive low-storage protection. Every 15 s reads free and
      * total bytes of the download target and applies [StorageGuard.next]. A change is sent as the governance tag
      * `storage_full`, which pauses unfinished transfers with that reason and resumes only those carrying it.
      * Unknown free space changes nothing.
@@ -113,7 +113,7 @@ object StorageHealthDriver {
         }
     }
 
-    /** SM-36: one notification on the edge into ERROR while the app is not in front. */
+    /** One notification on the edge into ERROR while the app is not in front. */
     private fun notifyErrors(c: Context, torrents: List<HealthTorrent>) {
         val inFront = appInFront(c)
         val fire = ArrayList<HealthTorrent>()

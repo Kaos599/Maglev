@@ -1,5 +1,5 @@
 /**
- * Subtitle file names (docs/NATIVE_CONTRACT.md section 36.8). Pure.
+ * Subtitle file names. Pure.
  *   <video base name>.<lang>[.hi].<ext>, next to the video.
  *   "Keep both" when that name exists: <base>.<lang>.2.<ext> (hearing impaired: <base>.<lang>.hi.2.<ext>).
  */
@@ -40,7 +40,6 @@ function trimToBytes(text: string, maxBytes: number): string {
  * [reserveBytes] (the ".<lang>.ext" ending to come) is given, the base is shortened on a character boundary so the
  * final name plus the temporary-file overhead stays within 255 UTF-8 bytes.
  */
-// NATIVE_CONTRACT 39.1 S4
 export function videoBaseName(videoPathOrName: string, reserveBytes = 0): string {
   let name = videoPathOrName.replace(/[?#].*$/, '');
   try {
@@ -83,7 +82,7 @@ export interface SaveDeps {
 export type SaveOutcome =
   | { status: 'saved'; path: string; fileName: string }
   | { status: 'name-taken'; fileName: string }
-  /** Copies .2 to .9 all exist (39.1 S8): Keep both has nothing left to offer. */
+  /** Copies .2 to .9 all exist: Keep both has nothing left to offer. */
   | { status: 'copies-full'; fileName: string };
 
 function codeOf(e: unknown): string {
@@ -110,7 +109,7 @@ export async function saveWithChoice(
     } catch (e) {
       const code = codeOf(e);
       if (code === 'NAME_TAKEN') return null;
-      // NATIVE_CONTRACT 39.1 S5: the old file can't be replaced; the sheet offers a second copy.
+      // The old file can't be replaced; the sheet offers a second copy.
       if (code === 'REPLACE_DENIED') throw new SubtitleError('REPLACE_DENIED');
       if (code === 'CANT_WRITE' || code === 'NO_SPACE' || code === 'VERIFY_FAILED') throw new SubtitleError(code);
       if (code === 'NOT_FOUND') throw new SubtitleError('missing');
@@ -123,7 +122,7 @@ export async function saveWithChoice(
       const r = await attempt(fileName, false);
       if (r) return { status: 'saved', path: r.path, fileName };
     }
-    // NATIVE_CONTRACT 39.1 S8: a distinct result, so the sheet never asks the same question again.
+    // A distinct result, so the sheet never asks the same question again.
     return { status: 'copies-full', fileName: subtitleFileName(args.video, args.language, args.format, { ...nameOpts, keepBoth: true, copy: 9 }) };
   }
   const fileName = subtitleFileName(args.video, args.language, args.format, nameOpts);
