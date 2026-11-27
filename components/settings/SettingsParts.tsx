@@ -7,7 +7,6 @@ import { useTheme } from '../../context/ThemeContext';
 import { ThemeColors, radius, spacing, type } from '../../constants/theme';
 import { Button, Chip, Screen, SectionHeader, Sheet, TextField } from '../ui';
 import type { TextFieldRef } from '../ui/TextField';
-import { useMotion } from '../ui/useMotion';
 
 /** Sub-screen shell: header with back, scrolling body, instant-apply content. */
 export function SettingsPage({ title, children }: { title: string; children: React.ReactNode }) {
@@ -154,18 +153,13 @@ export function InputSheet({
     }
   }, [visible, initial]);
   // autoFocus runs while the sheet's window is still sliding in, and Android then focuses the field without raising
-  // the keyboard. Focus by ref once the slide-in is over instead. Sheet gives no "opened" callback, so wait its slide
-  // time plus a little for the first layout. Closing blurs the field so the keyboard leaves with the sheet.
+  // the keyboard. Focus by ref once the sheet reports it has finished opening. Closing blurs the field first, so the
+  // keyboard leaves with the sheet.
   const fieldRef = useRef<TextFieldRef>(null);
-  const m = useMotion();
   useEffect(() => {
-    if (!visible) {
-      fieldRef.current?.blur();
-      return;
-    }
-    const t = setTimeout(() => fieldRef.current?.focus(), (m.disabled ? 0 : m.base) + 120);
-    return () => clearTimeout(t);
-  }, [visible, m.disabled, m.base]);
+    if (!visible) fieldRef.current?.blur();
+  }, [visible]);
+  const focusField = useCallback(() => fieldRef.current?.focus(), []);
   const error = validate(text.trim());
   const submit = () => {
     setTouched(true);
@@ -173,7 +167,7 @@ export function InputSheet({
     onSubmit(text.trim());
   };
   return (
-    <Sheet visible={visible} onClose={onClose} title={title} subtitle={subtitle}>
+    <Sheet visible={visible} onClose={onClose} onOpened={focusField} title={title} subtitle={subtitle}>
       <TextField
         ref={fieldRef}
         onSurface
