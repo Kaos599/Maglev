@@ -26,7 +26,7 @@ const PAGE = 100;
 const UNDO_MS = 5000;
 const SEARCH_DEBOUNCE_MS = 200;
 
-/** H2: Loading, then Ready (Empty, List, NoResults) or Failed. Paging and removing happen inside Ready. */
+/** Loading, then Ready (Empty, List, NoResults) or Failed. Paging and removing happen inside Ready. */
 type Status = 'loading' | 'ready' | 'failed';
 
 type Item = { kind: 'header'; key: string; label: string } | { kind: 'row'; key: string; entry: HistoryEntry };

@@ -43,7 +43,7 @@ import kotlinx.coroutines.launch
 import java.io.File
 
 /**
- * Expo module `MaglevEngine`. API shape: docs/NATIVE_CONTRACT.md section 6.
+ * Expo module `MaglevEngine`. The methods mirror `MaglevEngineApi` in `MaglevEngine.types.ts`.
  * Heavy lifting lives in [EngineHost]; this class only adapts it to JS.
  */
 class MaglevEngineModule : Module() {
@@ -108,8 +108,8 @@ class MaglevEngineModule : Module() {
     }
 
     /**
-     * Runs a subtitle call (NATIVE_CONTRACT 36.6) off the main thread. The result resolves; a [SubtitleException]
-     * rejects with its contract code, anything else rejects `IO`.
+     * Runs a subtitle call off the main thread. The result resolves; a [SubtitleException]
+     * rejects with its error code, anything else rejects `IO`.
      */
     private fun subtitles(promise: Promise, block: () -> Any?) {
         EngineHost.ioScope.launch {
@@ -193,7 +193,7 @@ class MaglevEngineModule : Module() {
             pendingPick = null
         }
 
-        // "Clear history when I close Maglev": only when the activity is really finishing, not on a rotation (contract 24.9).
+        // "Clear history when I close Maglev": only when the activity is really finishing, not on a rotation.
         OnActivityDestroys {
             val a = appContext.currentActivity
             if (a != null && a.isFinishing) {
@@ -208,7 +208,7 @@ class MaglevEngineModule : Module() {
             EngineHost.onForeground()
         }
 
-        // The launcher icon switch waits until the app is out of sight (NATIVE_CONTRACT section 26).
+        // The launcher icon switch waits until the app is out of sight.
         OnActivityEntersBackground {
             AppUpdater.inForeground = false
             EngineHost.onBackground()
@@ -223,7 +223,7 @@ class MaglevEngineModule : Module() {
         AsyncFunction("shutdown") { promise: Promise ->
             engine(promise) { EngineHost.shutdownEngine() }
         }
-        // Contract 41 (B4). Blocks for seconds (the session stops, then starts), so it runs off the serialized thread.
+        // Restart the engine session. Blocks for seconds (the session stops, then starts), so it runs off the serialized thread.
         AsyncFunction("restartEngine") { promise: Promise ->
             io(promise) { EngineHost.restartEngine() }
         }
@@ -244,7 +244,7 @@ class MaglevEngineModule : Module() {
         AsyncFunction("addTorrent") { source: String, options: Map<String, Any?>?, promise: Promise ->
             io(promise) { EngineHost.addTorrent(source, options ?: emptyMap()) }
         }
-        // URL downloads (docs/NATIVE_CONTRACT.md section 17)
+        // URL downloads
         AsyncFunction("probeUrl") { url: String, options: Map<String, Any?>?, timeoutMs: Double, promise: Promise ->
             io(promise) { EngineHost.probeUrl(url, options ?: emptyMap(), timeoutMs.toLong()) }
         }
@@ -287,7 +287,7 @@ class MaglevEngineModule : Module() {
         AsyncFunction("getNetworkState") { promise: Promise ->
             engine(promise) { EngineHost.networkState() }
         }
-        // Contract section 35.1: every rule holding transfers now. [] before init. Never rejects.
+        // Every rule holding transfers now. [] before init. Never rejects.
         AsyncFunction("getActiveBlocks") { promise: Promise ->
             val list = try {
                 EngineHost.activeBlocksList()
@@ -335,7 +335,7 @@ class MaglevEngineModule : Module() {
         AsyncFunction("reannounce") { id: String, promise: Promise ->
             io(promise) { EngineHost.reannounce(id) }
         }
-        // Section 15. A tracker change restarts the torrent's peer sources, so keep it off the serialized thread.
+        // A tracker change restarts the torrent's peer sources, so keep it off the serialized thread.
         AsyncFunction("addTrackers") { id: String, urls: List<String>, promise: Promise ->
             io(promise) { EngineHost.addTrackers(id, urls) }
         }
@@ -357,7 +357,7 @@ class MaglevEngineModule : Module() {
         AsyncFunction("getEffectiveConfig") { promise: Promise ->
             native(promise) { NativeCore.nativeGetEffectiveConfig() }
         }
-        // Contract 41 (Debug log). Runs logcat and writes a file, so off the serialized engine thread.
+        // Debug log. Runs logcat and writes a file, so off the serialized engine thread.
         AsyncFunction("exportDebugLog") { promise: Promise ->
             io(promise) { EngineHost.exportDebugLog() }
         }
@@ -380,7 +380,7 @@ class MaglevEngineModule : Module() {
             // Probes the disk and may read free space, so keep it off the serialized engine thread.
             io(promise) { EngineHost.moveStorage(id, target) }
         }
-        // Section 18. Fixing missing files can mean a recheck, so these stay off the serialized thread.
+        // Fixing missing files can mean a recheck, so these stay off the serialized thread.
         AsyncFunction("setHealth") { id: String, tag: String, promise: Promise ->
             io(promise) { EngineHost.setHealth(id, tag) }
         }
@@ -402,7 +402,7 @@ class MaglevEngineModule : Module() {
 
         // endregion
 
-        // region Scheduler and feeds (contract section 11)
+        // region Scheduler and feeds
 
         AsyncFunction("setSchedule") { cfg: Map<String, Any?>, promise: Promise ->
             engine(promise) { EngineHost.setSchedule(cfg) }
@@ -510,7 +510,7 @@ class MaglevEngineModule : Module() {
 
         // endregion
 
-        // region Site checks (docs/SEARCH_CONTRACT.md section 8)
+        // region Site checks
 
         // True once if the quick share card just handed the app exactly this link (see TrustedShare), so the add screen
         // can read a shared link without a tap while an outside maglev:// link still waits.
@@ -561,7 +561,7 @@ class MaglevEngineModule : Module() {
 
         // endregion
 
-        // region Subtitles (docs/NATIVE_CONTRACT.md section 36.6)
+        // region Subtitles
 
         // OpenSubtitles 64-bit hash of a finished video. Errors: FILE_TOO_SMALL, NOT_FOUND, IO.
         AsyncFunction("subtitleHash") { pathOrUri: String, promise: Promise ->
@@ -596,14 +596,14 @@ class MaglevEngineModule : Module() {
 
         // endregion
 
-        // region Browser (docs/NATIVE_CONTRACT.md section 24)
+        // region Browser
 
-        // `options.conditional` sends If-None-Match / If-Modified-Since (section 31.2). The result carries `changed`.
+        // `options.conditional` sends If-None-Match / If-Modified-Since. The result carries `changed`.
         AsyncFunction("updateBlocklist") { urls: List<String>, options: Map<String, Any?>, promise: Promise ->
             val conditional = options["conditional"] == true
             blocklist(promise) { c -> BlocklistStore.update(c, urls, conditional).toResult() }
         }
-        // Checks a signed list file against the key embedded in the app (section 31.1). Never throws.
+        // Checks a signed list file against the key embedded in the app. Never throws.
         AsyncFunction("verifyListSignature") { body: String, sigB64: String, promise: Promise ->
             promise.resolve(com.maglev.engine.lists.ListSignature.verify(body, sigB64))
         }
@@ -627,7 +627,7 @@ class MaglevEngineModule : Module() {
             }
         }
 
-        // The "Clear history when I close Maglev" flag (contract 24.9). JS sends it at start and on every change.
+        // The "Clear history when I close Maglev" flag. JS sends it at start and on every change.
         AsyncFunction("setHistoryWipeOnClose") { enabled: Boolean, promise: Promise ->
             val c = context
             if (c == null) {
@@ -638,7 +638,7 @@ class MaglevEngineModule : Module() {
             }
         }
 
-        // How many times the history was emptied because Maglev closed (section 30). JS compares it with the last count it saw.
+        // How many times the history was emptied because Maglev closed. JS compares it with the last count it saw.
         AsyncFunction("getHistoryWipeCount") { promise: Promise ->
             val c = context
             promise.resolve(if (c == null) 0 else HistoryWipe.wipeCount(c))
@@ -705,7 +705,7 @@ class MaglevEngineModule : Module() {
 
         // endregion
 
-        // region In-app updates (docs/NATIVE_CONTRACT.md section 27)
+        // region In-app updates
         updateFunctions()
 
         // endregion
