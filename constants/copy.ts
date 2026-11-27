@@ -695,6 +695,8 @@ export const quickShareCopy = {
   addedServiceLater: 'Added to Maglev. It starts when you open the app.',
   couldNotAdd: "Couldn't add that. Try again.",
   engineFailed: "Maglev couldn't start. Open the app and try again.",
+  /** Mirrored in share/QuickShareText.kt someKept. */
+  someKept: (kept: number, total: number) => `Added ${kept} of ${total} files. The rest couldn't be read.`,
 } as const;
 // endregion quick share
 

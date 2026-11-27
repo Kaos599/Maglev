@@ -13,6 +13,7 @@ import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.maglev.engine.R
+import com.maglev.engine.share.ShareHandoff
 
 /** Aggregate view of the torrent list used for the ongoing notification and service decisions. */
 data class TransferSummary(
@@ -82,20 +83,20 @@ object Notifications {
         nm.createNotificationChannel(reminders)
     }
 
-    /** Opens the app. With a torrent id, deep-links to maglev://torrent/<id> (app.json scheme "maglev"). */
+    /**
+     * Opens the app on a route (maglev://torrent/<id>, free-space, or from/notification for a tap with no page of its own).
+     * The route goes through the one-shot store, so a later start from the icon never replays it.
+     */
     private fun contentIntent(context: Context, torrentId: String? = null, route: String? = null): PendingIntent? {
-        val intent = if (route != null) {
-            Intent(Intent.ACTION_VIEW, Uri.parse("maglev://$route")).setPackage(context.packageName)
-        } else if (torrentId != null) {
-            Intent(Intent.ACTION_VIEW, Uri.parse("maglev://torrent/" + Uri.encode(torrentId))).setPackage(context.packageName)
-        } else {
+        val link = when {
+            route != null -> "maglev://$route"
+            torrentId != null -> "maglev://torrent/" + Uri.encode(torrentId)
             // A plain tap is not a plain launch: maglev://from/notification keeps the new-feature dialog waiting.
-            Intent(Intent.ACTION_VIEW, Uri.parse("maglev://from/notification")).setPackage(context.packageName)
+            else -> "maglev://from/notification"
         }
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         // Different data makes a distinct PendingIntent, so one request code is enough.
         return PendingIntent.getActivity(
-            context, 0, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            context, 0, ShareHandoff.routeIntent(context, link), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
     }
 

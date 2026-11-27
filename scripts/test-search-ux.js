@@ -130,7 +130,7 @@ function check(name, cond, extra) {
   check('provider row: a ? button', /onCheck/.test(pr) && /\?/.test(pr));
 
   console.log(`\n${passed} passed, ${failed} failed`);
-  process.exit(failed ? 1 : 0);
+  process.exit(failed || process.exitCode ? 1 : 0);
 })();
 
 // The Browser button hides when the Browser tab is shown (it would be a duplicate).
