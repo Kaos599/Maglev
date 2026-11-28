@@ -61,9 +61,16 @@ check('empty, undefined, about: and file: are not sent', ['', undefined, null, '
   const stream = read('components/browser/StreamSheet.tsx');
   const browser = read('app/browser.tsx');
   check('FoundDownloadSheet start() sends the page (single file, long-press media menu)', /startDownload\(t\.url, \{[^}]*pageUrlOption\(t\.pageUrl\)/s.test(found));
-  check('StreamSheet start() sends the page (stream sheet, media-menu manifests)', /startDownload\(it\.url, \{[\s\S]*?pageUrlOption\(it\.pageUrl \|\| pageUrl\)/.test(stream));
+  check('StreamSheet probes and starts with the same page', /const requestPageUrl = item\.pageUrl \|\| pageUrl/.test(stream) &&
+    /downloadHeaders\(\{ url: requestUrl, pageUrl: requestPageUrl, userAgent \}/.test(stream) &&
+    /setPrepared\(\{ url: requestUrl, userAgent, pageUrl: requestPageUrl\b/.test(stream) &&
+    /downloadHeaders\(\{ url: prepared\.url, pageUrl: prepared\.pageUrl, userAgent \}/.test(stream) &&
+    /startDownload\(prepared\.url, \{[\s\S]*?pageUrlOption\(prepared\.pageUrl\)/.test(stream));
   check('batch sheet goes through startFound with the page', /startFound\(deps, \{ url: item\.url, pageUrl: item\.pageUrl \|\| page\?\.url/.test(browser));
   check('the media menu link and stream paths carry the page they were on', /pageUrl: d\.page\?\.url \?\? ''/.test(browser) && /pageUrl: hit\.pageUrl \|\| d\.page\?\.url/.test(browser));
+  check('a media hit with a fallback page cannot refresh from it',
+    /refreshPackedPlaylist: !!hit\.pageUrl/.test(browser) &&
+    /refreshPackedPlaylist=\{streamItem\?\.refreshPackedPlaylist !== false\}/.test(browser));
   check('add-download (typed link, share) never invents a page', !/pageUrlOption/.test(read('app/add-download.tsx')));
 
   // 4. The native side keeps the field.

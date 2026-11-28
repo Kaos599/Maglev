@@ -5,19 +5,20 @@
  */
 import type { FoundItem } from '../../modules/maglev-engine/src/MaglevBrowser';
 import { isInstaller } from './foundFilter.ts';
+import { isPackedHlsPageUrl } from '../../utils/videoSites.ts';
 
 /** The most files one batch starts. Keeps the admission check and the notifications sane. */
 export const BATCH_CAP = 25;
 const CONCURRENCY = 3;
 
 /** True for a plain file: not a stream and not an installer. Only these are picked by Select all. */
-export function isBatchable(item: Pick<FoundItem, 'stream' | 'ext' | 'name'>): boolean {
-  return !item.stream && !isInstaller(item);
+export function isBatchable(item: Pick<FoundItem, 'stream' | 'ext' | 'name'> & Partial<Pick<FoundItem, 'url'>>): boolean {
+  return !item.stream && !isPackedHlsPageUrl(item.url ?? '') && !isInstaller(item);
 }
 
 /** True when a row can be ticked. Streams cannot: they are saved one at a time from their own sheet. */
-export function canSelect(item: Pick<FoundItem, 'stream'>): boolean {
-  return !item.stream;
+export function canSelect(item: Pick<FoundItem, 'stream'> & Partial<Pick<FoundItem, 'url'>>): boolean {
+  return !item.stream && !isPackedHlsPageUrl(item.url ?? '');
 }
 
 /** Ids for Select all: the batchable rows in list order, up to the cap. */

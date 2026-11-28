@@ -22,6 +22,13 @@ export function isVideoSiteUrl(url: string): boolean {
   return videoSiteHost(url) !== null;
 }
 
+export function isPackedHlsPageUrl(url: string): boolean {
+  if (/[\s\\\u0000-\u001f\u007f<>"{}|^`]/.test(url) || /%(?![a-f\d]{2})/i.test(url)) return false;
+  const match = /^https:\/\/([^/?#]+)(\/[^?#]*)(?:[?#].*)?$/i.exec(url);
+  if (!match || !/^lplaygo\.com(?::443)?$/i.test(match[1]) || !/^\/[de]\/[A-Za-z0-9_-]{1,80}\/?$/.test(match[2])) return false;
+  return true;
+}
+
 /** Paths that are one video on each video site (a watch page, a Reel, a post), not a feed, profile or home page. */
 const VIDEO_PAGE_PATHS: Record<string, RegExp> = {
   'youtube.com': /^\/(watch\b|shorts\/[\w-]+|live\/[\w-]+)/,
@@ -119,6 +126,45 @@ interface RawFormat {
   abr?: number | null;
   protocol?: string;
   http_headers?: Record<string, string>;
+}
+
+/** A single HLS format can be opened in the stream sheet, which reads the real qualities from the playlist. */
+export function videoSiteHlsPlaylist(raw: { formats?: unknown } | null): { url: string; userAgent: string } | null {
+  if (!Array.isArray(raw?.formats) || raw.formats.length !== 1) return null;
+  const format = raw.formats[0] as RawFormat | null;
+  if (format?.protocol !== 'm3u8_native' && format?.protocol !== 'm3u8') return null;
+  const url = format.url;
+  if (typeof url !== 'string' || /[\s\\\u0000-\u001f\u007f<>"{}|^`]/.test(url) || /%(?![a-f\d]{2})/i.test(url)) return null;
+  const match = /^https:\/\/([a-z\d](?:[a-z\d.-]*[a-z\d])?)(?::(\d{1,5}))?\/[^?#]*\.m3u8(?:\?[^#]*)?$/i.exec(url);
+  if (!match || (match[2] !== undefined && (Number(match[2]) < 1 || Number(match[2]) > 65535))) return null;
+  const header = format.http_headers?.['User-Agent'];
+  if (typeof header !== 'string' || !header.trim() || /[\u0000-\u001f\u007f]/.test(header)) return null;
+  return { url, userAgent: header };
+}
+
+/** Refresh only the selected playlist; only the observed signing fields t and s may change. */
+export function matchingPackedHlsPlaylist(raw: { formats?: unknown } | null, selectedUrl: string): { url: string; userAgent: string } | null {
+  const resolved = videoSiteHlsPlaylist(raw);
+  if (!resolved) return null;
+  const selected = videoSiteHlsPlaylist({ formats: [{ protocol: 'm3u8_native', url: selectedUrl, http_headers: { 'User-Agent': resolved.userAgent } }] });
+  if (!selected) return null;
+  const address = (url: string) => {
+    const match = /^https:\/\/([^/]+)(\/[^?]*)/i.exec(url)!;
+    const queryAt = url.indexOf('?');
+    const fields = queryAt < 0 ? [] : url.slice(queryAt + 1).split('&');
+    const signatures = ['t', 's'].every((key) => {
+      const matches = fields.filter((field) => field.split('=', 1)[0] === key);
+      return matches.length === 1 && matches[0].startsWith(`${key}=`) && matches[0].length > key.length + 1;
+    });
+    const query = fields.filter((field) => {
+      const key = field.split('=', 1)[0];
+      return key !== 't' && key !== 's';
+    }).join('&');
+    return { origin: match[1].toLowerCase().replace(/:443$/, ''), path: match[2], query, signatures };
+  };
+  const a = address(resolved.url);
+  const b = address(selected.url);
+  return a.signatures && b.signatures && a.origin === b.origin && a.path === b.path && a.query === b.query ? resolved : null;
 }
 
 interface Cand {

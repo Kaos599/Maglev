@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { sanitizeFileName, type FoundItem, type StreamProbe } from 'maglev-engine';
+import { maglevEngine, sanitizeFileName, type FoundItem, type StreamProbe } from 'maglev-engine';
 import { useTheme } from '../../context/ThemeContext';
 import { useMaglevEngine } from '../../context/EngineContext';
 import { ThemeColors, spacing, type } from '../../constants/theme';
@@ -17,6 +17,7 @@ import { SaveToRow } from './SaveToRow';
 import { pageUrlOption } from './pageUrlOption';
 import { audioLabel, buildSelection, defaultAudio, needsAudioPicker, pickStreamVariant, qualityLabel } from './streamChoice';
 import { getBrowserPrefs } from '../../utils/prefs/browser';
+import { isPackedHlsPageUrl, matchingPackedHlsPlaylist } from '../../utils/videoSites';
 
 type Phase = 'probing' | 'ready' | 'error' | 'adding';
 
@@ -34,6 +35,8 @@ interface Props {
   userAgent?: string;
   /** The page address. Sent as the Referer when the item has none. */
   pageUrl?: string;
+  /** Browser-only: renew the same selected playlist from its recorded public page. */
+  refreshPackedPlaylist?: boolean;
   onClose: () => void;
   /** Called instead of onClose after a download started (or was a duplicate). Defaults to onClose. */
   onStarted?: () => void;
@@ -41,7 +44,7 @@ interface Props {
 }
 
 /** Pick a quality (and audio language) of an HLS or DASH stream, then Start. */
-export function StreamSheet({ item, pageTitle, userAgent = '', pageUrl = '', onClose, onStarted, onCopyLink }: Props) {
+export function StreamSheet({ item, pageTitle, userAgent: browserUserAgent = '', pageUrl = '', refreshPackedPlaylist = false, onClose, onStarted, onCopyLink }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { probeStream, startDownload, showNotice, onMeteredNetwork } = useMaglevEngine();
@@ -52,6 +55,7 @@ export function StreamSheet({ item, pageTitle, userAgent = '', pageUrl = '', onC
 
   const [phase, setPhase] = useState<Phase>('probing');
   const [probe, setProbe] = useState<StreamProbe | null>(null);
+  const [prepared, setPrepared] = useState<{ url: string; userAgent: string; pageUrl: string; sourceUrl: string; sourcePage: string; token: number } | null>(null);
   const [variantId, setVariantId] = useState<string | null>(null);
   const [audioId, setAudioId] = useState<string | null>(null);
   const [name, setName] = useState('');
@@ -64,16 +68,43 @@ export function StreamSheet({ item, pageTitle, userAgent = '', pageUrl = '', onC
   useEffect(() => {
     if (!url || !item) return;
     const mine = ++token.current;
+    const requestPageUrl = item.pageUrl || pageUrl;
     setPhase('probing');
     setProbe(null);
+    setPrepared(null);
     setMessage(null);
     setVariantId(null);
     setAudioId(null);
     setName(sanitizeFileName((pageTitle || item.name || '').trim()));
     void (async () => {
-      const headers = await downloadHeaders({ url, pageUrl: item.pageUrl || pageUrl, userAgent });
-      const res = await probeStream(url, { headers });
+      let requestUrl = url;
+      let userAgent = browserUserAgent;
+      const headers = await downloadHeaders({ url: requestUrl, pageUrl: requestPageUrl, userAgent });
       if (mine !== token.current) return;
+      let res = await probeStream(requestUrl, { headers });
+      if (mine !== token.current) return;
+      if (!res.ok && res.httpStatus === 403 && refreshPackedPlaylist && item.stream === 'hls' && isPackedHlsPageUrl(item.pageUrl)) {
+        try {
+          const resolved = await maglevEngine.videoSitesResolve(item.pageUrl);
+          if (mine !== token.current) return;
+          const matching = resolved.ok ? matchingPackedHlsPlaylist(JSON.parse(resolved.json), url) : null;
+          if (matching) {
+            const refreshedHeaders = await downloadHeaders({ url: matching.url, pageUrl: requestPageUrl, userAgent: matching.userAgent });
+            if (mine !== token.current) return;
+            const refreshed = await probeStream(matching.url, { headers: refreshedHeaders });
+            if (mine !== token.current) return;
+            if (refreshed.ok) {
+              requestUrl = matching.url;
+              userAgent = matching.userAgent;
+              res = refreshed;
+            }
+          }
+        } catch {
+          // Keep the original refusal if the same selected playlist cannot be renewed and read.
+        }
+      }
+      if (mine !== token.current) return;
+      setPrepared({ url: requestUrl, userAgent, pageUrl: requestPageUrl, sourceUrl: url, sourcePage: item.pageUrl, token: mine });
       if (res.ok) {
         setProbe(res);
         setVariantId(pickStreamVariant(res.variants, getBrowserPrefs().streamQuality)?.id ?? null);
@@ -92,9 +123,10 @@ export function StreamSheet({ item, pageTitle, userAgent = '', pageUrl = '', onC
       }
       setPhase('error');
     })();
+    return () => { if (mine === token.current) token.current++; };
     // The item object changes with every render of the parent; the link and a retry decide a new probe.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [url, tries, probeStream]);
+  }, [url, item?.pageUrl, refreshPackedPlaylist, tries, probeStream]);
 
   const variant = probe?.variants.find((v) => v.id === variantId) ?? null;
   const { doesntFit, noSpace } = useDownloadAdmission(variant?.estBytes ?? null, phase === 'ready');
@@ -105,17 +137,21 @@ export function StreamSheet({ item, pageTitle, userAgent = '', pageUrl = '', onC
   const askAudio = probe ? needsAudioPicker(variant, probe.audioTracks) : false;
 
   const start = async () => {
-    if (!probe || !variant) return;
+    if (phase !== 'ready' || !item || !probe || !variant || !prepared || prepared.sourceUrl !== item.url || prepared.sourcePage !== item.pageUrl || prepared.token !== token.current) return;
+    const mine = token.current;
     setPhase('adding');
     setMessage(null);
     const clean = sanitizeFileName(name.trim());
-    const headers = await downloadHeaders({ url: it.url, pageUrl: it.pageUrl || pageUrl, userAgent });
-    const res = await startDownload(it.url, {
+    const userAgent = prepared.userAgent;
+    const headers = await downloadHeaders({ url: prepared.url, pageUrl: prepared.pageUrl, userAgent });
+    if (mine !== token.current) return;
+    const res = await startDownload(prepared.url, {
       headers,
-      ...pageUrlOption(it.pageUrl || pageUrl),
+      ...pageUrlOption(prepared.pageUrl),
       ...(clean ? { name: clean } : {}),
       stream: buildSelection(probe.kind, probe, variant, audioId),
     });
+    if (mine !== token.current) return;
     if (res.ok) {
       haptic('commit');
       (onStarted ?? onClose)();
@@ -201,7 +237,7 @@ export function StreamSheet({ item, pageTitle, userAgent = '', pageUrl = '', onC
         {message ? <Banner tone="danger" title={message} /> : null}
 
         <View style={styles.actions}>
-          <Button label="Copy link" icon="copy" variant="ghost" onPress={() => onCopyLink(it.url)} disabled={adding} />
+          <Button label="Copy link" icon="copy" variant="ghost" onPress={() => onCopyLink(prepared?.sourceUrl === it.url && prepared.sourcePage === it.pageUrl && prepared.token === token.current ? prepared.url : it.url)} disabled={adding} />
           {phase === 'error' ? (
             canRetry ? <Button label="Try again" onPress={() => setTries((n) => n + 1)} /> : <Button label="Close" onPress={onClose} />
           ) : (
