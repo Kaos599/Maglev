@@ -232,6 +232,14 @@ object VideoSites {
         if (host.isNullOrBlank()) {
             throw VideoSitesException(FAILED, "Couldn't read this video. Try again.")
         }
+        PackedHlsPage.pageUri(clean)?.let { page ->
+            PackedHlsPage.read(page)?.let { playlist ->
+                val format = JSONObject().put("url", playlist).put("protocol", "m3u8_native")
+                    .put("http_headers", JSONObject().put("User-Agent", PackedHlsPage.USER_AGENT))
+                return JSONObject().put("formats", JSONArray().put(format)).toString()
+            }
+            throw VideoSitesException(NOT_SUPPORTED, "Maglev can't read this site. Open it in the browser to find the video.")
+        }
         ensureInit(context) // never updates here: a resolve must not wait on a download (VideoSitesUpdater does it in the background)
         val request = YoutubeDLRequest(clean)
         request.addOption("--dump-single-json")

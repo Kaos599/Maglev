@@ -29,8 +29,8 @@ import { askSubtitles, markNotThisOne } from '../utils/subtitles/requests';
 import { buildAsk } from '../utils/addedTray';
 import { joinTrayIfShowing } from '../components/search/AddedTray';
 import {
-  baseNameProblem, buildVideoSiteInfo, engineHeaders, errorOffersBrowser, isNoVideoError, isVideoSiteUrl, partsOption, suggestedBaseName,
-  videoSiteErrorMessage,
+  baseNameProblem, buildVideoSiteInfo, engineHeaders, errorOffersBrowser, isNoVideoError, isPackedHlsPageUrl, isVideoSiteUrl, partsOption, suggestedBaseName,
+  videoSiteErrorMessage, videoSiteHlsPlaylist,
   type VideoSiteInfo,
 } from '../utils/videoSites';
 
@@ -68,7 +68,7 @@ export default function AddDownloadScreen() {
   const [addStopped, setAddStopped] = useState(false);
   const [folderLabel, setFolderLabel] = useState<string | null>(null);
   const [folderPath, setFolderPath] = useState<string | null>(null);
-  const [streamItem, setStreamItem] = useState<FoundItem | null>(null);
+  const [streamItem, setStreamItem] = useState<(FoundItem & { userAgent?: string }) | null>(null);
   const [baseName, setBaseName] = useState('');
   // A link to a video page: the qualities found on it, and the one picked.
   const [site, setSite] = useState<VideoSiteInfo | null>(null);
@@ -131,6 +131,15 @@ export default function AddDownloadScreen() {
         setPhase('ready');
         return true;
       }
+      const playlist = isPackedHlsPageUrl(input) ? videoSiteHlsPlaylist(raw) : null;
+      if (playlist) {
+        setStreamItem({
+          id: 'resolved-hls', url: playlist.url, userAgent: playlist.userAgent, kind: 'video', mime: null, ext: 'm3u8',
+          name: '', size: null, width: null, height: null, source: 'page', stream: 'hls', pageUrl: input, pageTitle: '',
+        });
+        setPhase('input');
+        return true;
+      }
       // A page that lists no format at all has no video. One that lists formats Maglev can't save may still play in the browser.
       const none = !Array.isArray(raw?.formats) || raw.formats.length === 0;
       setNoVideo(none);
@@ -171,7 +180,7 @@ export default function AddDownloadScreen() {
       urlRef.current = input;
       allowLanRef.current = allowLan;
       // A video page (YouTube, X, Instagram...) has no file to probe: read the page for its videos.
-      if (isVideoSiteUrl(input)) {
+      if (isVideoSiteUrl(input) || isPackedHlsPageUrl(input)) {
         await readSite(input, mine, false);
         return;
       }
@@ -649,7 +658,7 @@ export default function AddDownloadScreen() {
       <View style={styles.gap}>
         <Button label="Get info" size="lg" fullWidth disabled={!canSubmit} onPress={() => void submit(text)} />
       </View>
-      <StreamSheet item={streamItem} onClose={() => setStreamItem(null)} onStarted={() => { setStreamItem(null); close(); }} onCopyLink={(u) => { void Clipboard.setStringAsync(u); }} />
+      <StreamSheet item={streamItem} userAgent={streamItem?.userAgent} onClose={() => setStreamItem(null)} onStarted={() => { setStreamItem(null); close(); }} onCopyLink={(u) => { void Clipboard.setStringAsync(u); }} />
     </Screen>
   );
 }

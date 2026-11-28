@@ -33,6 +33,38 @@ const fixture = (n) => JSON.parse(read(`scripts/fixtures/video-sites/${n}.json`)
     'https://user@evil.test/youtube.com', 'ftp://youtube.com/x', 'not a link', '',
   ]) check(`not a video site: ${u}`, !V.isVideoSiteUrl(u));
 
+  const playerPage = 'https://lplaygo.com/d/sample';
+  check('Lplaygo player-page matching is limited to the supported HTTPS routes',
+    V.isPackedHlsPageUrl?.(playerPage) === true &&
+    V.isPackedHlsPageUrl?.('https://lplaygo.com/e/sample') === true &&
+    V.isPackedHlsPageUrl?.('https://lplaygo.com/sample4abc12') === false &&
+    V.isPackedHlsPageUrl?.('https://lplaygo.com.other.test/d/sample') === false &&
+    V.isPackedHlsPageUrl?.('https://user@lplaygo.com/d/sample') === false &&
+    V.isPackedHlsPageUrl?.('http://lplaygo.com/d/sample') === false);
+  const signedHls = 'https://cdn.test/main.m3u8?t=new&s=new&quality=1080';
+  const hlsResult = { formats: [{ protocol: 'm3u8_native', url: signedHls, http_headers: { 'User-Agent': 'Page UA' } }] };
+  check('one resolved HTTPS HLS playlist stays paired with its acquisition User-Agent',
+    V.videoSiteHlsPlaylist?.(hlsResult)?.url === signedHls &&
+    V.videoSiteHlsPlaylist?.(hlsResult)?.userAgent === 'Page UA' &&
+    V.videoSiteHlsPlaylist?.({ formats: [{ protocol: 'm3u8_native', url: signedHls }] }) === null);
+  check('browser renewal can replace only the selected playlist signing fields',
+    V.matchingPackedHlsPlaylist?.(hlsResult, 'https://cdn.test/main.m3u8?t=old&s=old&quality=1080')?.url === signedHls &&
+    V.matchingPackedHlsPlaylist?.(hlsResult, 'https://cdn.test/main.m3u8?t=old&s=old&quality=720') === null &&
+    V.matchingPackedHlsPlaylist?.(hlsResult, 'https://cdn.test/ad.m3u8?t=old&s=old&quality=1080') === null &&
+    V.matchingPackedHlsPlaylist?.(hlsResult, 'https://other.test/main.m3u8?t=old&s=old&quality=1080') === null);
+  for (const query of ['quality=1080', 't=old&quality=1080', 't=&s=old&quality=1080', 't=old&s=&quality=1080', 't=one&t=two&s=old&quality=1080', 't=old&s=one&s=two&quality=1080', 't=old&s=old&s&quality=1080']) {
+    const url = `https://cdn.test/main.m3u8?${query}`;
+    check('Browser renewal requires one nonempty t and s in both addresses',
+      V.matchingPackedHlsPlaylist(hlsResult, url) === null &&
+      V.matchingPackedHlsPlaylist({ formats: [{ ...hlsResult.formats[0], url }] }, signedHls) === null);
+  }
+  for (const url of ['https://lplaygo.com/D/sample', 'https://lplaygo.com:0443/d/sample', 'https://lplaygo.com:/d/sample', 'https://lplaygo.com/d/sample?bad=%no']) {
+    check('invalid packed-page authority, case or query stays on the normal path', !V.isPackedHlsPageUrl(url));
+  }
+  for (const url of ['http://cdn.test/main.m3u8', 'https://user@cdn.test/main.m3u8', 'https://cdn.test/file.mp4']) {
+    check('resolved non-HTTPS, credential-bearing or non-HLS formats are rejected', V.videoSiteHlsPlaylist({ formats: [{ ...hlsResult.formats[0], url }] }) === null);
+  }
+
   // ---- YouTube: video-only avc1 MP4 + the best m4a, one option per height
   const yt = V.buildVideoSiteInfo(fixture('youtube'));
   check('youtube: title and duration', yt.title.startsWith('Big Buck Bunny') && yt.durationSec === 635 && yt.site === 'Youtube');
@@ -123,6 +155,79 @@ const fixture = (n) => JSON.parse(read(`scripts/fixtures/video-sites/${n}.json`)
   check('screen reads video pages and shows the reading state', screen.includes('videoSitesResolve') && screen.includes('Reading the video…') && screen.includes('isVideoSiteUrl'));
   check('screen: Open in browser for login and unsupported errors', screen.includes('errorOffersBrowser') && screen.includes("label: 'Open in browser'"));
   check('screen: never says yt-dlp', !/yt-dlp|ytdlp/i.test(screen));
+  const streamSheet = read('components/browser/StreamSheet.tsx');
+  const browserScreen = read('app/browser.tsx');
+  check('packed pages use the existing stream chooser with the acquisition UA',
+    /isPackedHlsPageUrl\(input\)[^\n]*videoSiteHlsPlaylist\(raw\)/.test(screen) &&
+    /<StreamSheet[^\n]*userAgent=/.test(screen) && kt.includes('PackedHlsPage.USER_AGENT'));
+  const foundStart = browserScreen.indexOf('const found = useMemo(() => {') + 'const found = useMemo(() => {'.length;
+  const foundBody = browserScreen.slice(foundStart, browserScreen.indexOf('}, [foundAll', foundStart)).replace(': FoundItem', '');
+  const foundForPage = new Function('visibleFound', 'foundAll', 'dismissed', 'scanUrl', 'scanTitle', 'isVideoPageUrl', 'isPackedHlsPageUrl', foundBody);
+  const foundRows = (rows, page = playerPage) => foundForPage((rows) => rows, rows, new Set(), page, 'Page video', V.isVideoPageUrl, V.isPackedHlsPageUrl);
+  check('Files offers a packed page action beside direct video, DASH or unrelated HLS',
+    foundRows([{ kind: 'video', url: 'https://cdn.test/ad.mp4', stream: null }]).length === 2 &&
+    foundRows([{ kind: 'video', url: 'https://cdn.test/ad.mpd', stream: 'dash' }]).length === 2 &&
+    foundRows([{ kind: 'video', url: signedHls, stream: 'hls' }]).length === 2);
+  check('Files suppresses only an identical page action, not a stream entry',
+    foundRows([{ kind: 'video', url: playerPage, stream: null }]).length === 1 &&
+    foundRows([{ kind: 'video', url: playerPage, stream: 'hls' }]).length === 2);
+  check('ordinary video sites retain their existing video dedupe', foundRows([{ kind: 'video', url: 'https://cdn.test/a.mp4' }], 'https://www.youtube.com/watch?v=1').length === 1);
+  check('the packed page row opens the existing Add a link flow', /isPackedHlsPageUrl\(item\.url\)/.test(browserScreen));
+  const { canSelect, isBatchable } = await import('../components/browser/foundBatch.ts');
+  const pageRow = { url: playerPage, name: 'Video on this page', ext: null, stream: null };
+  check('page fallback requires choosing a stream, not a plain-file batch', !canSelect(pageRow) && !isBatchable(pageRow));
+
+  // Exercise the actual asynchronous probe body with mocked transport and React setters.
+  const probeStart = streamSheet.indexOf('void (async () => {') + 'void (async () => {'.length;
+  const probeBody = streamSheet.slice(probeStart, streamSheet.indexOf('})();', probeStart)).replace(' as keyof typeof STREAM_BANNERS', '');
+  async function probeCase({ status = 403, page = playerPage, refresh = true, renewed = hlsResult, retryOk = true, stale = false } = {}) {
+    const seen = { probes: [], resolves: [], phase: '', message: '', prepared: null };
+    const token = { current: 1 };
+    const context = {
+      url: 'https://cdn.test/main.m3u8?t=old&s=old&quality=1080', browserUserAgent: 'Browser UA',
+      item: { stream: 'hls', pageUrl: page }, requestPageUrl: page || playerPage,
+      mine: 1, token, refreshPackedPlaylist: refresh,
+      isPackedHlsPageUrl: V.isPackedHlsPageUrl, matchingPackedHlsPlaylist: V.matchingPackedHlsPlaylist,
+      downloadHeaders: async (request) => request,
+      probeStream: async (url, { headers }) => {
+        seen.probes.push({ url, headers });
+        return seen.probes.length === 1
+          ? status === 200 ? { ok: true, variants: [], audioTracks: [] } : { ok: false, httpStatus: status, code: 'HTTP_STATUS', message: 'Original refusal' }
+          : retryOk ? { ok: true, variants: [], audioTracks: [] } : { ok: false, httpStatus: 500, code: 'HTTP_STATUS', message: 'Renewal failed' };
+      },
+      maglevEngine: { videoSitesResolve: async (page) => {
+        seen.resolves.push(page);
+        if (stale) token.current++;
+        return { ok: true, json: JSON.stringify(renewed) };
+      } },
+      setPrepared: (value) => { seen.prepared = value; }, setProbe: () => {}, setVariantId: () => {},
+      setAudioId: () => {}, setName: () => {}, setCanRetry: () => {},
+      setPhase: (value) => { seen.phase = value; }, setMessage: (value) => { seen.message = value; },
+      pickStreamVariant: () => null, getBrowserPrefs: () => ({}), defaultAudio: () => null,
+      sanitizeFileName: (value) => value, STREAM_BANNERS: {}, probeErrorView: () => ({ body: 'Fallback' }),
+    };
+    const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor;
+    await new AsyncFunction(...Object.keys(context), probeBody)(...Object.values(context));
+    return seen;
+  }
+  const repaired = await probeCase();
+  check('a captured 403 probes first, then renews only the same selected playlist',
+    repaired.probes.length === 2 && repaired.resolves.length === 1 && repaired.phase === 'ready' &&
+    repaired.prepared.url === signedHls && repaired.prepared.userAgent === 'Page UA' &&
+    repaired.probes[0].headers.userAgent === 'Browser UA' && repaired.probes[1].headers.userAgent === 'Page UA');
+  for (const options of [{ status: 200 }, { status: 401 }, { status: 500 }, { page: '' }, { page: 'https://other.test/watch' }, { refresh: false }]) {
+    const result = await probeCase(options);
+    check('ordinary results and missing explicit provenance never renew the page', result.resolves.length === 0 && result.probes.length === 1);
+  }
+  const retryFailed = await probeCase({ retryOk: false });
+  const unrelated = await probeCase({ renewed: { formats: [{ ...hlsResult.formats[0], url: 'https://cdn.test/ad.m3u8' }] } });
+  check('a failed renewal preserves the selected URL and original refusal', retryFailed.message === 'Original refusal' && retryFailed.prepared.userAgent === 'Browser UA');
+  check('an unrelated renewed video is never probed or selected', unrelated.probes.length === 1 && unrelated.message === 'Original refusal');
+  const staleRenewal = await probeCase({ stale: true });
+  check('a stale page renewal cannot probe or change the chooser', staleRenewal.probes.length === 1 && staleRenewal.prepared === null);
+  check('Start uses the exact successfully probed request context',
+    /startDownload\(prepared\.url/.test(streamSheet) && /userAgent = prepared\.userAgent/.test(streamSheet) &&
+    /pageUrlOption\(prepared\.pageUrl\)/.test(streamSheet));
   const mh = await import('../utils/browser/mediaHit.ts');
   const ytHit = { kind: 'video', url: null, unusable: 'blob', videoClass: 'blob', poster: null, linkHref: null, alt: '', pageUrl: 'https://m.youtube.com/watch?v=jNQXAC9IVRw' };
   const ytMenu = mh.buildMediaMenu(ytHit);

@@ -54,7 +54,7 @@ import { keepHosts, privateSession } from '../utils/browser/privateSession';
 import { hostsToWipe } from '../utils/browser/privateHosts';
 import { buildMediaMenu, hasMenu, parseMediaHit, type MediaHit } from '../utils/browser/mediaHit';
 import { flushTabs, recordVisit } from '../utils/history';
-import { isVideoPageUrl, isVideoSiteUrl } from '../utils/videoSites';
+import { isPackedHlsPageUrl, isVideoPageUrl, isVideoSiteUrl } from '../utils/videoSites';
 import { activeTab, backTarget, getTab, isBlank, liveTabs, switcherOrder } from '../utils/browser/tabs';
 import * as popupsApi from '../utils/browser/popups';
 import {
@@ -212,7 +212,9 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
   const scanTitle = page?.title ?? '';
   const found = useMemo(() => {
     const list = visibleFound(foundAll, dismissed);
-    if (!isVideoPageUrl(scanUrl) || list.some((f) => f.kind === 'video')) return list;
+    const packedPage = isPackedHlsPageUrl(scanUrl);
+    if (!packedPage && !isVideoPageUrl(scanUrl)) return list;
+    if (list.some((f) => packedPage ? f.url === scanUrl && !f.stream : f.kind === 'video')) return list;
     const id = `page-video:${scanUrl}`;
     if (dismissed.has(id)) return list;
     const own: FoundItem = { id, url: scanUrl, kind: 'video', mime: null, ext: null, name: scanTitle || 'Video on this page', size: null, width: null, height: null, source: 'page', stream: null, pageUrl: scanUrl, pageTitle: scanTitle };
@@ -233,7 +235,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
   const [clearSiteOpen, setClearSiteOpen] = useState(false);
   const [target, setTarget] = useState<DownloadTarget | null>(null);
   const [batchItems, setBatchItems] = useState<FoundItem[] | null>(null);
-  const [streamItem, setStreamItem] = useState<FoundItem | null>(null);
+  const [streamItem, setStreamItem] = useState<(FoundItem & { refreshPackedPlaylist?: boolean }) | null>(null);
   // A one-line "Maglev found N files" note, once per page, until the tray opens or a few seconds pass.
   const [hintTab, setHintTab] = useState<string | null>(null);
   const hintShown = hintTab === activeId && data.hint === 'shown' && found.length > 0 && !trayOpen;
@@ -773,6 +775,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
       source: 'page',
       stream: kind,
       pageUrl: hit.pageUrl || d.page?.url || '',
+      refreshPackedPlaylist: !!hit.pageUrl,
       pageTitle: d.page?.title ?? '',
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -822,6 +825,10 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
 
   const pickFile = (item: FoundItem) => {
     setTrayOpen(false);
+    if (isPackedHlsPageUrl(item.url)) {
+      router.push({ pathname: '/add-download', params: { url: item.url } });
+      return;
+    }
     // A video found on a video site (YouTube, X, Instagram): its address is the page or a stream the site guards, not
     // a file. The add sheet reads the page through Video sites and lists qualities, like long-press does (mediaHit.ts).
     const sitePage = isVideoSiteUrl(item.url) ? item.url : isVideoSiteUrl(item.pageUrl || page?.url || '') ? item.pageUrl || page?.url || '' : '';
@@ -1211,6 +1218,7 @@ export default function BrowserScreen({ inTab = false }: { inTab?: boolean }) {
 
       <StreamSheet
         item={streamItem}
+        refreshPackedPlaylist={streamItem?.refreshPackedPlaylist !== false}
         pageTitle={page?.title}
         pageUrl={page?.url}
         userAgent={page?.userAgent}

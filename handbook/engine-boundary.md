@@ -96,8 +96,10 @@ These methods resolve plain values, not an `EngineResult`: `getStorageStatus`, `
 | `allowLanHost(id)` | `nativeAllowLanHost` | Allows a host on the user's own network. Call `retryDownload` next. |
 | `openDownload`, `shareDownload` | Kotlin | `NO_APP` when nothing can open the file. |
 | `getNetworkState()` | Kotlin | `{connected, metered}`. |
-| `videoSitesResolve(url)` | Kotlin (yt-dlp) | `{json}`: the page's formats as trimmed yt-dlp JSON. Maglev's own downloader fetches the files. |
+| `videoSitesResolve(url)` | Kotlin | `{json}`: the page's formats in the trimmed yt-dlp JSON shape. Maglev's own downloader fetches the files. |
 | `videoSitesUpdate`, `videoSitesVersion`, `videoSitesStatus`, `videoSitesConfigure` | Kotlin | yt-dlp self-update. `videoSitesUpdate` answers `updated`, `current` or `failed`; `failed` is a normal answer. |
+
+For a supported HTTPS Lplaygo `/d/<id>` or `/e/<id>` player page, the resolver can return one HLS format with the exact User-Agent that fetched the page in `formats[].http_headers`. Add a link and Browser → Files use that User-Agent for both the playlist probe and the download. If a captured browser playlist is refused with HTTP 403, the sheet can refresh it from its recorded player page. Both addresses must have the same HTTPS authority and path and exactly one nonempty `t` and `s` field each. Every other query field must match.
 
 ### Storage, files, permissions
 
