@@ -76,7 +76,7 @@
   },
   "devDependencies": {
     "@babel/core": "^7.29.13",
-    "@types/react": "~19.3.0",
+    "@types/react": "~19.3.2",
     "pixelarticons": "^2.4.2",
     "typescript": "^5.3.3"
   },
